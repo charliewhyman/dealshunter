@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { Deal } from '../types';
 import { supabase } from '../lib/supabase';
+import { Loader2 } from 'lucide-react';
 
 
 export function HomePage() {
@@ -32,6 +33,20 @@ export function HomePage() {
     // Function to handle voting
 
     // handle loading
-
+    if (loading) {
+        return (
+          <div className="flex items-center justify-center min-h-screen">
+            <Loader2 className="w-8 h-8 animate-spin" />
+          </div>
+        );
+      }
+    
     // map through deals and render DealCard components
+    return (
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+          <div className="space-y-6">
+            <p>Mapped deals cards here</p>
+          </div>
+        </div>
+      );
 }
