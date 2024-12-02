@@ -1,5 +1,6 @@
 import { ArrowBigUp, ExternalLink } from 'lucide-react';
 import { Deal } from '../types';
+import { formatDistanceToNow } from 'date-fns';
 
 interface DealCardProps {
     deal: Deal;
@@ -54,6 +55,9 @@ return (
             <span>{deal.votes}</span>
         </button>
         </div>
+        <div className="mt-2 text-sm text-gray-500">
+            Posted {formatDistanceToNow(new Date(deal.created_at))} ago
+          </div>
     </div>
 );
 }
