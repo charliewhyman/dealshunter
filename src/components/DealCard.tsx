@@ -1,4 +1,4 @@
-import { ExternalLink } from 'lucide-react';
+import { ArrowBigUp, ExternalLink } from 'lucide-react';
 import { Deal } from '../types';
 
 interface DealCardProps {
@@ -46,9 +46,12 @@ return (
                 </span>
                 </div>
             </div>
-        <button 
-        onClick={() => onVote(deal.id)}
+        <button
+            onClick={() => onVote(deal.id)}
+            className="flex items-center gap-1 px-3 py-1 rounded-full bg-gray-400 hover:bg-gray-200 transition-colors"
         >
+            <ArrowBigUp className="w-4 h-4" />
+            <span>{deal.votes}</span>
         </button>
         </div>
     </div>
