@@ -31,7 +31,19 @@ export function HomePage() {
     }
   
     // Function to handle voting
-
+    async function handleVote(dealId: string) {
+        try {
+          const { error } = await supabase.rpc('increment_votes', {
+            deal_id: dealId
+          });
+    
+          if (error) throw error;
+          await fetchDeals();
+        } catch (error) {
+          console.error('Error voting:', error);
+        }
+      }
+      
     // handle loading
     if (loading) {
         return (
