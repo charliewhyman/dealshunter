@@ -1,3 +1,4 @@
+import { ExternalLink } from 'lucide-react';
 import { Deal } from '../types';
 
 interface DealCardProps {
@@ -27,8 +28,22 @@ return (
                         rel="noopener noreferrer"
                         className="text-blue-600 hover:text-blue-800"
                         >
-                            Link
-                        </a>
+                        <ExternalLink className="w-5 h-5" />
+                    </a>
+                </div>
+            </div>
+            <p className="text-gray-600 mt-2">{deal.description}</p>
+            <div className="flex items-center justify-between mt-4">
+                <div className="flex items-center gap-2">
+                <span className="text-2xl font-bold text-green-600">
+                    ${deal.price}
+                </span>
+                <span className="text-sm text-gray-500 line-through">
+                    ${deal.original_price}
+                </span>
+                <span className="text-sm font-medium text-green-600">
+                    {deal.discount_percentage}% OFF
+                </span>
                 </div>
             </div>
         <button 
