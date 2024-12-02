@@ -2,7 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { Deal } from '../types';
 import { supabase } from '../lib/supabase';
 import { Loader2 } from 'lucide-react';
-
+import { DealCard } from '../components/DealCard';
 
 export function HomePage() {
     const [deals, setDeals] = useState<Deal[]>([]);
@@ -43,7 +43,7 @@ export function HomePage() {
           console.error('Error voting:', error);
         }
       }
-      
+
     // handle loading
     if (loading) {
         return (
@@ -57,7 +57,13 @@ export function HomePage() {
     return (
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
           <div className="space-y-6">
-            <p>Mapped deals cards here</p>
+          {deals.map((deal) => (
+          <DealCard
+            key={deal.id}
+            deal={deal}
+            onVote={handleVote}
+          />
+        ))}
           </div>
         </div>
       );
