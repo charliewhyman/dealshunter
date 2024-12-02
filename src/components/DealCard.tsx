@@ -16,9 +16,21 @@ return (
                     className="w-24 h-24 object-cover rounded-lg"
                 />
             </div>
-            <h2 className='text-gray-900'>
-                {deal.title}
-            </h2>
+            <div className="flex-grow">
+                <div className="flex items-center justify-between">
+                    <h2 className='text-gray-900'>
+                        {deal.title}
+                    </h2>
+                    <a
+                        href={deal.url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-blue-600 hover:text-blue-800"
+                        >
+                            Link
+                        </a>
+                </div>
+            </div>
         <button 
         onClick={() => onVote(deal.id)}
         >
