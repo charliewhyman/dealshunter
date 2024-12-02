@@ -21,9 +21,16 @@ export function Header() {
                                   placeholder="Search deals..."
                                   className="block w-full"
                               />
-                          </div>
-                          <a>Submit a Deal</a>
-                          <a>Login</a>
+                            </div>
+                            <div className="flex items-center">
+                            <Link
+                                to="/submit"
+                                className="inline-flex items-center"
+                                >
+                                Submit a Deal
+                            </Link>
+                            {/* Add auth buttons here */}
+                            </div>
                       </div>
                   </div>
               </div>
