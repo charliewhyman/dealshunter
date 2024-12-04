@@ -3,6 +3,7 @@ import { HomePage } from './pages/HomePage';
 import { Header } from './components/Header';
 import { AuthProvider } from './contexts/AuthContext';
 import { useState } from 'react';
+import { AuthModal } from './components/AuthModal';
 
 function App() {
 
@@ -16,7 +17,6 @@ function App() {
             <Routes>
               <Route path="/" element={<HomePage />} />
             </Routes>
-            {/* TODO: Add AuthModal component */}
             <AuthModal
             isOpen={isAuthModalOpen}
             onClose={() => setIsAuthModalOpen(false)}
