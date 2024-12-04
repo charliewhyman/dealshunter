@@ -1,7 +1,20 @@
 import { Link } from 'react-router-dom';
 import { Search, Tag } from 'lucide-react';
+import { useAuth } from '../contexts/AuthContext';
+import { signOut } from '../lib/auth';
 
-export function Header() {
+interface HeaderProps {
+    onAuthClick: () => void;
+  }
+
+export function Header({}: HeaderProps) {
+  const { user, refreshUser } = useAuth();
+
+  async function handleSignOut() {
+    await signOut();
+    await refreshUser();
+  }
+
   return (
       <header className="bg-white shadow-sm">
           <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
