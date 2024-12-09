@@ -1,9 +1,12 @@
 import React, { useState } from 'react';
 import { useAuth } from '../contexts/AuthContext';
+import { supabase } from '../lib/supabase';
+import { useNavigate } from 'react-router-dom';
 
 
 export function SubmitDealPage() {
     const { user } = useAuth();
+    const navigate = useNavigate();
     const [loading, setLoading] = useState(false);
     const [formData, setFormData] = useState({
         title: '',
@@ -26,6 +29,34 @@ export function SubmitDealPage() {
   }
 
   // function to handle form submission to supabase
+  async function handleSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    setLoading(true);
+
+    const price = parseFloat(formData.price);
+    const original_price = parseFloat(formData.original_price);
+    const discount_percentage = Math.round(
+      ((original_price - price) / original_price) * 100
+    );
+
+    try {
+      const { error } = await supabase.from('deals').insert([{
+        ...formData,
+        price,
+        original_price,
+        discount_percentage,
+        user_id: user!.id,
+        votes: 0,
+      }]);
+
+      if (error) throw error;
+      navigate('/');
+    } catch (error) {
+      console.error('Error submitting deal:', error);
+    } finally {
+      setLoading(false);
+    }
+  }
 
   return (
     <div className="max-w-2xl mx-auto px-4 py-8">
