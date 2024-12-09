@@ -4,6 +4,7 @@ import { Header } from './components/Header';
 import { AuthProvider } from './contexts/AuthContext';
 import { useState } from 'react';
 import { AuthModal } from './components/AuthModal';
+import { SubmitDealPage } from './pages/SubmitDealPage';
 
 function App() {
 
