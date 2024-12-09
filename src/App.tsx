@@ -16,6 +16,7 @@ function App() {
          <Header onAuthClick={() => setIsAuthModalOpen(true)} />
             <Routes>
               <Route path="/" element={<HomePage />} />
+              <Route path="/submit" element={<SubmitDealPage />} />
             </Routes>
             <AuthModal
             isOpen={isAuthModalOpen}
