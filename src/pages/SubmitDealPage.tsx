@@ -28,6 +28,13 @@ export function SubmitDealPage() {
     );
   }
 
+  // function to handle input changes
+  function handleChange(e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) {
+    const { name, value } = e.target;
+    setFormData(prev => ({ ...prev, [name]: value }));
+  }
+
+
   // function to handle form submission to supabase
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -61,7 +68,7 @@ export function SubmitDealPage() {
   return (
     <div className="max-w-2xl mx-auto px-4 py-8">
       <h1 className="text-2xl font-bold mb-6">Submit a New Deal</h1>
-      <form className="space-y-6">
+      <form onSubmit={handleSubmit} className="space-y-6">
       <div>
           <label className="block text-sm font-medium text-gray-700">
             Title
@@ -70,6 +77,7 @@ export function SubmitDealPage() {
             type="text"
             name="title"
             value={formData.title}
+            onChange={handleChange}
             className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500"
             required
           />
@@ -81,6 +89,7 @@ export function SubmitDealPage() {
           <textarea
             name="description"
             value={formData.description}
+            onChange={handleChange}
             rows={3}
             className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500"
             required
@@ -94,6 +103,7 @@ export function SubmitDealPage() {
             type="url"
             name="url"
             value={formData.url}
+            onChange={handleChange}
             className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500"
             required
           />
@@ -107,6 +117,7 @@ export function SubmitDealPage() {
               type="number"
               name="price"
               value={formData.price}
+              onChange={handleChange}
               step="0.01"
               min="0"
               className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500"
@@ -121,6 +132,7 @@ export function SubmitDealPage() {
               type="number"
               name="original_price"
               value={formData.original_price}
+              onChange={handleChange}
               step="0.01"
               min="0"
               className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500"
@@ -136,6 +148,7 @@ export function SubmitDealPage() {
             type="url"
             name="image_url"
             value={formData.image_url}
+            onChange={handleChange}
             className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500"
             required
           />
