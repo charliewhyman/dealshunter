@@ -1,5 +1,5 @@
 import { Link } from 'react-router-dom';
-import { Search, Tag } from 'lucide-react';
+import { LogOut, Search, Tag, User } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import { signOut } from '../lib/auth';
 
@@ -7,7 +7,7 @@ interface HeaderProps {
     onAuthClick: () => void;
   }
 
-export function Header({}: HeaderProps) {
+export function Header({ onAuthClick }: HeaderProps) {
   const { user, refreshUser } = useAuth();
 
   async function handleSignOut() {
@@ -42,7 +42,26 @@ export function Header({}: HeaderProps) {
                                 >
                                 Submit a Deal
                             </Link>
-                            {/* Add auth buttons here */}
+                            {user ? (
+                                <div className="ml-4 flex items-center">
+                                    <span className="text-sm text-gray-700 mr-4">
+                                    {user.username}
+                                    </span>
+                                    <button
+                                    onClick={handleSignOut}
+                                    className="p-2 text-gray-400 hover:text-gray-500"
+                                    >
+                                    <LogOut className="w-6 h-6" />
+                                    </button>
+                                </div>
+                                ) : (
+                                <button
+                                    onClick={onAuthClick}
+                                    className="ml-4 p-2 text-gray-400 hover:text-gray-500"
+                                >
+                                    <User className="w-6 h-6" />
+                                </button>
+                                )}
                             </div>
                       </div>
                   </div>
