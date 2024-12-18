@@ -12,8 +12,10 @@ export function AuthModal({ isOpen, onClose }: AuthModalProps) {
   const [isSignUp, setIsSignUp] = useState(false);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
   const [username, setUsername] = useState('');
   const [error, setError] = useState('');
+  const [message, setMessage] = useState('');
   const { refreshUser } = useAuth();
 
   if (!isOpen) return null;
@@ -21,17 +23,24 @@ export function AuthModal({ isOpen, onClose }: AuthModalProps) {
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setError('');
-
+    setMessage('');
+  
     try {
       if (isSignUp) {
-        const { error } = await signUp(email, password, username);
+        const { message, error } = await signUp(email, password, username);
         if (error) throw error;
+  
+        if (message) {
+          setMessage(message);
+        } else {
+          onClose();
+        }
       } else {
         const { error } = await signInWithEmail(email, password);
         if (error) throw error;
+        await refreshUser();
+        onClose();
       }
-      await refreshUser();
-      onClose();
     } catch (err) {
       if (err instanceof Error) {
         setError(err.message);
@@ -40,6 +49,7 @@ export function AuthModal({ isOpen, onClose }: AuthModalProps) {
       }
     }
   }
+  
 
   return (
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4">
@@ -92,9 +102,21 @@ export function AuthModal({ isOpen, onClose }: AuthModalProps) {
               required
             />
           </div>
-          {error && (
-            <p className="text-red-600 text-sm">{error}</p>
+          {isSignUp && (
+            <div>
+              <label className="block text-sm font-medium text-gray-700">
+                Confirm Password
+              </label>
+              <input
+                type="password"
+                value={confirmPassword}
+                onChange={(e) => setConfirmPassword(e.target.value)}
+                className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500"
+                required
+              />
+            </div>
           )}
+          {error && <p className="text-red-600 text-sm">{error}</p>}
           <button
             type="submit"
             className="w-full bg-blue-600 text-white rounded-md py-2 hover:bg-blue-700"
@@ -110,6 +132,7 @@ export function AuthModal({ isOpen, onClose }: AuthModalProps) {
             ? 'Already have an account? Sign in'
             : "Don't have an account? Sign up"}
         </button>
+        {message && <p className="text-blue-600 text-sm">{message}</p>}
       </div>
     </div>
   );

@@ -1,6 +1,7 @@
 import React, { createContext, useContext, useEffect, useState } from 'react';
 import { User } from '../types';
 import { getCurrentUser } from '../lib/auth';
+import { supabase } from '../lib/supabase';
 
 interface AuthContextType {
   user: User | null;
@@ -22,6 +23,43 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     refreshUser();
+  }, []);
+
+  useEffect(() => {
+    const { data: authListener } = supabase.auth.onAuthStateChange(
+      async (event, session) => {
+        if (event === 'SIGNED_IN') {
+          // Fetch the user profile after sign-in
+          const { data } = await supabase
+            .from('users')
+            .select('*')
+            .eq('id', session?.user?.id)
+            .single();
+
+          if (data) {
+            setUser(data);
+          } else {
+            // Optionally insert the user if it doesn't exist
+            const { error } = await supabase
+              .from('users')
+              .insert([
+                { id: session?.user?.id, username: 'default', email: session?.user?.email },
+              ]);
+
+            if (!error) {
+              refreshUser();
+            }
+          }
+        } else if (event === 'SIGNED_OUT') {
+          setUser(null);
+        }
+      }
+    );
+
+    // Cleanup the listener when the component unmounts
+    return () => {
+      authListener?.subscription.unsubscribe();
+    };
   }, []);
 
   return (

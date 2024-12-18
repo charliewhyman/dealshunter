@@ -6,7 +6,9 @@ export async function signInWithEmail(email: string, password: string) {
     email,
     password,
   });
-  return { data, error };
+
+  if (error) return { error };
+  return { data };
 }
 
 export async function signUp(email: string, password: string, username: string) {
@@ -15,32 +17,56 @@ export async function signUp(email: string, password: string, username: string) 
     password,
   });
 
-  if (authError) return { error: authError };
+  if (authError) {
+    return { error: authError };
+  }
 
-  if (authData.user) {
+  // Check if email confirmation is required
+  if (authData.user?.email_confirmed_at) {
+    // Email is already confirmed; insert into `users` table
+    const { id } = authData.user;
+
     const { error: profileError } = await supabase
       .from('users')
-      .insert([{ id: authData.user.id, username, email }]);
+      .insert([{ id, username, email }]);
 
-    if (profileError) return { error: profileError };
+    if (profileError) {
+      return { error: profileError };
+    }
+  } else {
+    // Notify the user to check their email for the magic link
+    return { message: 'Please confirm your email before continuing.' };
   }
 
   return { data: authData };
 }
 
 export async function signOut() {
-  return await supabase.auth.signOut();
+  const { error } = await supabase.auth.signOut();
+  if (error) return { error };
+  return { success: true };
 }
 
 export async function getCurrentUser(): Promise<User | null> {
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) return null;
+  try {
+    const { data: { user }, error: userError } = await supabase.auth.getUser();
+    if (userError || !user) return null;
 
-  const { data } = await supabase
-    .from('users')
-    .select('*')
-    .eq('id', user.id)
-    .single();
+    // Fetch additional user profile data
+    const { data, error: profileError } = await supabase
+      .from('users')
+      .select('*')
+      .eq('id', user.id)
+      .single();
 
-  return data;
+    if (profileError) {
+      console.error(profileError);
+      return null;
+    }
+
+    return data as User;
+  } catch (err) {
+    console.error('Error fetching current user:', err);
+    return null;
+  }
 }
