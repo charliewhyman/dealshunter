@@ -54,15 +54,17 @@ export function AuthModal({ isOpen, onClose }: AuthModalProps) {
   return (
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4">
       <div className="bg-white rounded-lg max-w-md w-full p-6 relative">
-        <button
-          onClick={onClose}
-          className="absolute top-4 right-4 text-gray-400 hover:text-gray-500"
-        >
-          <X className="w-5 h-5" />
-        </button>
-        <h2 className="text-2xl font-bold mb-6">
-          {isSignUp ? 'Create Account' : 'Sign In'}
-        </h2>
+        <div className="flex justify-between items-center mb-4">
+          <h1 className="text-xl font-bold text-gray-900">
+                {isSignUp ? 'Create Account' : 'Sign In'}
+                </h1>
+          <button
+            onClick={onClose}
+            className="absolute top-4 right-4 text-gray-400 hover:text-gray-500"
+          >
+            <X className="w-5 h-5" />
+          </button>
+        </div>
         <form onSubmit={handleSubmit} className="space-y-4">
           {isSignUp && (
             <div>
