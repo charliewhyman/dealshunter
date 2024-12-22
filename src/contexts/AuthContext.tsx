@@ -1,7 +1,7 @@
 import React, { createContext, useContext, useEffect, useState } from 'react';
-import { User } from '../types';
 import { getCurrentUser } from '../lib/auth';
 import { supabase } from '../lib/supabase';
+import { User } from '@supabase/supabase-js';
 
 interface AuthContextType {
   user: User | null;
@@ -18,6 +18,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   async function refreshUser() {
     const user = await getCurrentUser();
     setUser(user);
+    console.log('User:', user);
     setLoading(false);
   }
 

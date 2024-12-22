@@ -1,5 +1,5 @@
+import { User } from '@supabase/supabase-js';
 import { supabase } from './supabase';
-import { User } from '../types';
 
 export async function signInWithEmail(email: string, password: string) {
   const { data, error } = await supabase.auth.signInWithPassword({
@@ -48,25 +48,19 @@ export async function signOut() {
 }
 
 export async function getCurrentUser(): Promise<User | null> {
-  try {
-    const { data: { user }, error: userError } = await supabase.auth.getUser();
-    if (userError || !user) return null;
-
-    // Fetch additional user profile data
-    const { data, error: profileError } = await supabase
-      .from('users')
-      .select('*')
-      .eq('id', user.id)
-      .single();
-
-    if (profileError) {
-      console.error(profileError);
-      return null;
-    }
-
-    return data as User;
-  } catch (err) {
-    console.error('Error fetching current user:', err);
-    return null;
-  }
+  const { data } = await supabase.auth.getUser();
+  return data?.user ?? null;
 }
+
+export async function updateUser(email: string, password: string, username: string) {
+  const { data, error } = await supabase.auth.updateUser({
+    email,
+    password,
+  data: {
+    username,
+  }
+  });
+
+  if (error) return { error };
+  return { data }
+};
