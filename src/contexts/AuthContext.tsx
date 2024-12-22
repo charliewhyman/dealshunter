@@ -1,6 +1,7 @@
 import React, { createContext, useContext, useEffect, useState } from 'react';
 import { supabase } from '../lib/supabase';
 import { User } from '@supabase/supabase-js';
+import { getCurrentUser } from '../lib/auth';
 
 interface AuthContextType {
   user: User | null;
@@ -15,10 +16,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [loading, setLoading] = useState(true);
 
   const refreshUser = async () => {
-    const { data: { user }, error } = await supabase.auth.getUser();
-    if (!error) {
-      setUser(user);
-    }
+    setLoading(true);
+    const currentUser = await getCurrentUser();
+    setUser(currentUser);
     setLoading(false);
   };
 
@@ -26,9 +26,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     refreshUser();
 
     const { data: authListener } = supabase.auth.onAuthStateChange(
-      async (event, session) => {
+      async (event) => {
         if (event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED') {
-          setUser(session?.user || null);
+          await refreshUser();
         } else if (event === 'SIGNED_OUT') {
           setUser(null);
         }
