@@ -2,6 +2,7 @@ import { Link } from 'react-router-dom';
 import { LogOut, Search, Tag, User } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import { signOut } from '../lib/auth';
+import { useState } from 'react';
 
 interface HeaderProps {
     onAuthClick: () => void;
@@ -9,10 +10,16 @@ interface HeaderProps {
 
 export function Header({ onAuthClick }: HeaderProps) {
   const { user, refreshUser } = useAuth();
+  const [loading, setLoading] = useState(false);
 
   async function handleSignOut() {
-    await signOut();
-    await refreshUser();
+    setLoading(true);
+    try {
+      await signOut();
+      await refreshUser();
+    } finally {
+      setLoading(false);
+    }
   }
 
   return (
@@ -44,9 +51,14 @@ export function Header({ onAuthClick }: HeaderProps) {
                             </Link>
                             {user ? (
                                 <div className="ml-4 flex items-center">
-                                    <span className="text-sm text-gray-700 mr-4">
-                                    {user.email}
-                                    </span>
+                                    {loading ? (
+                                    <div className="animate-spin rounded-full h-5 w-5 border-t-2 border-b-2 border-gray-900"></div>
+                                    ) : (
+                                        <span className="text-sm text-gray-700 mr-4">
+                                        {user.email || 'Guest'}
+                                        </span>
+                                    )}
+                                    
                                     <button
                                     onClick={handleSignOut}
                                     className="p-2 text-gray-400 hover:text-gray-500"

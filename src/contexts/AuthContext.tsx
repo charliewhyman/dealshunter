@@ -15,12 +15,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
 
-  async function refreshUser() {
-    const user = await getCurrentUser();
-    setUser(user);
-    console.log('User:', user);
+  const refreshUser = async () => {
+    const currentUser = await getCurrentUser();
+    setUser(currentUser);
     setLoading(false);
-  }
+  };
 
   useEffect(() => {
     refreshUser();
@@ -69,7 +68,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     </AuthContext.Provider>
   );
 }
-
 export function useAuth() {
   const context = useContext(AuthContext);
   if (context === undefined) {

@@ -15,6 +15,11 @@ export async function signUp(email: string, password: string, username: string) 
   const { data: authData, error: authError } = await supabase.auth.signUp({
     email,
     password,
+    options: {
+      data: {
+        username,
+      }
+    }
   });
 
   if (authError) {
@@ -48,8 +53,8 @@ export async function signOut() {
 }
 
 export async function getCurrentUser(): Promise<User | null> {
-  const { data } = await supabase.auth.getUser();
-  return data?.user ?? null;
+  const { data: { user } } = await supabase.auth.getUser();
+  return user || null;
 }
 
 export async function updateUser(email: string, password: string, username: string) {
