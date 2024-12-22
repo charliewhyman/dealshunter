@@ -26,11 +26,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     refreshUser();
 
     const { data: authListener } = supabase.auth.onAuthStateChange(
-      async (event) => {
+      async (event, session) => {
         if (event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED') {
-          await refreshUser();
+          setUser(session?.user ?? null); // Update user on sign-in or token refresh
         } else if (event === 'SIGNED_OUT') {
-          setUser(null);
+          setUser(null); // Clear user on sign-out
         }
       }
     );
