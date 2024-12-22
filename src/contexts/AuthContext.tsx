@@ -1,5 +1,4 @@
 import React, { createContext, useContext, useEffect, useState } from 'react';
-import { getCurrentUser } from '../lib/auth';
 import { supabase } from '../lib/supabase';
 import { User } from '@supabase/supabase-js';
 
@@ -16,47 +15,26 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [loading, setLoading] = useState(true);
 
   const refreshUser = async () => {
-    const currentUser = await getCurrentUser();
-    setUser(currentUser);
+    const { data: { user }, error } = await supabase.auth.getUser();
+    if (!error) {
+      setUser(user);
+    }
     setLoading(false);
   };
 
   useEffect(() => {
     refreshUser();
-  }, []);
 
-  useEffect(() => {
     const { data: authListener } = supabase.auth.onAuthStateChange(
       async (event, session) => {
-        if (event === 'SIGNED_IN') {
-          // Fetch the user profile after sign-in
-          const { data } = await supabase
-            .from('users')
-            .select('*')
-            .eq('id', session?.user?.id)
-            .single();
-
-          if (data) {
-            setUser(data);
-          } else {
-            // Optionally insert the user if it doesn't exist
-            const { error } = await supabase
-              .from('users')
-              .insert([
-                { id: session?.user?.id, username: 'default', email: session?.user?.email },
-              ]);
-
-            if (!error) {
-              refreshUser();
-            }
-          }
+        if (event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED') {
+          setUser(session?.user || null);
         } else if (event === 'SIGNED_OUT') {
           setUser(null);
         }
       }
     );
 
-    // Cleanup the listener when the component unmounts
     return () => {
       authListener?.subscription.unsubscribe();
     };
@@ -68,6 +46,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     </AuthContext.Provider>
   );
 }
+
 export function useAuth() {
   const context = useContext(AuthContext);
   if (context === undefined) {
