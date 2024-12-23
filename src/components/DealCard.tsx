@@ -1,13 +1,15 @@
-import { ArrowBigUp, ExternalLink } from 'lucide-react';
-import { Deal } from '../types';
+import { ArrowBigUp, ExternalLink, MessageCircle } from 'lucide-react';
+import { Deal, Comment } from '../types';
 import { formatDistanceToNow } from 'date-fns';
+import { redirect } from 'react-router-dom';
 
 interface DealCardProps {
     deal: Deal;
+    comment: Comment;
     onVote: (dealId: string) => void;
   }
 
-  export function DealCard({ deal, onVote }: DealCardProps) {
+  export function DealCard({ deal, onVote, comment }: DealCardProps) {
     return (
         <div className="bg-white rounded-lg shadow-md p-6 hover:shadow-lg transition-shadow">
             <div className="flex gap-4 flex-wrap">
@@ -47,6 +49,7 @@ interface DealCardProps {
                                 {deal.discount_percentage}% off
                             </span>
                         </div>
+                        <div className="flex gap-4">
                         <button
                             onClick={() => onVote(deal.id)}
                             className="flex items-center gap-2 px-4 py-2 rounded-full bg-gray-400 hover:bg-gray-200 transition-colors"
@@ -54,6 +57,14 @@ interface DealCardProps {
                             <ArrowBigUp className="w-4 h-4" />
                             <span>{deal.votes}</span>
                         </button>
+                        <button
+                            onClick={() => redirect(`/deals/${deal.id}`)}
+                            className="flex items-center gap-2 px-4 py-2 rounded-full bg-gray-400 hover:bg-gray-200 transition-colors"
+                        >
+                            <MessageCircle className="w-4 h-4" />
+                            <span>{deal.comments}</span>
+                        </button>
+                        </div>
                     </div>
                 </div>
             </div>
