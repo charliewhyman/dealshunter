@@ -26,6 +26,8 @@ export async function signUp(email: string, password: string, username: string) 
     return { error: authError };
   }
 
+  // TODO - Use auth schema instead of public
+  
   // Check if email confirmation is required
   if (authData.user?.email_confirmed_at) {
     // Email is already confirmed; insert into `users` table
