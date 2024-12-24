@@ -1,4 +1,6 @@
 // Supabase types
+export type Deal = Tables<'deals'>;
+export type Comment = Tables<'comments'>;
 
 export type Json =
   | string
