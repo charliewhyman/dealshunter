@@ -66,10 +66,10 @@ export function DealCard({ deal, onVote }: DealCardProps) {
 
           <div className="flex items-center justify-between mt-4 flex-wrap gap-2">
             <div className="flex items-center gap-2">
-              <span className="text-2xl font-bold text-green-600">${deal.price}</span>
+              <span className="text-2xl font-bold text-green-600">${deal.price.toFixed(2)}</span>
               {deal.original_price && (
                 <span className="text-sm text-gray-500 line-through">
-                  ${deal.original_price}
+                  ${deal.original_price.toFixed(2)}
                 </span>
               )}
               {deal.original_price && deal.price && (
