@@ -66,9 +66,12 @@ export function Header({ onAuthClick }: HeaderProps) {
                 {loading ? (
                   <div className="animate-spin rounded-full h-5 w-5 border-t-2 border-b-2 border-gray-900"></div>
                 ) : (
-                  <span className="text-sm text-gray-700 mr-4">
+                  <Link 
+                    to="/user" 
+                    className="text-sm text-blue-600 hover:underline mr-4"
+                  >
                     {user.email || 'Guest'}
-                  </span>
+                  </Link>
                 )}
                 <button
                   onClick={handleSignOut}
