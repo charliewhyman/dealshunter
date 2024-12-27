@@ -67,7 +67,7 @@ export function SubmitDealPage() {
 
   return (
     <div className="max-w-2xl mx-auto px-4 py-8">
-      <h1 className="text-2xl font-bold mb-6">Submit a New Deal</h1>
+      <h1 className="text-2xl font-bold mb-6 text-gray-900">Submit a New Deal</h1>
       <form onSubmit={handleSubmit} className="space-y-6">
       <div>
           <label className="block text-sm font-medium text-gray-700">
@@ -78,7 +78,7 @@ export function SubmitDealPage() {
             name="title"
             value={formData.title}
             onChange={handleChange}
-            className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500"
+            className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 bg-gray-100 dark:bg-gray-300"
             required
           />
         </div>
@@ -91,7 +91,7 @@ export function SubmitDealPage() {
             value={formData.description}
             onChange={handleChange}
             rows={3}
-            className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500"
+            className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 bg-gray-100 dark:bg-gray-300"
             required
           />
         </div>
@@ -104,7 +104,7 @@ export function SubmitDealPage() {
             name="url"
             value={formData.url}
             onChange={handleChange}
-            className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500"
+            className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 bg-gray-100 dark:bg-gray-300"
             required
           />
         </div>
@@ -120,7 +120,7 @@ export function SubmitDealPage() {
               onChange={handleChange}
               step="0.01"
               min="0"
-              className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500"
+              className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 bg-gray-100 dark:bg-gray-300"
               required
             />
           </div>
@@ -135,7 +135,7 @@ export function SubmitDealPage() {
               onChange={handleChange}
               step="0.01"
               min="0"
-              className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500"
+              className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 bg-gray-100 dark:bg-gray-300"
               required
             />
           </div>
@@ -149,7 +149,7 @@ export function SubmitDealPage() {
             name="image_url"
             value={formData.image_url}
             onChange={handleChange}
-            className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500"
+            className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 bg-gray-100 dark:bg-gray-300"
             required
           />
         </div>
