@@ -2,7 +2,6 @@ import { useState, ChangeEvent, FormEvent } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import { useNavigate } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
-import { User } from '@supabase/supabase-js';
 
 interface FormData {
   email: string;
@@ -15,7 +14,6 @@ interface FormData {
 
 export function UserPage() {
   const { user } = useAuth();
-  const navigate = useNavigate();
   const [loading, setLoading] = useState(false);
   const [formData, setFormData] = useState<FormData>({
     email: user?.email || '',

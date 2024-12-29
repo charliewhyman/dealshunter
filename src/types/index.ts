@@ -2,6 +2,10 @@
 export type Deal = Tables<'deals'>;
 export type Comment = Tables<'comments'>;
 
+export interface CommentWithUser extends Comment {
+  username: string | null;
+}
+
 export type Json =
   | string
   | number
@@ -42,36 +46,53 @@ export type Database = {
         Row: {
           comment_text: string | null
           created_at: string
+          deal_id: string
           deleted_at: string | null
           flagged_status: number | null
           id: string
           reply_of: string | null
-          user_id: string | null
+          user_id: string
         }
         Insert: {
           comment_text?: string | null
           created_at?: string
+          deal_id: string
           deleted_at?: string | null
           flagged_status?: number | null
           id?: string
           reply_of?: string | null
-          user_id?: string | null
+          user_id: string
         }
         Update: {
           comment_text?: string | null
           created_at?: string
+          deal_id?: string
           deleted_at?: string | null
           flagged_status?: number | null
           id?: string
           reply_of?: string | null
-          user_id?: string | null
+          user_id?: string
         }
         Relationships: [
+          {
+            foreignKeyName: "comments_deal_id_fkey"
+            columns: ["deal_id"]
+            isOneToOne: false
+            referencedRelation: "deals"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "comments_reply_of_fkey"
             columns: ["reply_of"]
             isOneToOne: false
             referencedRelation: "comments"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "comments_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
             referencedColumns: ["id"]
           },
         ]
@@ -119,6 +140,41 @@ export type Database = {
           url?: string
           votes?: number | null
         }
+        Relationships: [
+          {
+            foreignKeyName: "deals_submitted_by_fkey1"
+            columns: ["submitted_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      profiles: {
+        Row: {
+          email: string | null
+          first_name: string | null
+          id: string
+          last_name: string | null
+          phone: string | null
+          username: string | null
+        }
+        Insert: {
+          email?: string | null
+          first_name?: string | null
+          id: string
+          last_name?: string | null
+          phone?: string | null
+          username?: string | null
+        }
+        Update: {
+          email?: string | null
+          first_name?: string | null
+          id?: string
+          last_name?: string | null
+          phone?: string | null
+          username?: string | null
+        }
         Relationships: []
       }
       reports: {
@@ -128,7 +184,8 @@ export type Database = {
           deal_id: string | null
           id: string
           report_count: number
-          user_id: string | null
+          reported_by: string | null
+          reported_user: string | null
         }
         Insert: {
           comment_id?: string | null
@@ -136,7 +193,8 @@ export type Database = {
           deal_id?: string | null
           id?: string
           report_count?: number
-          user_id?: string | null
+          reported_by?: string | null
+          reported_user?: string | null
         }
         Update: {
           comment_id?: string | null
@@ -144,7 +202,8 @@ export type Database = {
           deal_id?: string | null
           id?: string
           report_count?: number
-          user_id?: string | null
+          reported_by?: string | null
+          reported_user?: string | null
         }
         Relationships: [
           {
@@ -159,6 +218,20 @@ export type Database = {
             columns: ["deal_id"]
             isOneToOne: false
             referencedRelation: "deals"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "reports_reported_by_fkey"
+            columns: ["reported_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "reports_reported_user_fkey"
+            columns: ["reported_user"]
+            isOneToOne: false
+            referencedRelation: "profiles"
             referencedColumns: ["id"]
           },
         ]
