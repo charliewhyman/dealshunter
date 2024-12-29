@@ -110,7 +110,7 @@ export function UserPage() {
 
   return (
     <div className="max-w-2xl mx-auto px-4 py-8">
-      <h1 className="ml-2 text-xl font-bold text-gray-900">Update User Information</h1>
+      <h1 className="ml-2 text-xl font-bold text-gray-900">Profile</h1>
 
       <form onSubmit={handleSubmit} className="mt-6 space-y-4">
         <div>

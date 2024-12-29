@@ -6,6 +6,7 @@ import { useState } from 'react';
 import { AuthModal } from './components/AuthModal';
 import { SubmitDealPage } from './pages/SubmitDealPage';
 import { UserPage } from './pages/UserPage'
+import DealPage from './pages/DealPage';
 
 function App() {
 
@@ -20,6 +21,7 @@ function App() {
               <Route path="/" element={<HomePage />} />
               <Route path="/submit" element={<SubmitDealPage />} />
               <Route path="/user" element={<UserPage />} />
+              <Route path="/deals/:dealId" element={<DealPage />} />
             </Routes>
             <AuthModal
             isOpen={isAuthModalOpen}
