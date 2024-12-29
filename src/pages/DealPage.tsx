@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { useParams } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
 import { Deal, Comment } from '../types';
+import { ExternalLink } from 'lucide-react';
 
 function DealPage() {
   const { dealId } = useParams<{ dealId: string }>();
@@ -12,7 +13,6 @@ function DealPage() {
   useEffect(() => {
     const fetchDealData = async () => {
       try {
-        // Fetch deal details
         const { data: dealData, error: dealError } = await supabase
           .from('deals')
           .select('*')
@@ -22,7 +22,6 @@ function DealPage() {
         if (dealError) throw dealError;
         setDeal(dealData);
 
-        // Fetch comments for the deal
         const { data: commentsData, error: commentsError } = await supabase
           .from('comments')
           .select('*')
@@ -46,20 +45,37 @@ function DealPage() {
 
   return (
     <div className="text-gray-900">
-      <h1 className="text-xl font-bold">{deal.title}</h1>
-      <img src={deal.image_url} alt={deal.title} className="my-4" />
-      <p>{deal.description}</p>
-      <p>Price: ${deal.price}</p>
-      <p>Delivery Price: ${deal.delivery_price ?? 'Free'}</p>
-      <a
-        href={deal.url}
-        target="_blank"
-        rel="noopener noreferrer"
-        className="text-blue-500 underline"
-      >
-        View Deal
-      </a>
+      <div className="flex gap-6 items-center">
+        {/* Photo Section */}
+        <img
+          src={deal.image_url}
+          alt={deal.title}
+          className="w-1/3 object-cover rounded-md"
+        />
 
+        {/* Deal Details */}
+        <div className="flex-1 flex flex-col gap-4">
+          <h1 className="text-2xl font-bold">{deal.title}</h1>
+          <span className="text-2xl font-bold text-green-600">${deal.price.toFixed(2)}</span>
+          {deal.original_price && (
+            <p className="text-sm text-gray-500 line-through">
+              ${deal.original_price.toFixed(2)}
+            </p>
+          )}
+          <p className="text-lg">{deal.description}</p>
+          <a
+            href={deal.url}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="relative flex items-center justify-center gap-2 px-4 py-2 text-sm font-medium rounded-md text-white bg-orange-600 hover:bg-orange-700 hover:text-white w-1/3"
+          >
+            <span className="flex-1 text-center">Get Deal</span>
+            <ExternalLink className="w-5 h-5 text-white" />
+          </a>
+        </div>
+      </div>
+
+      {/* Comments Section */}
       <h2 className="text-lg font-semibold mt-6">Comments</h2>
       {comments.length > 0 ? (
         <ul>

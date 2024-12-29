@@ -53,7 +53,7 @@ export function Header({ onAuthClick }: HeaderProps) {
             {/* Submit Button */}
             <Link
               to="/submit"
-              className="inline-flex items-center px-4 py-2 h-auto sm:h-10 max-w-xs whitespace-nowrap border border-transparent text-sm font-medium rounded-md text-white bg-blue-600 hover:bg-blue-700 hidden sm:block"
+              className="inline-flex items-center px-4 py-2 h-auto sm:h-10 max-w-xs whitespace-nowrap border border-transparent text-sm font-medium rounded-md text-white bg-blue-600 hover:bg-blue-700 hidden sm:block hover:text-white"
             >
               Submit a Deal
             </Link>
