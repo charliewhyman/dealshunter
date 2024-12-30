@@ -41,7 +41,7 @@ function DealPage() {
         if (commentsError) throw commentsError;
 
         setComments(commentsData as CommentWithUser[]);
-
+        console.log(commentsData);
       } catch (error) {
         console.error('Error fetching data:', error);
       } finally {
@@ -95,7 +95,7 @@ function DealPage() {
               <li key={comment.id} className="mb-4">
                 <p>
                   <strong>
-                    {comment.username || 'Anonymous'}
+                    {comment.profiles?.username || 'Anonymous'}
                   </strong>: {comment.comment_text}
                 </p>
                 <small>Posted on {new Date(comment.created_at).toLocaleString()}</small>

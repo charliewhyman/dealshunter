@@ -3,7 +3,8 @@ export type Deal = Tables<'deals'>;
 export type Comment = Tables<'comments'>;
 
 export interface CommentWithUser extends Comment {
-  username: string | null;
+  deals: { id: string };
+  profiles: { username: string | null }; 
 }
 
 export type Json =
