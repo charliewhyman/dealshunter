@@ -3,6 +3,7 @@ import { useParams } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
 import { Deal, CommentWithUser } from '../types';
 import { ExternalLink } from 'lucide-react';
+import CommentsList from '../components/CommentsList';
 
 function DealPage() {
 
@@ -88,23 +89,10 @@ function DealPage() {
         </div>
 
         {/* Comments Section */}
-        <h2 className="text-lg font-semibold mt-6">Comments</h2>
-        {comments.length > 0 ? (
-          <ul>
-            {comments.map((comment) => (
-              <li key={comment.id} className="mb-4">
-                <p>
-                  <strong>
-                    {comment.profiles?.username || 'Anonymous'}
-                  </strong>: {comment.comment_text}
-                </p>
-                <small>Posted on {new Date(comment.created_at).toLocaleString()}</small>
-              </li>
-            ))}
-          </ul>
-        ) : (
-          <p>No comments yet.</p>
-        )}
+        <div className="container mx-auto mt-8">
+          <h1 className="text-2xl font-bold mb-4">Comments</h1>
+          <CommentsList comments={comments} />
+          </div>
       </div>
     </div>
   );

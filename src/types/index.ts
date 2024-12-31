@@ -4,7 +4,8 @@ export type Comment = Tables<'comments'>;
 
 export interface CommentWithUser extends Comment {
   deals: { id: string };
-  profiles: { username: string | null }; 
+  profiles: { username: string | null };
+  children?: CommentWithUser[]; // Add children to support threaded comments
 }
 
 export type Json =
