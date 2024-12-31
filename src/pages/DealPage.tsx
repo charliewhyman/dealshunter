@@ -25,24 +25,29 @@ function DealPage() {
         setDeal(dealData);
 
         // Query the  view
+        // Query to get comment data and parent comment's text for replies
         let { data: commentsData, error: commentsError } = await supabase
           .from('comments')
           .select(`
-          *,
-          deals (
-            id
-          ),
-          profiles (
-            username
+            *,
+            deals (
+              id
+            ),
+            profiles (
+              username
+            ),
+            parent_comment: reply_of (
+              comment_text,
+              profiles (
+                username
+              )
             )
           `)
-          .eq('deals.id', dealId)
-
+          .eq('deals.id', dealId);
 
         if (commentsError) throw commentsError;
 
         setComments(commentsData as CommentWithUser[]);
-        console.log(commentsData);
       } catch (error) {
         console.error('Error fetching data:', error);
       } finally {

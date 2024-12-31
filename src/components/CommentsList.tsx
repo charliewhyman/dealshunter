@@ -3,19 +3,41 @@ import { CommentWithUser } from '../types';
 
 interface CommentProps {
   comment: CommentWithUser;
-  children?: React.ReactNode;
+  level: number; // New prop to track indentation level
 }
 
-const CommentItem: React.FC<CommentProps> = ({ comment, children }) => {
+const CommentItem: React.FC<CommentProps> = ({ comment, level }) => {
+  const indentStyle = {
+    marginLeft: `${level * 20}px`, // Indent replies by 20px per level
+  };
+
   return (
-    <li className="mb-4 border-l-2 pl-4">
-      <div className="flex flex-col">
+    <li className="mb-4">
+      <div className="flex flex-col" style={indentStyle}>
         <p className="font-bold">{comment.profiles?.username || 'Anonymous'}</p>
+
+        {comment.reply_of && comment.parent_comment && (
+          <div className="text-gray-500 italic mb-2">
+            <blockquote>
+              {`"${comment.parent_comment.comment_text}"`} <br />
+              <span className="text-sm">- Replied to by {comment.parent_comment.profiles?.username || 'Anonymous'}</span>
+            </blockquote> {/* Show the quoted parent comment and username */}
+          </div>
+        )}
+
         <p>{comment.comment_text}</p>
         <small className="text-gray-500">
           Posted on {new Date(comment.created_at).toLocaleString()}
         </small>
-        {children && <ul className="ml-4 mt-2">{children}</ul>}
+
+        {/* Recursively render replies */}
+        {comment.children && comment.children.length > 0 && (
+          <ul className="ml-4 mt-2">
+            {comment.children.map((child) => (
+              <CommentItem key={child.id} comment={child} level={level + 1} />
+            ))}
+          </ul>
+        )}
       </div>
     </li>
   );
@@ -27,11 +49,9 @@ interface CommentsListProps {
 
 const CommentsList: React.FC<CommentsListProps> = ({ comments }) => {
   // Recursively render comments and replies
-  const renderComments = (comments: CommentWithUser[]) => {
+  const renderComments = (comments: CommentWithUser[], level: number = 0) => {
     return comments.map((comment) => (
-      <CommentItem key={comment.id} comment={comment}>
-        {comment.children && renderComments(comment.children)} {/* Recursively render replies */}
-      </CommentItem>
+      <CommentItem key={comment.id} comment={comment} level={level} />
     ));
   };
 
