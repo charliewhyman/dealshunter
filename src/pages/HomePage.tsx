@@ -57,13 +57,14 @@ export function HomePage() {
     return (
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
           <div className="space-y-6">
-          {deals.map((deal) => (
-          <DealCard
-            key={deal.id}
-            deal={deal}
-            onVote={handleVote}
-          />
-        ))}
+            {deals.map((deal) => (
+            <div key={deal.id} className="max-w-4xl mx-auto w-full">
+              <DealCard
+                  deal={deal}
+                  onVote={handleVote}
+              />
+            </div>
+            ))}
           </div>
         </div>
       );
