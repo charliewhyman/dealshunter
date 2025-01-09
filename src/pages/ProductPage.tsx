@@ -1,28 +1,28 @@
 import { useEffect, useState } from 'react';
 import { useParams } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
-import { Deal, CommentWithUser } from '../types';
+import { Product, CommentWithUser } from '../types';
 import { ExternalLink } from 'lucide-react';
 import CommentsList from '../components/CommentsList';
 
-function DealPage() {
+function ProductPage() {
 
-  const { dealId } = useParams<{ dealId: string }>();
-  const [deal, setDeal] = useState<Deal | null>(null);
+  const { ProductId } = useParams<{ ProductId: string }>();
+  const [Product, setProduct] = useState<Product | null>(null);
   const [comments, setComments] = useState<CommentWithUser[]>([]); // Updated to CommentWithUser[]
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    const fetchDealData = async () => {
+    const fetchProductData = async () => {
       try {
-        const { data: dealData, error: dealError } = await supabase
-          .from('deals')
+        const { data: ProductData, error: ProductError } = await supabase
+          .from('Products')
           .select('*')
-          .eq('id', dealId)
+          .eq('id', ProductId)
           .single();
 
-        if (dealError) throw dealError;
-        setDeal(dealData);
+        if (ProductError) throw ProductError;
+        setProduct(ProductData);
 
         // Query the  view
         // Query to get comment data and parent comment's text for replies
@@ -30,7 +30,7 @@ function DealPage() {
           .from('comments')
           .select(`
             *,
-            deals (
+            Products (
               id
             ),
             profiles (
@@ -43,7 +43,7 @@ function DealPage() {
               )
             )
           `)
-          .eq('deals.id', dealId);
+          .eq('Products.id', ProductId);
 
         if (commentsError) throw commentsError;
 
@@ -54,11 +54,11 @@ function DealPage() {
         setLoading(false);
       }
     };
-    if (dealId) fetchDealData();
-  }, [dealId]);
+    if (ProductId) fetchProductData();
+  }, [ProductId]);
 
   if (loading) return <p className="text-gray-900">Loading...</p>;
-  if (!deal) return <p className="text-gray-900">Deal not found.</p>;
+  if (!Product) return <p className="text-gray-900">Product not found.</p>;
 
   return (
     <div className="p-6">
@@ -66,28 +66,28 @@ function DealPage() {
         <div className="flex gap-6 items-center">
           {/* Photo Section */}
           <img
-            src={deal.image_url}
-            alt={deal.title}
+            src={Product.image_url}
+            alt={Product.title}
             className="w-1/3 object-cover rounded-md"
           />
 
-          {/* Deal Details */}
+          {/* Product Details */}
           <div className="flex-1 flex flex-col gap-4">
-            <h1 className="text-2xl font-bold">{deal.title}</h1>
-            <span className="text-2xl font-bold text-green-600">${deal.price.toFixed(2)}</span>
-            {deal.original_price && (
+            <h1 className="text-2xl font-bold">{Product.title}</h1>
+            <span className="text-2xl font-bold text-green-600">${Product.price.toFixed(2)}</span>
+            {Product.original_price && (
               <p className="text-sm text-gray-500 line-through">
-                ${deal.original_price.toFixed(2)}
+                ${Product.original_price.toFixed(2)}
               </p>
             )}
-            <p className="text-lg">{deal.description}</p>
+            <p className="text-lg">{Product.description}</p>
             <a
-              href={deal.url}
+              href={Product.url}
               target="_blank"
               rel="noopener noreferrer"
               className="relative flex items-center justify-center gap-2 px-3 py-1 text-sm font-medium rounded-md text-white bg-blue-600 hover:bg-blue-700 w-1/3"
             >
-              <span className="flex-1 text-center">Get Deal</span>
+              <span className="flex-1 text-center">Get Product</span>
               <ExternalLink className="w-5 h-5 text-white" />
             </a>
           </div>
@@ -103,4 +103,4 @@ function DealPage() {
   );
 }
 
-export default DealPage;
+export default ProductPage;

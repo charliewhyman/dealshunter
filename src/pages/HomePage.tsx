@@ -1,44 +1,44 @@
 import { useEffect, useState } from 'react';
-import { Deal } from '../types';
+import { Product } from '../types';
 import { supabase } from '../lib/supabase';
 import { Loader2 } from 'lucide-react';
-import { DealCard } from '../components/DealCard';
+import { ProductCard } from '../components/ProductCard';
 
 export function HomePage() {
-    const [deals, setDeals] = useState<Deal[]>([]);
+    const [Products, setProducts] = useState<Product[]>([]);
     const [loading, setLoading] = useState(true);
 
 
     useEffect(() => {
-        fetchDeals();
+        fetchProducts();
       }, []);
     
-    // Function to fetch deals from Supabase
-    async function fetchDeals() {
+    // Function to fetch Products from Supabase
+    async function fetchProducts() {
     try {
         const { data, error } = await supabase
-        .from('deals')
+        .from('products')
         .select('*')
         .order('votes', { ascending: false });
 
         if (error) throw error;
-        setDeals(data || []);
+        setProducts(data || []);
     } catch (error) {
-        console.error('Error fetching deals:', error);
+        console.error('Error fetching Products:', error);
     } finally {
         setLoading(false);
     }
     }
   
     // Function to handle voting
-    async function handleVote(dealId: string) {
+    async function handleVote(ProductId: string) {
         try {
           const { error } = await supabase.rpc('increment_votes', {
-            deal_id: dealId
+            Product_id: ProductId
           });
     
           if (error) throw error;
-          await fetchDeals();
+          await fetchProducts();
         } catch (error) {
           console.error('Error voting:', error);
         }
@@ -53,19 +53,20 @@ export function HomePage() {
         );
       }
     
-    // map through deals and render DealCard components
+    // map through Products and render ProductCard components
+    // TODO add pagination instead of slicing the array
     return (
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-          <div className="space-y-6">
-            {deals.map((deal) => (
-            <div key={deal.id} className="max-w-4xl mx-auto w-full">
-              <DealCard
-                  deal={deal}
-                  onVote={handleVote}
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+        <div className="space-y-6">
+          {Products.slice(0, 10).map((product) => (
+            <div key={product.id} className="max-w-4xl mx-auto w-full">
+              <ProductCard
+                product={product}
+                onVote={handleVote}
               />
             </div>
-            ))}
-          </div>
+          ))}
         </div>
-      );
+      </div>
+    );
 }

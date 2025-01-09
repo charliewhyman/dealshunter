@@ -4,9 +4,9 @@ import { Header } from './components/Header';
 import { AuthProvider } from './contexts/AuthContext';
 import { useState } from 'react';
 import { AuthModal } from './components/AuthModal';
-import { SubmitDealPage } from './pages/SubmitDealPage';
+import { SubmitProductPage } from './pages/SubmitProductPage';
 import { UserPage } from './pages/UserPage'
-import DealPage from './pages/DealPage';
+import ProductPage from './pages/ProductPage';
 
 function App() {
 
@@ -19,9 +19,9 @@ function App() {
          <Header onAuthClick={() => setIsAuthModalOpen(true)} />
             <Routes>
               <Route path="/" element={<HomePage />} />
-              <Route path="/submit" element={<SubmitDealPage />} />
+              <Route path="/submit" element={<SubmitProductPage />} />
               <Route path="/user" element={<UserPage />} />
-              <Route path="/deals/:dealId" element={<DealPage />} />
+              <Route path="/Products/:ProductId" element={<ProductPage />} />
             </Routes>
             <AuthModal
             isOpen={isAuthModalOpen}

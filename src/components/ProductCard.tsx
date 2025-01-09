@@ -1,25 +1,56 @@
 import { useEffect, useState } from 'react';
 import { ArrowBigUp, ExternalLink, MessageCircle } from 'lucide-react';
-import { Deal } from '../types';
+import { Product } from '../types'; // Updated type import
 import { formatDistanceToNow } from 'date-fns';
 import { useNavigate } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
 
-interface DealCardProps {
-  deal: Deal;
-  onVote: (dealId: string) => void;
+interface ProductCardProps {
+  product: Product; // Updated type
+  onVote: (productId: string) => void; // Adjusted type for onVote
 }
 
-export function DealCard({ deal, onVote }: DealCardProps) {
+export function ProductCard({ product, onVote }: ProductCardProps) {
   const [commentCount, setCommentCount] = useState(0);
+  const [variantPrice, setVariantPrice] = useState<number | null>(null);
+  const [productImage, setProductImage] = useState<string | null>(null);
   const navigate = useNavigate();
+
+  useEffect(() => {
+    const fetchVariantAndImage = async () => {
+      // Fetch price from the variants table
+      const { data: variantData, error: variantError } = await supabase
+        .from('variants')
+        .select('price')
+        .eq('product_id', product.id)
+        .single(); // Assuming one variant for simplicity; adjust if needed
+
+      if (!variantError && variantData) {
+        setVariantPrice(variantData.price);
+      }
+
+      // Fetch image URL from the images table
+      const { data: imageData, error: imageError } = await supabase
+        .from('images')
+        .select('src')
+        .eq('product_id', product.id)
+        .limit(1) // Limit to 1 image
+        .single();
+
+      if (!imageError && imageData) {
+        setProductImage(imageData.src);
+      }
+    };
+
+    fetchVariantAndImage();
+  }, [product.id]);
 
   useEffect(() => {
     const fetchCommentCount = async () => {
       const { data, error } = await supabase
         .from('comments')
         .select('*', { count: 'exact' })
-        .eq('deal_id', deal.id);
+        .eq('product_id', product.id); // Changed to use `product_id`
 
       if (!error) {
         setCommentCount(data.length);
@@ -27,10 +58,10 @@ export function DealCard({ deal, onVote }: DealCardProps) {
     };
 
     fetchCommentCount();
-  }, [deal.id]);
+  }, [product.id]);
 
   const handleCardClick = () => {
-    navigate(`/deals/${deal.id}`);
+    navigate(`/products/${product.id}`); // Changed route to `/products/${product.id}`
   };
 
   return (
@@ -38,22 +69,20 @@ export function DealCard({ deal, onVote }: DealCardProps) {
       className="bg-white rounded-lg shadow-md p-6 hover:shadow-lg transition-shadow cursor-pointer"
       onClick={handleCardClick}
     >
-      <div
-        className="flex gap-4 flex-wrap"
-      >
+      <div className="flex gap-4 flex-wrap">
         <div className="flex-shrink-0">
           <img
-            src={deal.image_url}
-            alt={deal.title}
+            src={productImage || '/default-image.png'} // Fallback to a default image if none found
+            alt={product.title || 'Product image'}
             className="w-24 h-24 object-cover rounded-lg"
           />
         </div>
 
         <div className="flex-grow">
           <div className="flex items-center justify-between">
-            <h2 className="text-xl font-semibold text-gray-900">{deal.title}</h2>
+            <h2 className="text-xl font-semibold text-gray-900">{product.title}</h2>
             <a
-              href={deal.url}
+              href={product.url}
               target="_blank"
               rel="noopener noreferrer"
               className="text-blue-600 hover:text-blue-800"
@@ -62,38 +91,29 @@ export function DealCard({ deal, onVote }: DealCardProps) {
               <ExternalLink className="w-5 h-5" />
             </a>
           </div>
-          <p className="text-gray-600 mt-2">{deal.description}</p>
+          <p className="text-gray-600 mt-2">{product.description}</p>
 
           <div className="flex items-center justify-between mt-4 flex-wrap gap-2">
             <div className="flex items-center gap-2">
-              <span className="text-2xl font-bold text-green-600">${deal.price.toFixed(2)}</span>
-              {deal.original_price && (
-                <span className="text-sm text-gray-500 line-through">
-                  ${deal.original_price.toFixed(2)}
-                </span>
-              )}
-              {deal.original_price && deal.price && (
-                <span className="text-sm font-medium text-green-600">
-                  {((deal.original_price - deal.price) / deal.original_price * 100).toFixed(0)}%
-                  off
-                </span>
+              {variantPrice !== null && (
+                <span className="text-2xl font-bold text-green-600">${variantPrice.toFixed(2)}</span>
               )}
             </div>
             <div className="flex gap-4">
               <button
                 onClick={(e) => {
                   e.stopPropagation();
-                  onVote(deal.id);
+                  onVote(product.id.toString()); // Convert product.id to string
                 }}
                 className="flex items-center gap-2 px-4 py-2 rounded-full bg-gray-400 hover:bg-gray-200 transition-colors"
               >
                 <ArrowBigUp className="w-4 h-4" />
-                <span>{deal.votes}</span>
+                <span>{product.votes}</span> {/* Assuming votes field exists in the product table */}
               </button>
               <button
                 onClick={(e) => {
                   e.stopPropagation();
-                  navigate(`/deals/${deal.id}#comments`);
+                  navigate(`/products/${product.id}#comments`); // Adjusted route to products
                 }}
                 className="flex items-center gap-2 px-4 py-2 rounded-full bg-gray-400 hover:bg-gray-200 transition-colors"
               >
@@ -106,7 +126,7 @@ export function DealCard({ deal, onVote }: DealCardProps) {
       </div>
 
       <div className="mt-2 text-sm text-gray-500">
-        Posted {formatDistanceToNow(new Date(deal.created_at))} ago
+        Posted {formatDistanceToNow(new Date(product.created_at || ''))} ago {/* Added fallback empty string */}
       </div>
     </div>
   );

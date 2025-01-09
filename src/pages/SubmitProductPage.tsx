@@ -4,7 +4,7 @@ import { supabase } from '../lib/supabase';
 import { useNavigate } from 'react-router-dom';
 
 
-export function SubmitDealPage() {
+export function SubmitProductPage() {
     const { user } = useAuth();
     const navigate = useNavigate();
     const [loading, setLoading] = useState(false);
@@ -22,7 +22,7 @@ export function SubmitDealPage() {
     return (
       <div className="max-w-2xl mx-auto px-4 py-8">
         <p className="text-center text-gray-600">
-          Please sign in to submit a deal.
+          Please sign in to submit a Product.
         </p>
       </div>
     );
@@ -47,7 +47,7 @@ export function SubmitDealPage() {
     );
 
     try {
-      const { error } = await supabase.from('deals').insert([{
+      const { error } = await supabase.from('Products').insert([{
         ...formData,
         price,
         original_price,
@@ -59,7 +59,7 @@ export function SubmitDealPage() {
       if (error) throw error;
       navigate('/');
     } catch (error) {
-      console.error('Error submitting deal:', error);
+      console.error('Error submitting Product:', error);
     } finally {
       setLoading(false);
     }
@@ -67,7 +67,7 @@ export function SubmitDealPage() {
 
   return (
     <div className="max-w-2xl mx-auto px-4 py-8">
-      <h1 className="text-2xl font-bold mb-6 text-gray-900">Submit a New Deal</h1>
+      <h1 className="text-2xl font-bold mb-6 text-gray-900">Submit a New Product</h1>
       <form onSubmit={handleSubmit} className="space-y-6">
       <div>
           <label className="block text-sm font-medium text-gray-700">
@@ -97,7 +97,7 @@ export function SubmitDealPage() {
         </div>
         <div>
           <label className="block text-sm font-medium text-gray-700">
-            Deal URL
+            Product URL
           </label>
           <input
             type="url"
@@ -111,7 +111,7 @@ export function SubmitDealPage() {
         <div className="grid grid-cols-2 gap-4">
           <div>
             <label className="block text-sm font-medium text-gray-700">
-              Deal Price ($)
+              Product Price ($)
             </label>
             <input
               type="number"
@@ -158,7 +158,7 @@ export function SubmitDealPage() {
           disabled={loading}
           className="w-full bg-blue-600 text-white rounded-md py-2 hover:bg-blue-700 disabled:opacity-50"
         >
-          {loading ? 'Submitting...' : 'Submit Deal'}
+          {loading ? 'Submitting...' : 'Submit Product'}
         </button>
       </form>
     </div>
