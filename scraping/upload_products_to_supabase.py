@@ -58,6 +58,9 @@ def process_variants(product):
             "price": variant["price"],
             "sku": variant["sku"],
             "inventory_quantity": inventory_quantity,
+            "requires_shipping": variant.get("requires_shipping", None),
+            "taxable": variant.get("taxable", None), 
+            "compare_at_price": variant.get("compare_at_price", None),  
             "created_at_external": variant.get("created_at"),
             "updated_at_external": variant.get("updated_at")
         })
@@ -83,6 +86,7 @@ def bulk_upsert_data(table_name, data, batch_size=100, retries=3):
     seen_ids = set()  # Set to track already seen ids for deduplication
     filtered_data = []
     duplicates = {}  # Dictionary to track duplicates per file
+    error_logs = []  # List to collect error logs
 
     # Filter out duplicate entries and track duplicates
     for item in data:
@@ -112,16 +116,28 @@ def bulk_upsert_data(table_name, data, batch_size=100, retries=3):
                     print(f"Upserted batch {i // batch_size}: {len(batch)} records.")
                     break
                 elif response._raw_error:
-                    print(f"Error in upsert batch {i // batch_size}: {response._raw_error['message']}")
+                    error_message = f"Error in upsert batch {i // batch_size}: {response._raw_error['message']}"
+                    print(error_message)
+                    error_logs.append(error_message)
                     break
                 else:
-                    print(f"Unexpected response: {response}")
+                    error_message = f"Unexpected response in batch {i // batch_size}: {response}"
+                    print(error_message)
+                    error_logs.append(error_message)
             except Exception as e:
-                print(f"Error in upsert batch {i // batch_size}, attempt {attempt + 1}: {e}")
+                error_message = f"Error in upsert batch {i // batch_size}, attempt {attempt + 1}: {e}"
+                print(error_message)
+                error_logs.append(error_message)
                 if attempt < retries - 1:
                     time.sleep(5)
                 else:
                     raise
+
+    # Log all errors at the end
+    if error_logs:
+        print("\nSummary of errors encountered during processing:")
+        for error in error_logs:
+            print(error)
 
 # Process products and associated data
 def process_products_file(filepath, submitted_by):
@@ -138,6 +154,7 @@ def process_products_file(filepath, submitted_by):
             # Prepare product data
             product_id = product["id"]  # Shopify globally unique product ID (int64)
             title = product["title"]
+            handle = product["handle"]
             description = strip_html_tags(product.get("body_html", ""))
             created_at_external = product.get("created_at")
             updated_at_external = product.get("updated_at")
@@ -150,15 +167,16 @@ def process_products_file(filepath, submitted_by):
             product_data.append({
                 "id": product_id,
                 "title": title,
+                "handle": handle,
                 "description": description,
                 "created_at_external": created_at_external,
                 "updated_at_external": updated_at_external,
+                "published_at_external": product.get("published_at"),  # New field
                 "vendor": vendor,
                 "product_type": product_type,
                 "tags": tags,
                 "submitted_by": submitted_by,
                 "url": url,
-                # Exclude `votes` to prevent overwriting
             })
 
             # Prepare options data
@@ -198,7 +216,7 @@ def process_products_file(filepath, submitted_by):
 
 # Main
 if __name__ == "__main__":
-    submitted_by = "691aedc4-1055-4b57-adb7-7480febba4c8"  # Replace with the UUID of the user submitting data
+    submitted_by = "691aedc4-1055-4b57-adb7-7480febba4c8"
     output_folder = "output"
 
     if not os.path.exists(output_folder):
