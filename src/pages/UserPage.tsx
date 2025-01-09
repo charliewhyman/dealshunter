@@ -1,6 +1,5 @@
 import { useState, ChangeEvent, FormEvent } from 'react';
 import { useAuth } from '../contexts/AuthContext';
-import { useNavigate } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
 
 interface FormData {
@@ -50,7 +49,7 @@ export function UserPage() {
 
     try {
       // Update user information in Supabase
-      const { data, error } = await supabase.auth.updateUser({
+      const { error } = await supabase.auth.updateUser({
         email: formData.email,
         data: {
           full_name: formData.fullName,

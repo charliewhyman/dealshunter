@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useParams } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
 import { Deal, CommentWithUser } from '../types';
@@ -26,7 +26,7 @@ function DealPage() {
 
         // Query the  view
         // Query to get comment data and parent comment's text for replies
-        let { data: commentsData, error: commentsError } = await supabase
+        const { data: commentsData, error: commentsError } = await supabase
           .from('comments')
           .select(`
             *,
