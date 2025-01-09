@@ -156,6 +156,139 @@ export type Database = {
           },
         ]
       }
+      images: {
+        Row: {
+          alt: string | null
+          created_at: string | null
+          height: number | null
+          id: number
+          position: number | null
+          product_id: number | null
+          src: string | null
+          updated_at: string | null
+          url: string | null
+          width: number | null
+        }
+        Insert: {
+          alt?: string | null
+          created_at?: string | null
+          height?: number | null
+          id: number
+          position?: number | null
+          product_id?: number | null
+          src?: string | null
+          updated_at?: string | null
+          url?: string | null
+          width?: number | null
+        }
+        Update: {
+          alt?: string | null
+          created_at?: string | null
+          height?: number | null
+          id?: number
+          position?: number | null
+          product_id?: number | null
+          src?: string | null
+          updated_at?: string | null
+          url?: string | null
+          width?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "images_product_id_fkey"
+            columns: ["product_id"]
+            isOneToOne: false
+            referencedRelation: "products"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      options: {
+        Row: {
+          id: string
+          name: string | null
+          position: number | null
+          product_id: number | null
+          values: string[] | null
+        }
+        Insert: {
+          id: string
+          name?: string | null
+          position?: number | null
+          product_id?: number | null
+          values?: string[] | null
+        }
+        Update: {
+          id?: string
+          name?: string | null
+          position?: number | null
+          product_id?: number | null
+          values?: string[] | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "options_product_id_fkey"
+            columns: ["product_id"]
+            isOneToOne: false
+            referencedRelation: "products"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      products: {
+        Row: {
+          created_at: string | null
+          created_at_external: string | null
+          deleted_at: string | null
+          description: string | null
+          handle: string | null
+          id: number
+          product_type: string | null
+          submitted_by: string
+          tags: string[] | null
+          title: string | null
+          updated_at: string | null
+          updated_at_external: string | null
+          url: string | null
+          vendor: string | null
+          votes: number | null
+        }
+        Insert: {
+          created_at?: string | null
+          created_at_external?: string | null
+          deleted_at?: string | null
+          description?: string | null
+          handle?: string | null
+          id: number
+          product_type?: string | null
+          submitted_by: string
+          tags?: string[] | null
+          title?: string | null
+          updated_at?: string | null
+          updated_at_external?: string | null
+          url?: string | null
+          vendor?: string | null
+          votes?: number | null
+        }
+        Update: {
+          created_at?: string | null
+          created_at_external?: string | null
+          deleted_at?: string | null
+          description?: string | null
+          handle?: string | null
+          id?: number
+          product_type?: string | null
+          submitted_by?: string
+          tags?: string[] | null
+          title?: string | null
+          updated_at?: string | null
+          updated_at_external?: string | null
+          url?: string | null
+          vendor?: string | null
+          votes?: number | null
+        }
+        Relationships: []
+      }
       profiles: {
         Row: {
           email: string | null
@@ -242,6 +375,83 @@ export type Database = {
           },
         ]
       }
+      variants: {
+        Row: {
+          available: boolean | null
+          compare_at_price: number | null
+          created_at: string | null
+          created_at_external: string | null
+          featured_image: string | null
+          grams: number | null
+          id: number
+          inventory_quantity: number | null
+          option1: string | null
+          option2: string | null
+          option3: string | null
+          position: number | null
+          price: number | null
+          product_id: number | null
+          requires_shipping: boolean | null
+          sku: string | null
+          taxable: boolean | null
+          title: string | null
+          updated_at: string | null
+          updated_at_external: string | null
+        }
+        Insert: {
+          available?: boolean | null
+          compare_at_price?: number | null
+          created_at?: string | null
+          created_at_external?: string | null
+          featured_image?: string | null
+          grams?: number | null
+          id: number
+          inventory_quantity?: number | null
+          option1?: string | null
+          option2?: string | null
+          option3?: string | null
+          position?: number | null
+          price?: number | null
+          product_id?: number | null
+          requires_shipping?: boolean | null
+          sku?: string | null
+          taxable?: boolean | null
+          title?: string | null
+          updated_at?: string | null
+          updated_at_external?: string | null
+        }
+        Update: {
+          available?: boolean | null
+          compare_at_price?: number | null
+          created_at?: string | null
+          created_at_external?: string | null
+          featured_image?: string | null
+          grams?: number | null
+          id?: number
+          inventory_quantity?: number | null
+          option1?: string | null
+          option2?: string | null
+          option3?: string | null
+          position?: number | null
+          price?: number | null
+          product_id?: number | null
+          requires_shipping?: boolean | null
+          sku?: string | null
+          taxable?: boolean | null
+          title?: string | null
+          updated_at?: string | null
+          updated_at_external?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "variants_product_id_fkey"
+            columns: ["product_id"]
+            isOneToOne: false
+            referencedRelation: "products"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       votes: {
         Row: {
           comment_id: string | null
@@ -280,6 +490,13 @@ export type Database = {
             columns: ["deal_id"]
             isOneToOne: false
             referencedRelation: "deals"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "votes_user_id_fkey1"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
             referencedColumns: ["id"]
           },
         ]
