@@ -1,5 +1,5 @@
 // Supabase types
-export type Product = Tables<'Products'>;
+export type Product = Tables<'products'>;
 export type Comment = Tables<'comments'>;
 
 export interface CommentWithUser extends Comment {
@@ -52,39 +52,42 @@ export type Database = {
         Row: {
           comment_text: string | null
           created_at: string
-          Product_id: string
+          deal_id: string
           deleted_at: string | null
           flagged_status: number | null
           id: string
+          product_id: number
           reply_of: string | null
           user_id: string
         }
         Insert: {
           comment_text?: string | null
           created_at?: string
-          Product_id: string
+          deal_id: string
           deleted_at?: string | null
           flagged_status?: number | null
           id?: string
+          product_id: number
           reply_of?: string | null
           user_id: string
         }
         Update: {
           comment_text?: string | null
           created_at?: string
-          Product_id?: string
+          deal_id?: string
           deleted_at?: string | null
           flagged_status?: number | null
           id?: string
+          product_id?: number
           reply_of?: string | null
           user_id?: string
         }
         Relationships: [
           {
-            foreignKeyName: "comments_Product_id_fkey"
-            columns: ["Product_id"]
+            foreignKeyName: "comments_deal_id_fkey"
+            columns: ["deal_id"]
             isOneToOne: false
-            referencedRelation: "Products"
+            referencedRelation: "deals"
             referencedColumns: ["id"]
           },
           {
@@ -103,7 +106,7 @@ export type Database = {
           },
         ]
       }
-      Products: {
+      deals: {
         Row: {
           created_at: string
           deleted_at: string | null
@@ -148,7 +151,7 @@ export type Database = {
         }
         Relationships: [
           {
-            foreignKeyName: "Products_submitted_by_fkey1"
+            foreignKeyName: "deals_submitted_by_fkey1"
             columns: ["submitted_by"]
             isOneToOne: false
             referencedRelation: "profiles"
@@ -320,7 +323,7 @@ export type Database = {
         Row: {
           comment_id: string | null
           created_at: string
-          Product_id: string | null
+          deal_id: string | null
           id: string
           report_count: number
           reported_by: string | null
@@ -329,7 +332,7 @@ export type Database = {
         Insert: {
           comment_id?: string | null
           created_at?: string
-          Product_id?: string | null
+          deal_id?: string | null
           id?: string
           report_count?: number
           reported_by?: string | null
@@ -338,7 +341,7 @@ export type Database = {
         Update: {
           comment_id?: string | null
           created_at?: string
-          Product_id?: string | null
+          deal_id?: string | null
           id?: string
           report_count?: number
           reported_by?: string | null
@@ -353,10 +356,10 @@ export type Database = {
             referencedColumns: ["id"]
           },
           {
-            foreignKeyName: "reports_Product_id_fkey"
-            columns: ["Product_id"]
+            foreignKeyName: "reports_deal_id_fkey"
+            columns: ["deal_id"]
             isOneToOne: false
-            referencedRelation: "Products"
+            referencedRelation: "deals"
             referencedColumns: ["id"]
           },
           {
@@ -456,7 +459,7 @@ export type Database = {
         Row: {
           comment_id: string | null
           created_at: string
-          Product_id: string | null
+          deal_id: string | null
           entity_type: Database["public"]["Enums"]["entity_types"]
           id: string
           user_id: string
@@ -464,7 +467,7 @@ export type Database = {
         Insert: {
           comment_id?: string | null
           created_at?: string
-          Product_id?: string | null
+          deal_id?: string | null
           entity_type: Database["public"]["Enums"]["entity_types"]
           id?: string
           user_id: string
@@ -472,7 +475,7 @@ export type Database = {
         Update: {
           comment_id?: string | null
           created_at?: string
-          Product_id?: string | null
+          deal_id?: string | null
           entity_type?: Database["public"]["Enums"]["entity_types"]
           id?: string
           user_id?: string
@@ -486,10 +489,10 @@ export type Database = {
             referencedColumns: ["id"]
           },
           {
-            foreignKeyName: "votes_Product_id_fkey"
-            columns: ["Product_id"]
+            foreignKeyName: "votes_deal_id_fkey"
+            columns: ["deal_id"]
             isOneToOne: false
-            referencedRelation: "Products"
+            referencedRelation: "deals"
             referencedColumns: ["id"]
           },
           {
@@ -513,13 +516,13 @@ export type Database = {
           }
         | {
             Args: {
-              Product_id: string
+              deal_id: string
             }
             Returns: undefined
           }
     }
     Enums: {
-      entity_types: "comment" | "user" | "Product"
+      entity_types: "comment" | "user" | "deal"
     }
     CompositeTypes: {
       [_ in never]: never

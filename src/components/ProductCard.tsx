@@ -82,7 +82,7 @@ export function ProductCard({ product, onVote }: ProductCardProps) {
           <div className="flex items-center justify-between">
             <h2 className="text-xl font-semibold text-gray-900">{product.title}</h2>
             <a
-              href={product.url}
+              href={product.url || '#'} // Added fallback to '#' if product.url is null
               target="_blank"
               rel="noopener noreferrer"
               className="text-blue-600 hover:text-blue-800"
@@ -91,7 +91,7 @@ export function ProductCard({ product, onVote }: ProductCardProps) {
               <ExternalLink className="w-5 h-5" />
             </a>
           </div>
-          <p className="text-gray-600 mt-2">{product.description}</p>
+          <p className="text-gray-600 mt-2">{product.handle}</p>
 
           <div className="flex items-center justify-between mt-4 flex-wrap gap-2">
             <div className="flex items-center gap-2">
