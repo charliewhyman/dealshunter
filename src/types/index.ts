@@ -1,3 +1,5 @@
+import { User } from "@supabase/supabase-js";
+
 // Supabase types
 export type Product = Tables<'products'>;
 export type Comment = Tables<'comments'>;
@@ -10,6 +12,12 @@ export interface CommentWithUser extends Comment {
     comment_text: string | null; 
     profiles: { username: string | null };
   };
+}
+
+export interface AuthContextType {
+  user: User | null;
+  loading: boolean;
+  refreshUser: () => Promise<void>;
 }
 
 export type Json =
