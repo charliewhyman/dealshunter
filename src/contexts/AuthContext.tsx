@@ -1,4 +1,4 @@
-import React, { createContext,  useEffect, useState } from 'react';
+import React, { createContext, useEffect, useState } from 'react';
 import { supabase } from '../lib/supabase';
 import { User } from '@supabase/supabase-js';
 import { getCurrentUser } from '../lib/auth';
@@ -23,9 +23,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     const { data: authListener } = supabase.auth.onAuthStateChange(
       async (event, session) => {
         if (event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED') {
-          setUser(session?.user ?? null); // Update user on sign-in or token refresh
+          setUser(session?.user ?? null);
         } else if (event === 'SIGNED_OUT') {
-          setUser(null); // Clear user on sign-out
+          setUser(null);
         }
       }
     );
@@ -42,3 +42,4 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   );
 }
 
+export default AuthContext;

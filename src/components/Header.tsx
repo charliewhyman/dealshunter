@@ -1,8 +1,8 @@
 import { Link } from 'react-router-dom';
 import { LogOut, Search, Tag, User } from 'lucide-react';
-import { useAuth } from '../contexts/AuthContext';
 import { signOut } from '../lib/auth';
 import { useState } from 'react';
+import { useAuth } from '../contexts/UseAuth';
 
 interface HeaderProps {
     onAuthClick: () => void;

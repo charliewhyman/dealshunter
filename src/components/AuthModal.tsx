@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { X } from 'lucide-react';
 import { signInWithEmail, signUp } from '../lib/auth';
-import { useAuth } from '../contexts/AuthContext';
+import { useAuth } from '../contexts/UseAuth';
 
 interface AuthModalProps {
   isOpen: boolean;

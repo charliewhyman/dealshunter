@@ -1,6 +1,6 @@
 import { useState, ChangeEvent, FormEvent } from 'react';
-import { useAuth } from '../contexts/AuthContext';
 import { supabase } from '../lib/supabase';
+import { useAuth } from '../contexts/UseAuth';
 
 interface FormData {
   email: string;
