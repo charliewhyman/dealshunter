@@ -91,7 +91,9 @@ export function ProductCard({ product, onVote }: ProductCardProps) {
               <ExternalLink className="w-5 h-5" />
             </a>
           </div>
-          <p className="text-gray-600 mt-2">{product.handle}</p>
+
+          {/* Display the product vendor */}
+          <p className="text-sm text-gray-500 mt-1">{product.vendor}</p>
 
           <div className="flex items-center justify-between mt-4 flex-wrap gap-2">
             <div className="flex items-center gap-2">

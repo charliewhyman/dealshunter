@@ -52,7 +52,6 @@ export type Database = {
         Row: {
           comment_text: string | null
           created_at: string
-          deal_id: string
           deleted_at: string | null
           flagged_status: number | null
           id: string
@@ -63,7 +62,6 @@ export type Database = {
         Insert: {
           comment_text?: string | null
           created_at?: string
-          deal_id: string
           deleted_at?: string | null
           flagged_status?: number | null
           id?: string
@@ -74,7 +72,6 @@ export type Database = {
         Update: {
           comment_text?: string | null
           created_at?: string
-          deal_id?: string
           deleted_at?: string | null
           flagged_status?: number | null
           id?: string
@@ -84,10 +81,10 @@ export type Database = {
         }
         Relationships: [
           {
-            foreignKeyName: "comments_deal_id_fkey"
-            columns: ["deal_id"]
+            foreignKeyName: "comments_product_id_fkey"
+            columns: ["product_id"]
             isOneToOne: false
-            referencedRelation: "deals"
+            referencedRelation: "products"
             referencedColumns: ["id"]
           },
           {
@@ -100,59 +97,6 @@ export type Database = {
           {
             foreignKeyName: "comments_user_id_fkey"
             columns: ["user_id"]
-            isOneToOne: false
-            referencedRelation: "profiles"
-            referencedColumns: ["id"]
-          },
-        ]
-      }
-      deals: {
-        Row: {
-          created_at: string
-          deleted_at: string | null
-          delivery_price: number | null
-          description: string
-          id: string
-          image_url: string
-          original_price: number | null
-          price: number
-          submitted_by: string
-          title: string
-          url: string
-          votes: number | null
-        }
-        Insert: {
-          created_at?: string
-          deleted_at?: string | null
-          delivery_price?: number | null
-          description: string
-          id?: string
-          image_url: string
-          original_price?: number | null
-          price: number
-          submitted_by: string
-          title: string
-          url: string
-          votes?: number | null
-        }
-        Update: {
-          created_at?: string
-          deleted_at?: string | null
-          delivery_price?: number | null
-          description?: string
-          id?: string
-          image_url?: string
-          original_price?: number | null
-          price?: number
-          submitted_by?: string
-          title?: string
-          url?: string
-          votes?: number | null
-        }
-        Relationships: [
-          {
-            foreignKeyName: "deals_submitted_by_fkey1"
-            columns: ["submitted_by"]
             isOneToOne: false
             referencedRelation: "profiles"
             referencedColumns: ["id"]
@@ -247,6 +191,7 @@ export type Database = {
           handle: string | null
           id: number
           product_type: string | null
+          published_at_external: string | null
           submitted_by: string
           tags: string[] | null
           title: string | null
@@ -264,6 +209,7 @@ export type Database = {
           handle?: string | null
           id: number
           product_type?: string | null
+          published_at_external?: string | null
           submitted_by: string
           tags?: string[] | null
           title?: string | null
@@ -281,6 +227,7 @@ export type Database = {
           handle?: string | null
           id?: number
           product_type?: string | null
+          published_at_external?: string | null
           submitted_by?: string
           tags?: string[] | null
           title?: string | null
@@ -323,8 +270,8 @@ export type Database = {
         Row: {
           comment_id: string | null
           created_at: string
-          deal_id: string | null
           id: string
+          product_id: number | null
           report_count: number
           reported_by: string | null
           reported_user: string | null
@@ -332,8 +279,8 @@ export type Database = {
         Insert: {
           comment_id?: string | null
           created_at?: string
-          deal_id?: string | null
           id?: string
+          product_id?: number | null
           report_count?: number
           reported_by?: string | null
           reported_user?: string | null
@@ -341,8 +288,8 @@ export type Database = {
         Update: {
           comment_id?: string | null
           created_at?: string
-          deal_id?: string | null
           id?: string
+          product_id?: number | null
           report_count?: number
           reported_by?: string | null
           reported_user?: string | null
@@ -356,10 +303,10 @@ export type Database = {
             referencedColumns: ["id"]
           },
           {
-            foreignKeyName: "reports_deal_id_fkey"
-            columns: ["deal_id"]
+            foreignKeyName: "reports_product_id_fkey"
+            columns: ["product_id"]
             isOneToOne: false
-            referencedRelation: "deals"
+            referencedRelation: "products"
             referencedColumns: ["id"]
           },
           {
@@ -459,25 +406,25 @@ export type Database = {
         Row: {
           comment_id: string | null
           created_at: string
-          deal_id: string | null
           entity_type: Database["public"]["Enums"]["entity_types"]
           id: string
+          product_id: number | null
           user_id: string
         }
         Insert: {
           comment_id?: string | null
           created_at?: string
-          deal_id?: string | null
           entity_type: Database["public"]["Enums"]["entity_types"]
           id?: string
+          product_id?: number | null
           user_id: string
         }
         Update: {
           comment_id?: string | null
           created_at?: string
-          deal_id?: string | null
           entity_type?: Database["public"]["Enums"]["entity_types"]
           id?: string
+          product_id?: number | null
           user_id?: string
         }
         Relationships: [
@@ -489,10 +436,10 @@ export type Database = {
             referencedColumns: ["id"]
           },
           {
-            foreignKeyName: "votes_deal_id_fkey"
-            columns: ["deal_id"]
+            foreignKeyName: "votes_product_id_fkey"
+            columns: ["product_id"]
             isOneToOne: false
-            referencedRelation: "deals"
+            referencedRelation: "products"
             referencedColumns: ["id"]
           },
           {
