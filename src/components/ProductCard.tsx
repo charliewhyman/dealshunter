@@ -6,7 +6,7 @@ import { useNavigate } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
 
 interface ProductCardProps {
-  product: Product; // Updated type
+  product: Product; //  type
   onVote: (productId: string) => void; // Adjusted type for onVote
 }
 
