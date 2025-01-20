@@ -7,7 +7,7 @@ import { supabase } from '../lib/supabase';
 
 interface ProductCardProps {
   product: Product; //  type
-  onVote: (productId: string) => void; // Adjusted type for onVote
+  onVote: (productId: number) => void; // Adjusted type for onVote
 }
 
 export function ProductCard({ product, onVote }: ProductCardProps) {
@@ -105,7 +105,7 @@ export function ProductCard({ product, onVote }: ProductCardProps) {
               <button
                 onClick={(e) => {
                   e.stopPropagation();
-                  onVote(product.id.toString()); // Convert product.id to string
+                  onVote(product.id); // Convert product.id to string
                 }}
                 className="flex items-center gap-2 px-4 py-2 rounded-full bg-gray-400 hover:bg-gray-200 transition-colors"
               >
