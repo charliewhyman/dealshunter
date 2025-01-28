@@ -1,21 +1,37 @@
-import requests
-import json
+"""Module for scraping product data from Shopify stores using their API and web pages."""
+
 import csv
+import json
 import os
-from urllib.parse import urlparse
 import time
+from urllib.parse import urlparse
+
+import requests
 from bs4 import BeautifulSoup
 
 def is_shopify_store(base_url):
+    """Check if the given URL belongs to a Shopify store."""
     try:
         response = requests.get(f"{base_url}/products.json", timeout=10)
-        if response.status_code == 200 and ('X-Shopify-Storefront-Access-Token' in response.headers or 'products' in response.json()):
+        has_token = 'X-Shopify-Storefront-Access-Token' in response.headers
+        has_products = 'products' in response.json()
+        if response.status_code == 200 and (has_token or has_products):
             return True
     except (requests.exceptions.RequestException, ValueError):
         pass
     return False
 
 def fetch_shopify_products(base_url, limit=250, max_pages=None):
+    """Fetch products from a Shopify store's API.
+
+    Args:
+        base_url (str): The base URL of the Shopify store
+        limit (int, optional): Number of products per page. Defaults to 250.
+        max_pages (int, optional): Maximum number of pages to fetch. Defaults to None.
+
+    Returns:
+        list: List of product dictionaries containing product data
+    """
     products = []
     page = 1
     while True:
@@ -52,6 +68,12 @@ def fetch_shopify_products(base_url, limit=250, max_pages=None):
     return products
 
 def parse_product_page(product_url, product):
+    """Parse additional product data from the product's webpage.
+
+    Args:
+        product_url (str): URL of the product page
+        product (dict): Product dictionary to update with additional data
+    """
     try:
         response = requests.get(product_url, timeout=10)
         response.raise_for_status()
@@ -65,21 +87,35 @@ def parse_product_page(product_url, product):
     except requests.exceptions.RequestException as e:
         print(f"Error fetching product page {product_url}: {e}")
 
-def save_products_to_file(products, output_file):
-    os.makedirs(os.path.dirname(output_file), exist_ok=True)
-    with open(output_file, 'w', encoding='utf-8') as file:
+def save_products_to_file(products, file_path):
+    """Save product data to a JSON file.
+
+    Args:
+        products (list): List of product dictionaries to save
+        file_path (str): Path to the output JSON file
+    """
+    os.makedirs(os.path.dirname(file_path), exist_ok=True)
+    with open(file_path, 'w', encoding='utf-8') as file:
         json.dump(products, file, indent=4, ensure_ascii=False)
-    print(f"Saved {len(products)} products to {output_file}")
+    print(f"Saved {len(products)} products to {file_path}")
 
 def get_shop_name(base_url):
+    """Extract shop name from the store's URL.
+
+    Args:
+        base_url (str): The base URL of the Shopify store
+
+    Returns:
+        str: Shop name extracted from the URL
+    """
     parsed_url = urlparse(base_url)
-    shop_name = parsed_url.netloc.replace('.', '_')
-    return shop_name
+    formatted_name = parsed_url.netloc.replace('.', '_')
+    return formatted_name
 
 if __name__ == "__main__":
     # Load shop URLs from JSON file
-    with open("shop_urls.json", "r", encoding="utf-8") as file:
-        shop_urls_data = json.load(file)
+    with open("shop_urls.json", "r", encoding="utf-8") as json_file:
+        shop_urls_data = json.load(json_file)
 
     summary_log = []
 
@@ -94,25 +130,51 @@ if __name__ == "__main__":
         print(f"Processing shop: {shop_name} (Category: {category}, Priority: {priority})")
         if not is_shopify_store(shopify_base_url):
             print(f"Skipping {shopify_base_url}: Not a Shopify store.")
-            summary_log.append([shop_name, shopify_base_url, category, priority, "Failure: Not a Shopify store"])
+            summary_log.append([
+                shop_name, shopify_base_url, category, priority,
+                "Failure: Not a Shopify store"
+            ])
             continue
 
         try:
-            products = fetch_shopify_products(shopify_base_url, limit=250, max_pages=10)
-            if products:
-                save_products_to_file(products, output_file)
-                summary_log.append([shop_name, shopify_base_url, category, priority, f"Success: {len(products)} products fetched"])
+            shop_products = fetch_shopify_products(
+                shopify_base_url,
+                limit=250,
+                max_pages=10
+            )
+            if shop_products:
+                save_products_to_file(shop_products, output_file)
+                success_msg = f"Success: {len(shop_products)} products fetched"
+                summary_log.append([
+                    shop_name,
+                    shopify_base_url,
+                    category,
+                    priority,
+                    success_msg
+                ])
             else:
                 print(f"No products found for {shopify_base_url}.")
-                summary_log.append([shop_name, shopify_base_url, category, priority, "Failure: No products found"])
-        except Exception as e:
+                summary_log.append([
+                    shop_name,
+                    shopify_base_url,
+                    category,
+                    priority,
+                    "Failure: No products found"
+                ])
+        except (requests.exceptions.RequestException, json.JSONDecodeError, OSError) as e:
             print(f"Error processing {shopify_base_url}: {e}")
-            summary_log.append([shop_name, shopify_base_url, category, priority, f"Failure: {e}"])
+            summary_log.append([
+                shop_name,
+                shopify_base_url,
+                category,
+                priority,
+                f"Failure: {e}"
+            ])
 
     # Write summary to CSV
     os.makedirs("output", exist_ok=True)
-    with open("output/shopify_summary.csv", "w", newline="", encoding="utf-8") as csvfile:
-        csvwriter = csv.writer(csvfile)
+    with open("output/shopify_summary.csv", "w", newline="", encoding="utf-8") as csv_file:
+        csvwriter = csv.writer(csv_file)
         csvwriter.writerow(["Shop Name", "URL", "Category", "Priority", "Summary"])
         csvwriter.writerows(summary_log)
 

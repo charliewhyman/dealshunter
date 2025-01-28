@@ -26,3 +26,5 @@ dist-ssr
 # Scraping outputs
 scraping/output/
 scraping/shopify_summary.csv
+
+venv/
