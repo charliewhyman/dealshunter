@@ -19,28 +19,36 @@ def strip_html_tags(html_text):
     import re
     return re.sub(r"<[^>]*>", "", unescape(html_text or ""))
 
-def generate_option_uuid(product_id, name, position):
-    """Generate a deterministic UUID for an option."""
-    namespace = uuid.UUID('12345678-1234-5678-1234-567812345678')  # Fixed namespace
-    unique_string = f"{product_id}:{name}:{position}"
-    return str(uuid.uuid5(namespace, unique_string))
+def generate_deterministic_id(namespace_string, *components):
+    """Generate a deterministic UUID based on components.
+    
+    Args:
+        namespace_string: String to identify the type of ID (e.g., 'option' or 'offer')
+        components: Variable number of components to generate the unique string
+    """
+    namespace = uuid.UUID('12345678-1234-5678-1234-567812345678')
+    unique_string = f"{namespace_string}:{'|'.join(str(c or '') for c in components)}"
+    generated_uuid = uuid.uuid5(namespace, unique_string)
+    
+    return str(generated_uuid)
 
 def process_options(product):
     """Process options from a product and prepare for upsert."""
     options = product.get("options", [])
     processed_options = []
     for option in options:
-        option_uuid = generate_option_uuid(
-            product_id=product["id"],
-            name=option["name"],
-            position=option["position"]
+        option_uuid = generate_deterministic_id(
+            'option',
+            product["id"],
+            option["name"],
+            option["position"]
         )
         processed_options.append({
             "id": option_uuid,
             "product_id": product["id"],
             "name": option["name"],
             "position": option["position"],
-            "values": option["values"],  # Assuming `values` is a valid column
+            "values": option["values"],
         })
     return processed_options
 
@@ -80,6 +88,42 @@ def process_images(product):
             "position": image["position"]
         })
     return processed_images
+
+def process_offers(product):
+    """Prepare offer data for upsert."""
+    offers = product.get("offers", [])
+    processed_offers = []
+    for offer in offers:
+        # Extract seller name from the seller object if it exists
+        seller = offer.get("seller", {})
+        seller_name = None
+        if isinstance(seller, dict):
+            seller_name = seller.get("name")
+        
+        sku = offer.get("sku")
+        offer_id = generate_deterministic_id(
+            'offer',
+            product["id"],
+            seller_name,
+            sku
+        )
+        
+        processed_offers.append({
+            "id": offer_id,
+            "product_id": product["id"],
+            "availability": offer.get("availability"),
+            "item_condition": offer.get("itemCondition"),
+            "price_currency": offer.get("priceCurrency"),
+            "price": offer.get("price"),
+            "price_valid_until": offer.get("priceValidUntil"),
+            "url": offer.get("url"),
+            "checkout_page_url_template": offer.get("checkoutPageURLTemplate"),
+            "image": offer.get("image"),
+            "mpn": offer.get("mpn"),
+            "sku": sku,
+            "seller_name": seller_name
+        })
+    return processed_offers
 
 # Bulk upsert function with deduplication and logging
 def bulk_upsert_data(table_name, data, batch_size=100, retries=3):
@@ -149,6 +193,7 @@ def process_products_file(filepath, submitted_by):
         option_data = []
         variant_data = []
         image_data = []
+        offer_data = []
 
         for product in products:
             # Prepare product data
@@ -191,6 +236,10 @@ def process_products_file(filepath, submitted_by):
             images = process_images(product)
             image_data.extend(images)
 
+            # Prepare offers data
+            offers = process_offers(product)
+            offer_data.extend(offers)
+
         # Bulk upsert products
         if product_data:
             print(f"Upserting {len(product_data)} products...")
@@ -211,6 +260,11 @@ def process_products_file(filepath, submitted_by):
             print(f"Upserting {len(image_data)} images...")
             bulk_upsert_data("images", image_data)
 
+        # Bulk upsert offers
+        if offer_data:
+            print(f"Upserting {len(offer_data)} offers...")
+            bulk_upsert_data("offers", offer_data)
+
     except Exception as e:
         print(f"Error processing file {filepath}: {e}")
 
@@ -229,6 +283,7 @@ if __name__ == "__main__":
         print(f"No JSON files found in folder '{output_folder}'.")
         exit(0)
 
-    for json_file in json_files:
-        print(f"Processing file: {json_file}")
-        process_products_file(json_file, submitted_by)
+    # Process only the first JSON file
+    json_file = json_files[0]
+    print(f"Processing file: {json_file}")
+    process_products_file(json_file, submitted_by)

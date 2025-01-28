@@ -57,7 +57,6 @@ def parse_product_page(product_url, product):
         response.raise_for_status()
         soup = BeautifulSoup(response.text, 'html.parser')
 
-        # Look for JSON-LD schema data
         script_tag = soup.find('script', type='application/ld+json')
         if script_tag:
             schema_data = json.loads(script_tag.string)
