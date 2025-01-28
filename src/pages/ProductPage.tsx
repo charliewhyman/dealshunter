@@ -11,6 +11,9 @@ function ProductPage() {
   const [Product, setProduct] = useState<Product | null>(null);
   const [comments, setComments] = useState<CommentWithUser[]>([]);
   const [loading, setLoading] = useState(true);
+  const [productImage, setProductImage] = useState<string | undefined>(undefined);
+  const [variantPrice, setVariantPrice] = useState<number | null>(null);
+  const [originalPrice, setOriginalPrice] = useState<number | null>(null);
 
   useEffect(() => {
     const fetchProductData = async () => {
@@ -23,6 +26,30 @@ function ProductPage() {
 
         if (ProductError) throw ProductError;
         setProduct(ProductData);
+
+        // Fetch variant price
+        const { data: variantData, error: variantError } = await supabase
+          .from('variants')
+          .select('price, compare_at_price')
+          .eq('product_id', ProductId)
+          .single();
+
+        if (!variantError && variantData) {
+          setVariantPrice(variantData.price);
+          setOriginalPrice(variantData.compare_at_price);
+        }
+
+        // Fetch image URL
+        const { data: imageData, error: imageError } = await supabase
+          .from('images')
+          .select('src')
+          .eq('product_id', ProductId)
+          .limit(1)
+          .single();
+
+        if (!imageError && imageData) {
+          setProductImage(imageData.src);
+        }
 
         // Query to get comment data and parent comment's text for replies
         const { data: commentsData, error: commentsError } = await supabase
@@ -65,23 +92,27 @@ function ProductPage() {
         <div className="flex gap-6 items-center">
           {/* Photo Section */}
           <img
-            src={Product.image_url}
-            alt={Product.title}
+            src={productImage ?? '/default-image.png'}
+            alt={Product?.title ?? 'Product image'}
             className="w-1/3 object-cover rounded-md"
           />
 
           {/* Product Details */}
           <div className="flex-1 flex flex-col gap-4">
             <h1 className="text-2xl font-bold">{Product.title}</h1>
-            <span className="text-2xl font-bold text-green-600">${Product.price.toFixed(2)}</span>
-            {Product.original_price && (
+            {variantPrice !== null && (
+              <span className="text-2xl font-bold text-green-600">
+                ${variantPrice.toFixed(2)}
+              </span>
+            )}
+            {originalPrice && (
               <p className="text-sm text-gray-500 line-through">
-                ${Product.original_price.toFixed(2)}
+                ${originalPrice.toFixed(2)}
               </p>
             )}
             <p className="text-lg">{Product.description}</p>
             <a
-              href={Product.url}
+              href={Product.url ?? '#'}
               target="_blank"
               rel="noopener noreferrer"
               className="relative flex items-center justify-center gap-2 px-3 py-1 text-sm font-medium rounded-md text-white bg-blue-600 hover:bg-blue-700 w-1/3"
