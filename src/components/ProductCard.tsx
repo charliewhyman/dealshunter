@@ -4,6 +4,7 @@ import { Product } from '../types';
 import { formatDistanceToNow } from 'date-fns';
 import { useNavigate } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
+import { useProductPricing } from '../hooks/useProductPricing';
 
 interface ProductCardProps {
   product: Product;
@@ -12,50 +13,18 @@ interface ProductCardProps {
 
 export function ProductCard({ product, onVote }: ProductCardProps) {
   const [commentCount, setCommentCount] = useState(0);
-  const [variantPrice, setVariantPrice] = useState<number | null>(null);
-  const [offerPrice, setOfferPrice] = useState<number | null>(null);
   const [productImage, setProductImage] = useState<string | null>(null);
-  const [compareAtPrice, setCompareAtPrice] = useState<number | null>(null);
   const navigate = useNavigate();
+  const { variantPrice, compareAtPrice, offerPrice } = useProductPricing(product.id);
 
   useEffect(() => {
     const fetchVariantAndImage = async () => {
-      // Fetch prices from all variants
-      const { data: variantData, error: variantError } = await supabase
-        .from('variants')
-        .select('price, compare_at_price')
-        .eq('product_id', product.id.toString());
-
-      if (!variantError && variantData && variantData.length > 0) {
-        const lowestPriceVariant = variantData.reduce((min, curr) => 
-          parseFloat(curr.price) < parseFloat(min.price) ? curr : min
-        );
-        setVariantPrice(parseFloat(lowestPriceVariant.price));
-        if (lowestPriceVariant.compare_at_price) {
-          setCompareAtPrice(parseFloat(lowestPriceVariant.compare_at_price));
-        }
-      }
-
-      // Fetch current valid offer
-      const today = new Date().toISOString().split('T')[0];
-      const { data: offerData, error: offerError } = await supabase
-        .from('offers')
-        .select('price')
-        .eq('product_id', product.id.toString())
-        .gte('price_valid_until', today)
-        .order('price', { ascending: true })
-        .limit(1);
-
-      if (!offerError && offerData && offerData.length > 0) {
-        setOfferPrice(parseFloat(offerData[0].price));
-      }
-
       // Fetch image URL from the images table
       const { data: imageData, error: imageError } = await supabase
         .from('images')
         .select('src')
         .eq('product_id', product.id)
-        .limit(1) // TODO change to return multiple images
+        .limit(1)
         .single();
 
       if (!imageError && imageData) {

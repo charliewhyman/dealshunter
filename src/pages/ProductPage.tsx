@@ -4,6 +4,7 @@ import { supabase } from '../lib/supabase';
 import { Product, CommentWithUser } from '../types';
 import { ExternalLink } from 'lucide-react';
 import CommentsList from '../components/CommentsList';
+import { useProductPricing } from '../hooks/useProductPricing';
 
 function ProductPage() {
 
@@ -12,8 +13,7 @@ function ProductPage() {
   const [comments, setComments] = useState<CommentWithUser[]>([]);
   const [loading, setLoading] = useState(true);
   const [productImage, setProductImage] = useState<string | undefined>(undefined);
-  const [variantPrice, setVariantPrice] = useState<number | null>(null);
-  const [originalPrice, setOriginalPrice] = useState<number | null>(null);
+  const { variantPrice, compareAtPrice, offerPrice } = useProductPricing(ProductId!);
 
   useEffect(() => {
     const fetchProductData = async () => {
@@ -26,18 +26,6 @@ function ProductPage() {
 
         if (ProductError) throw ProductError;
         setProduct(ProductData);
-
-        // Fetch variant price
-        const { data: variantData, error: variantError } = await supabase
-          .from('variants')
-          .select('price, compare_at_price')
-          .eq('product_id', ProductId)
-          .single();
-
-        if (!variantError && variantData) {
-          setVariantPrice(variantData.price);
-          setOriginalPrice(variantData.compare_at_price);
-        }
 
         // Fetch image URL
         const { data: imageData, error: imageError } = await supabase
@@ -101,13 +89,21 @@ function ProductPage() {
           <div className="flex-1 flex flex-col gap-4">
             <h1 className="text-2xl font-bold">{Product.title}</h1>
             {variantPrice !== null && (
-              <span className="text-2xl font-bold text-green-600">
-                ${variantPrice.toFixed(2)}
-              </span>
+              <>
+                {offerPrice !== null && offerPrice <= variantPrice ? (
+                  <span className="text-2xl font-bold text-green-600">
+                    ${offerPrice.toFixed(2)}
+                  </span>
+                ) : (
+                  <span className="text-2xl font-bold text-green-600">
+                    ${variantPrice.toFixed(2)}
+                  </span>
+                )}
+              </>
             )}
-            {originalPrice && (
+            {compareAtPrice && (
               <p className="text-sm text-gray-500 line-through">
-                ${originalPrice.toFixed(2)}
+                ${compareAtPrice.toFixed(2)}
               </p>
             )}
             <p className="text-lg">{Product.description}</p>
