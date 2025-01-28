@@ -9,7 +9,7 @@ function ProductPage() {
 
   const { ProductId } = useParams<{ ProductId: string }>();
   const [Product, setProduct] = useState<Product | null>(null);
-  const [comments, setComments] = useState<CommentWithUser[]>([]); // Updated to CommentWithUser[]
+  const [comments, setComments] = useState<CommentWithUser[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -24,7 +24,6 @@ function ProductPage() {
         if (ProductError) throw ProductError;
         setProduct(ProductData);
 
-        // Query the  view
         // Query to get comment data and parent comment's text for replies
         const { data: commentsData, error: commentsError } = await supabase
           .from('comments')

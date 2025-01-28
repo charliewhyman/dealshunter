@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { X } from 'lucide-react';
 import { signInWithEmail, signUp } from '../lib/auth';
-import { useAuth } from '../contexts/UseAuth';
+import { useAuth } from '../contexts/useAuth';
 
 interface AuthModalProps {
   isOpen: boolean;
@@ -9,17 +9,19 @@ interface AuthModalProps {
 }
 
 export function AuthModal({ isOpen, onClose }: AuthModalProps) {
-  const [isSignUp, setIsSignUp] = useState(false);
+  // State management for form fields and UI state
+  const [isSignUp, setIsSignUp] = useState(false);  // Toggle between sign up and sign in modes
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [username, setUsername] = useState('');
   const [error, setError] = useState('');
   const [message, setMessage] = useState('');
-  const { refreshUser } = useAuth();
+  const { refreshUser } = useAuth();  // Hook to update user context after successful auth
 
   if (!isOpen) return null;
 
+  // Handle form submission for both sign up and sign in
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setError('');
@@ -27,6 +29,7 @@ export function AuthModal({ isOpen, onClose }: AuthModalProps) {
   
     try {
       if (isSignUp) {
+        // Handle sign up flow
         const { message, error } = await signUp(email, password, username);
         if (error) throw error;
   
@@ -36,12 +39,14 @@ export function AuthModal({ isOpen, onClose }: AuthModalProps) {
           onClose();
         }
       } else {
+        // Handle sign in flow
         const { error } = await signInWithEmail(email, password);
         if (error) throw error;
-        await refreshUser();
+        await refreshUser();  // Update user context with new auth state
         onClose();
       }
     } catch (err) {
+      // Error handling for both flows
       if (err instanceof Error) {
         setError(err.message);
       } else {

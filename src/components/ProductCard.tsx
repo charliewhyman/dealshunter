@@ -1,13 +1,13 @@
 import { useEffect, useState } from 'react';
 import { ArrowBigUp, ExternalLink, MessageCircle } from 'lucide-react';
-import { Product } from '../types'; // Updated type import
+import { Product } from '../types'; 
 import { formatDistanceToNow } from 'date-fns';
 import { useNavigate } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
 
 interface ProductCardProps {
-  product: Product; //  type
-  onVote: (productId: number) => void; // Adjusted type for onVote
+  product: Product;
+  onVote: (productId: number) => void; 
 }
 
 export function ProductCard({ product, onVote }: ProductCardProps) {
@@ -23,7 +23,7 @@ export function ProductCard({ product, onVote }: ProductCardProps) {
         .from('variants')
         .select('price')
         .eq('product_id', product.id)
-        .single(); // Assuming one variant for simplicity; adjust if needed
+        .single(); // TODO change to return multiple variants
 
       if (!variantError && variantData) {
         setVariantPrice(variantData.price);
@@ -34,7 +34,7 @@ export function ProductCard({ product, onVote }: ProductCardProps) {
         .from('images')
         .select('src')
         .eq('product_id', product.id)
-        .limit(1) // Limit to 1 image
+        .limit(1) // TODO change to return multiple images
         .single();
 
       if (!imageError && imageData) {
@@ -50,7 +50,7 @@ export function ProductCard({ product, onVote }: ProductCardProps) {
       const { data, error } = await supabase
         .from('comments')
         .select('*', { count: 'exact' })
-        .eq('product_id', product.id); // Changed to use `product_id`
+        .eq('product_id', product.id);
 
       if (!error) {
         setCommentCount(data.length);
@@ -61,7 +61,7 @@ export function ProductCard({ product, onVote }: ProductCardProps) {
   }, [product.id]);
 
   const handleCardClick = () => {
-    navigate(`/products/${product.id}`); // Changed route to `/products/${product.id}`
+    navigate(`/products/${product.id}`);
   };
 
   return (
@@ -72,7 +72,7 @@ export function ProductCard({ product, onVote }: ProductCardProps) {
       <div className="flex gap-4 flex-wrap">
         <div className="flex-shrink-0">
           <img
-            src={productImage || '/default-image.png'} // Fallback to a default image if none found
+            src={productImage || '/default-image.png'} // Fallback to a default image if none found - TODO add default image
             alt={product.title || 'Product image'}
             className="w-24 h-24 object-cover rounded-lg"
           />
@@ -82,7 +82,7 @@ export function ProductCard({ product, onVote }: ProductCardProps) {
           <div className="flex items-center justify-between">
             <h2 className="text-xl font-semibold text-gray-900">{product.title}</h2>
             <a
-              href={product.url || '#'} // Added fallback to '#' if product.url is null
+              href={product.url || '#'} //Fallback to '#' if product.url is null
               target="_blank"
               rel="noopener noreferrer"
               className="text-blue-600 hover:text-blue-800"
@@ -105,17 +105,17 @@ export function ProductCard({ product, onVote }: ProductCardProps) {
               <button
                 onClick={(e) => {
                   e.stopPropagation();
-                  onVote(product.id); // Convert product.id to string
+                  onVote(product.id);
                 }}
                 className="flex items-center gap-2 px-4 py-2 rounded-full bg-gray-400 hover:bg-gray-200 transition-colors"
               >
                 <ArrowBigUp className="w-4 h-4" />
-                <span>{product.votes}</span> {/* Assuming votes field exists in the product table */}
+                <span>{product.votes}</span>
               </button>
               <button
                 onClick={(e) => {
                   e.stopPropagation();
-                  navigate(`/products/${product.id}#comments`); // Adjusted route to products
+                  navigate(`/products/${product.id}#comments`);
                 }}
                 className="flex items-center gap-2 px-4 py-2 rounded-full bg-gray-400 hover:bg-gray-200 transition-colors"
               >
@@ -128,7 +128,7 @@ export function ProductCard({ product, onVote }: ProductCardProps) {
       </div>
 
       <div className="mt-2 text-sm text-gray-500">
-        Posted {formatDistanceToNow(new Date(product.created_at || ''))} ago {/* Added fallback empty string */}
+        Posted {formatDistanceToNow(new Date(product.created_at || ''))} ago
       </div>
     </div>
   );

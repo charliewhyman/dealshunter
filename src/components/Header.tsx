@@ -2,16 +2,18 @@ import { Link } from 'react-router-dom';
 import { LogOut, Search, Tag, User } from 'lucide-react';
 import { signOut } from '../lib/auth';
 import { useState } from 'react';
-import { useAuth } from '../contexts/UseAuth';
+import { useAuth } from '../contexts/useAuth';
 
 interface HeaderProps {
-    onAuthClick: () => void;
-  }
+  onAuthClick: () => void;
+}
 
 export function Header({ onAuthClick }: HeaderProps) {
+  // Authentication context and loading state
   const { user, refreshUser } = useAuth();
   const [loading, setLoading] = useState(false);
 
+  // Handle user sign out with loading state management
   async function handleSignOut() {
     setLoading(true);
     try {
@@ -26,7 +28,7 @@ export function Header({ onAuthClick }: HeaderProps) {
     <header className="bg-white shadow-sm w-full h-16">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-full">
         <div className="flex items-center justify-between h-full flex-nowrap space-x-4">
-          {/* Logo Section */}
+          {/* Logo Section - Brand identity with icon and text */}
           <div className="flex items-center">
             <Link to="/" className="flex items-center">
               <Tag className="w-8 h-8 text-blue-600" />
@@ -36,7 +38,9 @@ export function Header({ onAuthClick }: HeaderProps) {
             </Link>
           </div>
 
-          {/* Search Bar and Submit Button */}
+          {/* Center Section - Search and Submit 
+              - Search bar is hidden on mobile (sm:block)
+              - Submit button is hidden on mobile (sm:block) */}
           <div className="flex items-center space-x-4 flex-shrink-0">
             {/* Search Bar */}
             <div className="relative hidden sm:block">
@@ -59,7 +63,10 @@ export function Header({ onAuthClick }: HeaderProps) {
             </Link>
           </div>
 
-          {/* User Icon and Actions */}
+          {/* Right Section - User Authentication
+              - Shows loading spinner during sign out
+              - Displays user email when logged in
+              - Shows sign in button when logged out */}
           <div className="flex items-center space-x-5 flex-shrink-0">
             {user ? (
               <div className="flex items-center">

@@ -7,19 +7,24 @@ import { ProductCard } from '../components/ProductCard';
 const ITEMS_PER_PAGE = 10;
 
 export function HomePage() {
+  // State management for products list and infinite scroll
   const [products, setProducts] = useState<Product[]>([]);
   const [loading, setLoading] = useState(true);
   const [hasMore, setHasMore] = useState(true);
   const [page, setPage] = useState(0);
+  // Ref for intersection observer to detect when user reaches bottom of page
   const observerRef = useRef<HTMLDivElement | null>(null);
 
+  // Fetch products whenever page number changes
   useEffect(() => {
     fetchProducts(page);
   }, [page]);
 
+  // Fetches paginated products from Supabase
   async function fetchProducts(page: number) {
     setLoading(true);
     try {
+      // Query products table with pagination, ordered by votes
       const { data, error } = await supabase
         .from('products')
         .select('*')
@@ -29,11 +34,13 @@ export function HomePage() {
       if (error) throw error;
   
       if (data) {
+        // Update products state, ensuring no duplicates
         setProducts((prev) => {
           const existingIds = new Set(prev.map((product) => product.id));
           const uniqueProducts = data.filter((product) => !existingIds.has(product.id));
           return [...prev, ...uniqueProducts];
         });
+        // Check if there might be more products to load
         setHasMore(data.length > 0);
       }
     } catch (error) {
@@ -43,7 +50,9 @@ export function HomePage() {
     }
   }
 
+  // Set up intersection observer for infinite scroll
   useEffect(() => {
+    // Create observer that triggers when last element becomes visible
     const observer = new IntersectionObserver(
       (entries) => {
         if (entries[0].isIntersecting && hasMore && !loading) {
@@ -64,18 +73,21 @@ export function HomePage() {
       }
     };  }, [hasMore, loading]);
 
+  // Handle voting on products
   const handleVote = async (productId: number) => {
     try {
+      // Call Supabase RPC function to increment votes
       const { error } = await supabase.rpc('increment_votes', {
         product_id: productId,
       });
 
       if (error) throw error;
 
-      // Optimistically update votes locally or refetch products
+      // Optimistically update the UI before server confirmation
       setProducts((prev) =>
         prev.map((product) =>
-          product.id === productId ? { ...product, votes: (product.votes ?? 0) + 1 } : product        )
+          product.id === productId ? { ...product, votes: (product.votes ?? 0) + 1 } : product
+        )
       );
     } catch (error) {
       console.error('Error voting:', error);

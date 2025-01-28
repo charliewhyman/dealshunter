@@ -3,7 +3,7 @@ import { CommentWithUser } from '../types';
 
 interface CommentProps {
   comment: CommentWithUser;
-  level: number; // New prop to track indentation level
+  level: number; // Track indentation level
 }
 
 const CommentItem: React.FC<CommentProps> = ({ comment, level }) => {
