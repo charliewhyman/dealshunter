@@ -158,6 +158,62 @@ export type Database = {
           },
         ]
       }
+      offers: {
+        Row: {
+          availability: string | null
+          checkout_page_url_template: string | null
+          id: string
+          image: string | null
+          item_condition: string | null
+          mpn: string | null
+          price: number | null
+          price_currency: string | null
+          price_valid_until: string | null
+          product_id: number | null
+          seller_name: string | null
+          sku: string | null
+          url: string | null
+        }
+        Insert: {
+          availability?: string | null
+          checkout_page_url_template?: string | null
+          id: string
+          image?: string | null
+          item_condition?: string | null
+          mpn?: string | null
+          price?: number | null
+          price_currency?: string | null
+          price_valid_until?: string | null
+          product_id?: number | null
+          seller_name?: string | null
+          sku?: string | null
+          url?: string | null
+        }
+        Update: {
+          availability?: string | null
+          checkout_page_url_template?: string | null
+          id?: string
+          image?: string | null
+          item_condition?: string | null
+          mpn?: string | null
+          price?: number | null
+          price_currency?: string | null
+          price_valid_until?: string | null
+          product_id?: number | null
+          seller_name?: string | null
+          sku?: string | null
+          url?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "offers_product_id_fkey"
+            columns: ["product_id"]
+            isOneToOne: false
+            referencedRelation: "products"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       options: {
         Row: {
           id: string
@@ -183,6 +239,32 @@ export type Database = {
         Relationships: [
           {
             foreignKeyName: "options_product_id_fkey"
+            columns: ["product_id"]
+            isOneToOne: false
+            referencedRelation: "products"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      product_tags: {
+        Row: {
+          id: number
+          product_id: number | null
+          tag: string | null
+        }
+        Insert: {
+          id?: number
+          product_id?: number | null
+          tag?: string | null
+        }
+        Update: {
+          id?: number
+          product_id?: number | null
+          tag?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "product_tags_product_id_fkey"
             columns: ["product_id"]
             isOneToOne: false
             referencedRelation: "products"
