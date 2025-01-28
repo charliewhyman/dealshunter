@@ -13,20 +13,41 @@ interface ProductCardProps {
 export function ProductCard({ product, onVote }: ProductCardProps) {
   const [commentCount, setCommentCount] = useState(0);
   const [variantPrice, setVariantPrice] = useState<number | null>(null);
+  const [offerPrice, setOfferPrice] = useState<number | null>(null);
   const [productImage, setProductImage] = useState<string | null>(null);
+  const [compareAtPrice, setCompareAtPrice] = useState<number | null>(null);
   const navigate = useNavigate();
 
   useEffect(() => {
     const fetchVariantAndImage = async () => {
-      // Fetch price from the variants table
+      // Fetch prices from all variants
       const { data: variantData, error: variantError } = await supabase
         .from('variants')
-        .select('price')
-        .eq('product_id', product.id)
-        .single(); // TODO change to return multiple variants
+        .select('price, compare_at_price')
+        .eq('product_id', product.id.toString());
 
-      if (!variantError && variantData) {
-        setVariantPrice(variantData.price);
+      if (!variantError && variantData && variantData.length > 0) {
+        const lowestPriceVariant = variantData.reduce((min, curr) => 
+          parseFloat(curr.price) < parseFloat(min.price) ? curr : min
+        );
+        setVariantPrice(parseFloat(lowestPriceVariant.price));
+        if (lowestPriceVariant.compare_at_price) {
+          setCompareAtPrice(parseFloat(lowestPriceVariant.compare_at_price));
+        }
+      }
+
+      // Fetch current valid offer
+      const today = new Date().toISOString().split('T')[0];
+      const { data: offerData, error: offerError } = await supabase
+        .from('offers')
+        .select('price')
+        .eq('product_id', product.id.toString())
+        .gte('price_valid_until', today)
+        .order('price', { ascending: true })
+        .limit(1);
+
+      if (!offerError && offerData && offerData.length > 0) {
+        setOfferPrice(parseFloat(offerData[0].price));
       }
 
       // Fetch image URL from the images table
@@ -98,7 +119,23 @@ export function ProductCard({ product, onVote }: ProductCardProps) {
           <div className="flex items-center justify-between mt-4 flex-wrap gap-2">
             <div className="flex items-center gap-2">
               {variantPrice !== null && (
-                <span className="text-2xl font-bold text-green-600">${variantPrice.toFixed(2)}</span>
+                <>
+                  {offerPrice !== null && offerPrice <= variantPrice ? (
+                    <>
+                      <span className="text-2xl font-bold text-green-600">${offerPrice.toFixed(2)}</span>
+                      {compareAtPrice && compareAtPrice > offerPrice && (
+                        <span className="text-sm text-gray-500 line-through">${compareAtPrice.toFixed(2)}</span>
+                      )}
+                    </>
+                  ) : (
+                    <>
+                      <span className="text-2xl font-bold text-green-600">${variantPrice.toFixed(2)}</span>
+                      {compareAtPrice && compareAtPrice > variantPrice && (
+                        <span className="text-sm text-gray-500 line-through">${compareAtPrice.toFixed(2)}</span>
+                      )}
+                    </>
+                  )}
+                </>
               )}
             </div>
             <div className="flex gap-4">
