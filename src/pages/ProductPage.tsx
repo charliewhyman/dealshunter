@@ -19,7 +19,7 @@ function ProductPage() {
     const fetchProductData = async () => {
       try {
         const { data: ProductData, error: ProductError } = await supabase
-          .from('Products')
+          .from('products')
           .select('*')
           .eq('id', ProductId)
           .single();
