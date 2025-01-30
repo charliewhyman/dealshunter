@@ -15,6 +15,10 @@ export function HomePage() {
   const [selectedVendor, setSelectedVendor] = useState<string>('');
   const observerRef = useRef<HTMLDivElement | null>(null);
 
+  // TODO add filtering by product tag/type
+  // TODO add sorting by votes
+  // TODO add filtering by offer or price reduction
+
   // Fetch unique vendors on component mount
   useEffect(() => {
     async function fetchVendors() {
