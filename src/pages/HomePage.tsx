@@ -7,48 +7,63 @@ import { ProductCard } from '../components/ProductCard';
 const ITEMS_PER_PAGE = 10;
 
 export function HomePage() {
-  // State management for products list and infinite scroll
   const [products, setProducts] = useState<Product[]>([]);
   const [loading, setLoading] = useState(true);
   const [hasMore, setHasMore] = useState(true);
   const [page, setPage] = useState(0);
-  // Ref for intersection observer to detect when user reaches bottom of page
+  const [vendors, setVendors] = useState<string[]>([]);
+  const [selectedVendor, setSelectedVendor] = useState<string>('');
   const observerRef = useRef<HTMLDivElement | null>(null);
 
-  // Fetch products whenever page number changes
+  // Fetch unique vendors on component mount
   useEffect(() => {
-    fetchProducts(page);
-  }, [page]);
-
-  // Fetches paginated products from Supabase
-  async function fetchProducts(page: number) {
-    setLoading(true);
-    try {
-      // Query products table with pagination, ordered by votes
+    async function fetchVendors() {
       const { data, error } = await supabase
-        .from('products')
-        .select('*')
-        .order('votes', { ascending: false })
-        .range(page * ITEMS_PER_PAGE, (page + 1) * ITEMS_PER_PAGE - 1);
-  
-      if (error) throw error;
-  
-      if (data) {
-        // Update products state, ensuring no duplicates
-        setProducts((prev) => {
-          const existingIds = new Set(prev.map((product) => product.id));
-          const uniqueProducts = data.filter((product) => !existingIds.has(product.id));
-          return [...prev, ...uniqueProducts];
-        });
-        // Check if there might be more products to load
-        setHasMore(data.length > 0);
+        .from('distinct_vendors')
+        .select('vendor');
+              
+      if (data && !error) {
+        setVendors(data.map(item => item.vendor).filter(Boolean));
       }
-    } catch (error) {
-      console.error('Error fetching products:', error);
-    } finally {
-      setLoading(false);
     }
-  }
+    fetchVendors();
+  }, []);
+
+  useEffect(() => {
+    async function fetchProducts(page: number) {
+      setLoading(true);
+      try {
+        let query = supabase
+          .from('products')
+          .select('*')
+          .order('votes', { ascending: false });
+
+        if (selectedVendor) {
+          query = query.eq('vendor', selectedVendor);
+        }
+
+        const { data, error } = await query
+          .range(page * ITEMS_PER_PAGE, (page + 1) * ITEMS_PER_PAGE - 1);
+    
+        if (error) throw error;
+    
+        if (data) {
+          setProducts((prev) => {
+            const existingIds = new Set(prev.map((product) => product.id));
+            const uniqueProducts = data.filter((product) => !existingIds.has(product.id));
+            return page === 0 ? data : [...prev, ...uniqueProducts];
+          });
+          setHasMore(data.length > 0);
+        }
+      } catch (error) {
+        console.error('Error fetching products:', error);
+      } finally {
+        setLoading(false);
+      }
+    }
+
+    fetchProducts(page);
+  }, [page, selectedVendor]);
 
   // Set up intersection observer for infinite scroll
   useEffect(() => {
@@ -96,6 +111,24 @@ export function HomePage() {
 
   return (
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+      <div className="mb-6">
+        <select 
+          value={selectedVendor}
+          onChange={(e) => {
+            setSelectedVendor(e.target.value);
+            setPage(0);
+            setProducts([]);
+          }}
+          className="block w-full max-w-xs rounded-md border border-gray-300 px-3 py-2"
+        >
+          <option value="">All Vendors</option>
+          {vendors.map((vendor) => (
+            <option key={vendor} value={vendor}>
+              {vendor}
+            </option>
+          ))}
+        </select>
+      </div>
       <div className="space-y-6">
         {products.map((product) => (
           <div key={product.id} className="max-w-4xl mx-auto w-full">

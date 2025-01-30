@@ -543,7 +543,12 @@ export type Database = {
       }
     }
     Views: {
-      [_ in never]: never
+      distinct_vendors: {
+        Row: {
+          vendor: string | null
+        }
+        Relationships: []
+      }
     }
     Functions: {
       increment_votes:
