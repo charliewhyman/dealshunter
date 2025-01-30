@@ -20,7 +20,8 @@ export function HomePage() {
     async function fetchVendors() {
       const { data, error } = await supabase
         .from('distinct_vendors')
-        .select('vendor');
+        .select('vendor')
+        .order('vendor', { ascending: true });
               
       if (data && !error) {
         setVendors(data.map(item => item.vendor).filter(Boolean));
