@@ -99,18 +99,17 @@ def save_products_to_file(products, file_path):
         json.dump(products, file, indent=4, ensure_ascii=False)
     print(f"Saved {len(products)} products to {file_path}")
 
-def get_shop_name(base_url):
-    """Extract shop name from the store's URL.
+def get_shop_name(shop_data):
+    """Get shop name from shop_data dictionary.
 
     Args:
-        base_url (str): The base URL of the Shopify store
+        shop_data (dict): Dictionary containing shop data including shop_name
 
     Returns:
-        str: Shop name extracted from the URL
+        str: Shop name from the shop_data, or formatted URL if shop_name not found
     """
-    parsed_url = urlparse(base_url)
-    formatted_name = parsed_url.netloc.replace('.', '_')
-    return formatted_name
+    # Return shop_name if present, otherwise fallback to URL formatting
+    return shop_data.get("shop_name") or urlparse(shop_data["url"]).netloc.replace('.', '_')
 
 if __name__ == "__main__":
     # Load shop URLs from JSON file
@@ -122,16 +121,14 @@ if __name__ == "__main__":
     for shop_data in shop_urls_data:
         shopify_base_url = shop_data["url"]
         category = shop_data.get("category", "Unknown")
-        priority = shop_data.get("priority", "Unknown")
-
-        shop_name = get_shop_name(shopify_base_url)
+        shop_name = get_shop_name(shop_data) 
         output_file = f"output/{shop_name}_products.json"
 
-        print(f"Processing shop: {shop_name} (Category: {category}, Priority: {priority})")
+        print(f"Processing shop: {shop_name} (Category: {category})")
         if not is_shopify_store(shopify_base_url):
             print(f"Skipping {shopify_base_url}: Not a Shopify store.")
             summary_log.append([
-                shop_name, shopify_base_url, category, priority,
+                shop_name, shopify_base_url, category,
                 "Failure: Not a Shopify store"
             ])
             continue
@@ -149,7 +146,6 @@ if __name__ == "__main__":
                     shop_name,
                     shopify_base_url,
                     category,
-                    priority,
                     success_msg
                 ])
             else:
@@ -158,7 +154,6 @@ if __name__ == "__main__":
                     shop_name,
                     shopify_base_url,
                     category,
-                    priority,
                     "Failure: No products found"
                 ])
         except (requests.exceptions.RequestException, json.JSONDecodeError, OSError) as e:
@@ -167,7 +162,6 @@ if __name__ == "__main__":
                 shop_name,
                 shopify_base_url,
                 category,
-                priority,
                 f"Failure: {e}"
             ])
 
@@ -175,7 +169,7 @@ if __name__ == "__main__":
     os.makedirs("output", exist_ok=True)
     with open("output/shopify_summary.csv", "w", newline="", encoding="utf-8") as csv_file:
         csvwriter = csv.writer(csv_file)
-        csvwriter.writerow(["Shop Name", "URL", "Category", "Priority", "Summary"])
+        csvwriter.writerow(["Shop Name", "URL", "Category", "Summary"])
         csvwriter.writerows(summary_log)
 
     print("Summary written to output/shopify_summary.csv.")
