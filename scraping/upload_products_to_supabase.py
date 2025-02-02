@@ -19,52 +19,44 @@ if not SUPABASE_URL or not SUPABASE_KEY:
 
 supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
 
-# Helper to strip HTML tags
+# Helper functions
 def strip_html_tags(html_text):
-    """Remove HTML tags from text and decode HTML entities.
-
-    Args:
-        html_text (str): Text containing HTML tags
-
-    Returns:
-        str: Clean text without HTML tags
-    """
+    """Remove HTML tags from text and decode HTML entities."""
     return re.sub(r"<[^>]*>", "", unescape(html_text or ""))
+
+def clean_numeric(value):
+    """Converts string numbers with commas into float."""
+    if isinstance(value, str):
+        try:
+            return float(value.replace(",", ""))
+        except ValueError:
+            return None
+    return value
+
+def clean_boolean(value):
+    """Converts various truthy values to boolean."""
+    return value in [1, "1", True, "true", "yes"]
 
 def generate_deterministic_id(namespace_string, *components):
     """Generate a deterministic UUID based on input components."""
     namespace = uuid.UUID('12345678-1234-5678-1234-567812345678')
     components_str = '|'.join(str(c or '') for c in components)
-    unique_string = f"{namespace_string}:{components_str}"
-    generated_uuid = uuid.uuid5(namespace, unique_string)
-    return str(generated_uuid)
+    return str(uuid.uuid5(namespace, f"{namespace_string}:{components_str}"))
 
+# Processing functions
 def process_options(product):
-    """Process product options into a standardized format.
-
-    Args:
-        product (dict): Product data containing options
-
-    Returns:
-        list: Processed options with generated IDs
-    """
+    """Process product options into a standardized format."""
     options = product.get("options", [])
-    processed_options = []
-    for option in options:
-        option_uuid = generate_deterministic_id(
-            'option',
-            product["id"],
-            option["name"],
-            option["position"]
-        )
-        processed_options.append({
-            "id": option_uuid,
+    return [
+        {
+            "id": generate_deterministic_id('option', product["id"], opt["name"], opt["position"]),
             "product_id": product["id"],
-            "name": option["name"],
-            "position": option["position"],
-            "values": option["values"],
-        })
-    return processed_options
+            "name": opt["name"],
+            "position": opt["position"],
+            "values": opt["values"],
+        }
+        for opt in options
+    ]
 
 def process_variants(product):
     """Process product variants into a standardized format."""
@@ -75,146 +67,94 @@ def process_variants(product):
             "id": variant["id"],
             "product_id": product["id"],
             "title": variant["title"],
-            "price": variant["price"],
-            "sku": variant["sku"]
+            "price": clean_numeric(variant["price"]),
+            "compare_at_price": clean_numeric(variant.get("compare_at_price")),
+            "sku": variant["sku"],
+            "inventory_quantity": variant.get("inventory_quantity"),
+            "requires_shipping": variant.get("requires_shipping"),
+            "taxable": variant.get("taxable"),
+            "created_at_external": variant.get("created_at"),
+            "updated_at": variant.get("updated_at"),
         }
-        # Add optional fields
-        optional_fields = [
-            "inventory_quantity",
-            "requires_shipping",
-            "taxable",
-            "compare_at_price",
-            "created_at",
-            "updated_at"
-        ]
-        for field in optional_fields:
-            key = "created_at_external" if field == "created_at" else field
-            variant_data[key] = variant.get(field)
         processed_variants.append(variant_data)
     return processed_variants
 
 def process_images(product):
-    """Process product images into a standardized format.
-
-    Args:
-        product (dict): Product data containing images
-
-    Returns:
-        list: Processed images with standardized fields
-    """
+    """Process product images into a standardized format."""
     images = product.get("images", [])
-    processed_images = []
-    for image in images:
-        img_data = {
-            "id": image["id"],
+    return [
+        {
+            "id": img["id"],
             "product_id": product["id"],
-            "src": image["src"],
-            "alt": image.get("alt", ""),
-            "position": image["position"]
+            "src": img["src"],
+            "alt": img.get("alt", ""),
+            "position": img["position"]
         }
-        processed_images.append(img_data)
-    return processed_images
+        for img in images
+    ]
 
 def process_offers(product):
     """Process product offers into a standardized format."""
     offers = product.get("offers", [])
-    processed_offers = []
-    for offer in offers:
-        seller = offer.get("seller", {})
-        seller_name = None
-        if isinstance(seller, dict):
-            seller_name = seller.get("name")
-        sku = offer.get("sku")
-        offer_id = generate_deterministic_id(
-            'offer',
-            product["id"],
-            seller_name,
-            sku
-        )
-        processed_offers.append({
-            "id": offer_id,
+    return [
+        {
+            "id": generate_deterministic_id(
+                'offer', 
+                product["id"], 
+                offer.get("seller", {}).get("name") if isinstance(offer.get("seller"), dict) else None, 
+                offer.get("sku")
+            ),
             "product_id": product["id"],
-            "availability": offer.get("availability"),
+            "availability": clean_boolean(offer.get("availability")),
             "item_condition": offer.get("itemCondition"),
             "price_currency": offer.get("priceCurrency"),
-            "price": offer.get("price"),
+            "price": clean_numeric(offer.get("price")),
             "price_valid_until": offer.get("priceValidUntil"),
             "url": offer.get("url"),
             "checkout_page_url_template": offer.get("checkoutPageURLTemplate"),
             "image": offer.get("image"),
             "mpn": offer.get("mpn"),
-            "sku": sku,
-            "seller_name": seller_name
-        })
-    return processed_offers
+            "sku": offer.get("sku"),
+            "seller_name": offer.get("seller", {}).get("name") if isinstance(offer.get("seller"), dict) else None,
+        }
+        for offer in offers
+    ]
 
-def handle_upsert_response(response, batch_num, batch_size, error_logs):
-    """Handle response from Supabase upsert operation."""
-    if response.data:
-        print(f"Upserted batch {batch_num}: {batch_size} records.")
-        return True
-    if hasattr(response, 'error') and response.error:
-        error_message = f"Error in upsert batch {batch_num}: {response.error}"
-        print(error_message)
-        error_logs.append(error_message)
-    else:
-        error_message = f"Unexpected response in batch {batch_num}: {response}"
-        print(error_message)
-        error_logs.append(error_message)
-    return False
-
-def log_duplicates(table_name, duplicates):
-    """Log duplicate items found during processing."""
-    if duplicates:
-        print(f"\nDuplicate IDs found in {table_name}:")
-        for dup_id, items in duplicates.items():
-            sources = [item.get('source_file', 'Unknown') for item in items]
-            print(f"ID: {dup_id}, Sources: {', '.join(sources)}")
-
+# Database operations
 def bulk_upsert_data(table_name, data, batch_size=100, retries=3):
-    """Bulk upsert data to Supabase table with deduplication and error handling."""
-    dedup_data = {
-        'seen_ids': set(),
-        'filtered': [],
-        'duplicates': {},
-        'errors': []
-    }
+    """Bulk upsert data to Supabase with deduplication and error handling."""
+    seen_ids = set()
+    deduplicated_data = []
+    duplicate_logs = []
 
     # Deduplicate data
     for item in data:
-        if item["id"] not in dedup_data['seen_ids']:
-            dedup_data['seen_ids'].add(item["id"])
-            dedup_data['filtered'].append(item)
+        if item["id"] not in seen_ids:
+            seen_ids.add(item["id"])
+            deduplicated_data.append(item)
         else:
-            dedup_data['duplicates'].setdefault(item["id"], []).append(item)
+            duplicate_logs.append(item["id"])
+
+    # Log duplicates
+    if duplicate_logs:
+        print(f"Duplicate IDs found in {table_name}: {duplicate_logs}")
 
     # Process batches
-    for i in range(0, len(dedup_data['filtered']), batch_size):
-        batch = dedup_data['filtered'][i:i + batch_size]
+    for i in range(0, len(deduplicated_data), batch_size):
+        batch = deduplicated_data[i:i + batch_size]
         for attempt in range(retries):
             try:
                 response = supabase.table(table_name).upsert(batch, on_conflict="id").execute()
-                if handle_upsert_response(
-                    response,
-                    i // batch_size,
-                    len(batch),
-                    dedup_data['errors']
-                ):
+                if response.data:
+                    print(f"Upserted batch {i // batch_size}: {len(batch)} records.")
                     break
+                else:
+                    print(f"Unexpected response in batch {i // batch_size}: {response}")
             except (requests.exceptions.RequestException, json.JSONDecodeError) as e:
-                error_message = f"Error in batch {i // batch_size}, attempt {attempt + 1}: {e}"
-                print(error_message)
-                dedup_data['errors'].append(error_message)
+                print(f"Error in batch {i // batch_size}, attempt {attempt + 1}: {e}")
                 if attempt == retries - 1:
                     raise
                 time.sleep(5)
-
-    log_duplicates(table_name, dedup_data['duplicates'])
-
-    if dedup_data['errors']:
-        print("\nSummary of errors encountered during processing:")
-        for error in dedup_data['errors']:
-            print(error)
 
 class ProductProcessor:
     """Helper class to process and upload product data."""
@@ -235,10 +175,7 @@ class ProductProcessor:
             "title": product["title"],
             "handle": product["handle"],
             "vendor": product["vendor"],
-            "submitted_by": self.submitted_by
-        }
-        # Add optional fields
-        optional_fields = {
+            "submitted_by": self.submitted_by,
             "description": strip_html_tags(product.get("body_html", "")),
             "created_at_external": product.get("created_at"),
             "updated_at_external": product.get("updated_at"),
@@ -247,7 +184,6 @@ class ProductProcessor:
             "tags": product.get("tags", []),
             "url": product.get("product_url", "")
         }
-        fields.update(optional_fields)
         self.collections['products'].append(fields)
         self.collections['options'].extend(process_options(product))
         self.collections['variants'].extend(process_variants(product))
@@ -256,9 +192,7 @@ class ProductProcessor:
 
     def get_stats(self):
         """Get statistics about processed products."""
-        return {
-            name: len(items) for name, items in self.collections.items()
-        }
+        return {name: len(items) for name, items in self.collections.items()}
 
 def process_products_file(filepath, user_id):
     """Process a JSON file containing product data and upload to Supabase."""
@@ -283,23 +217,10 @@ def process_products_file(filepath, user_id):
 
 def get_json_files(output_folder):
     """Get all JSON files from the output folder."""
-    if not os.path.exists(output_folder):
-        print(f"Output folder '{output_folder}' does not exist.")
-        return []
-
-    json_files = [
-        os.path.join(output_folder, f) 
-        for f in os.listdir(output_folder) 
-        if f.endswith(".json")
-    ]
-    if not json_files:
-        print(f"No JSON files found in folder '{output_folder}'.")
-    return json_files
+    return [os.path.join(output_folder, f) for f in os.listdir(output_folder) if f.endswith(".json")]
 
 if __name__ == "__main__":
     USER_UUID = "691aedc4-1055-4b57-adb7-7480febba4c8"
-    json_files = get_json_files("output")
-    for json_file in json_files:
+    for json_file in get_json_files("output"):
         print(f"Processing file: {json_file}")
         process_products_file(json_file, USER_UUID)
-        
