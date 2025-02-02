@@ -126,18 +126,20 @@ interface ProductCardProps {
                 )}
               </div>
               <div className="flex flex-wrap gap-2 mt-2">
-                {variants.map((variant, index) => (
-                  <span
-                    key={index}
-                    className={`text-sm px-2 py-1 rounded-full border ${
-                      variant.available 
-                        ? 'border-gray-300 bg-gray-100' 
-                        : 'border-gray-200 bg-gray-100 text-gray-400 line-through'
-                    }`}
-                  >
-                    {variant.title}
-                  </span>
-                ))}
+                {variants.map((variant, index) => 
+                  variant.title !== "Default Title" && (
+                    <span
+                      key={index}
+                      className={`text-sm px-2 py-1 rounded-full border ${
+                        variant.available 
+                          ? 'border-gray-300 bg-gray-100' 
+                          : 'border-gray-200 bg-gray-100 text-gray-400 line-through'
+                      }`}
+                    >
+                      {variant.title}
+                    </span>
+                  )
+                )}
               </div>
               <div className="flex gap-4">
                 <button

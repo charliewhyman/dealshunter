@@ -96,6 +96,8 @@ def process_images(product):
 def process_offers(product):
     """Process product offers into a standardized format."""
     offers = product.get("offers", [])
+    if isinstance(offers, dict):
+        offers = [offers]
     return [
         {
             "id": generate_deterministic_id(
@@ -170,25 +172,115 @@ class ProductProcessor:
 
     def process_product(self, product):
         """Process a single product and its related data."""
-        fields = {
-            "id": product["id"],
-            "title": product["title"],
-            "handle": product["handle"],
-            "vendor": product["vendor"],
-            "submitted_by": self.submitted_by,
-            "description": strip_html_tags(product.get("body_html", "")),
-            "created_at_external": product.get("created_at"),
-            "updated_at_external": product.get("updated_at"),
-            "published_at_external": product.get("published_at"),
-            "product_type": product.get("product_type", ""),
-            "tags": product.get("tags", []),
-            "url": product.get("product_url", "")
-        }
-        self.collections['products'].append(fields)
-        self.collections['options'].extend(process_options(product))
-        self.collections['variants'].extend(process_variants(product))
-        self.collections['images'].extend(process_images(product))
-        self.collections['offers'].extend(process_offers(product))
+        if not isinstance(product, dict):
+            print(f"Error processing product: Expected a dictionary but got {type(product).__name__}")
+            return
+
+        try:
+            fields = {}
+            try:
+                fields["id"] = product["id"]
+            except Exception as e:
+                print(f"Error accessing 'id' for product: {e}")
+                raise
+
+            try:
+                fields["title"] = product["title"]
+            except Exception as e:
+                print(f"Error accessing 'title' for product {fields.get('id', 'unknown')}: {e}")
+                raise
+
+            try:
+                fields["handle"] = product["handle"]
+            except Exception as e:
+                print(f"Error accessing 'handle' for product {fields.get('id', 'unknown')}: {e}")
+                raise
+
+            try:
+                fields["vendor"] = product["vendor"]
+            except Exception as e:
+                print(f"Error accessing 'vendor' for product {fields.get('id', 'unknown')}: {e}")
+                raise
+
+            try:
+                fields["submitted_by"] = self.submitted_by
+            except Exception as e:
+                print(f"Error accessing 'submitted_by' for product {fields.get('id', 'unknown')}: {e}")
+                raise
+
+            try:
+                fields["description"] = strip_html_tags(product.get("body_html", ""))
+            except Exception as e:
+                print(f"Error accessing 'body_html' for product {fields.get('id', 'unknown')}: {e}")
+                raise
+
+            try:
+                fields["created_at_external"] = product.get("created_at")
+            except Exception as e:
+                print(f"Error accessing 'created_at' for product {fields.get('id', 'unknown')}: {e}")
+                raise
+
+            try:
+                fields["updated_at_external"] = product.get("updated_at")
+            except Exception as e:
+                print(f"Error accessing 'updated_at' for product {fields.get('id', 'unknown')}: {e}")
+                raise
+
+            try:
+                fields["published_at_external"] = product.get("published_at")
+            except Exception as e:
+                print(f"Error accessing 'published_at' for product {fields.get('id', 'unknown')}: {e}")
+                raise
+
+            try:
+                fields["product_type"] = product.get("product_type", "")
+            except Exception as e:
+                print(f"Error accessing 'product_type' for product {fields.get('id', 'unknown')}: {e}")
+                raise
+
+            try:
+                fields["tags"] = product.get("tags", [])
+            except Exception as e:
+                print(f"Error accessing 'tags' for product {fields.get('id', 'unknown')}: {e}")
+                raise
+
+            try:
+                fields["url"] = product.get("product_url", "")
+            except Exception as e:
+                print(f"Error accessing 'product_url' for product {fields.get('id', 'unknown')}: {e}")
+                raise
+            
+            try:
+                self.collections['products'].append(fields)
+            except Exception as e:
+                print(f"Error adding product {fields.get('id', 'unknown')} to products collection: {e}")
+                return fields.get('id', 'unknown')
+
+            try:
+                self.collections['options'].extend(process_options(product))
+            except Exception as e:
+                print(f"Error processing options for product {fields.get('id', 'unknown')}: {e}")
+                return fields.get('id', 'unknown')
+
+            try:
+                self.collections['variants'].extend(process_variants(product))
+            except Exception as e:
+                print(f"Error processing variants for product {fields.get('id', 'unknown')}: {e}")
+                return fields.get('id', 'unknown')
+
+            try:
+                self.collections['images'].extend(process_images(product))
+            except Exception as e:
+                print(f"Error processing images for product {fields.get('id', 'unknown')}: {e}")
+                return fields.get('id', 'unknown')
+
+            try:
+                self.collections['offers'].extend(process_offers(product))
+            except Exception as e:
+                print(f"Error processing offers for product {fields.get('id', 'unknown')}: {e}")
+                return fields.get('id', 'unknown')
+        except Exception as e:
+            print(f"Error processing product {fields.get('id', 'unknown')}: {e}")
 
     def get_stats(self):
         """Get statistics about processed products."""
