@@ -281,11 +281,11 @@ def process_products_file(filepath, user_id):
     except (json.JSONDecodeError, OSError) as e:
         print(f"Error processing file {filepath}: {e}")
 
-def get_json_file(output_folder):
-    """Get the first JSON file from the output folder."""
+def get_json_files(output_folder):
+    """Get all JSON files from the output folder."""
     if not os.path.exists(output_folder):
         print(f"Output folder '{output_folder}' does not exist.")
-        return None
+        return []
 
     json_files = [
         os.path.join(output_folder, f) 
@@ -294,14 +294,12 @@ def get_json_file(output_folder):
     ]
     if not json_files:
         print(f"No JSON files found in folder '{output_folder}'.")
-        return None
-
-    return json_files[0]
+    return json_files
 
 if __name__ == "__main__":
     USER_UUID = "691aedc4-1055-4b57-adb7-7480febba4c8"
-    json_file = get_json_file("output")
-    if json_file:
+    json_files = get_json_files("output")
+    for json_file in json_files:
         print(f"Processing file: {json_file}")
         process_products_file(json_file, USER_UUID)
         
