@@ -70,3 +70,12 @@ button:focus-visible {
     background-color: #f9f9f9;
   }
 }
+
+.available {
+  color: black; /* Example style for available variant */
+}
+
+.unavailable {
+  color: grey; /* Example style for unavailable variant */
+  text-decoration: line-through; /* Example style for unavailable variant */
+}

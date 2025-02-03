@@ -5,6 +5,7 @@ import { Product, CommentWithUser } from '../types';
 import { ExternalLink } from 'lucide-react';
 import CommentsList from '../components/CommentsList';
 import { useProductPricing } from '../hooks/useProductPricing';
+import '../index.css';
 
 function ProductPage() {
   const { ProductId } = useParams<{ ProductId: string }>();
@@ -61,13 +62,13 @@ function ProductPage() {
         // Fetch variants
         const { data: variantsData, error: variantsError } = await supabase
           .from('variants')
-          .select('title,inventory_quantity')
+          .select('title,inventory_quantity,available')
           .eq('product_id', ProductId);
 
         if (!variantsError && variantsData) {
           setVariants(variantsData.map(variant => ({
             title: variant.title,
-            available: variant.inventory_quantity > 0
+            available: variant.available
           })));
         }
 
@@ -155,8 +156,8 @@ function ProductPage() {
                     key={index}
                     className={`text-sm px-2 py-1 rounded-full border ${
                       variant.available 
-                        ? 'border-gray-300 bg-gray-100' 
-                        : 'border-gray-200 bg-gray-100 text-gray-400 line-through'
+                        ? 'border-gray-300 bg-gray-100 available' 
+                        : 'border-gray-200 bg-gray-100 unavailable'
                     }`}
                   >
                     {variant.title}
