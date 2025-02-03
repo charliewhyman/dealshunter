@@ -26,6 +26,25 @@ function ProductPage() {
 
         if (ProductError) throw ProductError;
         setProduct(ProductData);
+      } catch (error) {
+        console.error("Error fetching data:", error);
+      }
+    };
+
+    fetchProductData();
+}, [ProductId]);
+
+  useEffect(() => {
+    const fetchProductData = async () => {
+      try {
+        const { data: ProductData, error: ProductError } = await supabase
+          .from('products')
+          .select('*')
+          .eq('id', ProductId)
+          .single();
+
+        if (ProductError) throw ProductError;
+        setProduct(ProductData);
 
         // Fetch image URL
         const { data: imageData, error: imageError } = await supabase
@@ -57,7 +76,7 @@ function ProductPage() {
           .from('comments')
           .select(`
             *,
-            Products (
+            products (
               id
             ),
             profiles (
@@ -70,7 +89,7 @@ function ProductPage() {
               )
             )
           `)
-          .eq('Products.id', ProductId);
+          .eq('products.id', ProductId);
 
         if (commentsError) throw commentsError;
 
