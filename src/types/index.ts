@@ -282,6 +282,7 @@ export type Database = {
           id: number
           product_type: string | null
           published_at_external: string | null
+          shop_name: string | null
           submitted_by: string
           tags: string[] | null
           title: string | null
@@ -300,6 +301,7 @@ export type Database = {
           id: number
           product_type?: string | null
           published_at_external?: string | null
+          shop_name?: string | null
           submitted_by: string
           tags?: string[] | null
           title?: string | null
@@ -318,6 +320,7 @@ export type Database = {
           id?: number
           product_type?: string | null
           published_at_external?: string | null
+          shop_name?: string | null
           submitted_by?: string
           tags?: string[] | null
           title?: string | null
@@ -543,6 +546,12 @@ export type Database = {
       }
     }
     Views: {
+      distinct_shop_names: {
+        Row: {
+          shop_name: string | null
+        }
+        Relationships: []
+      }
       distinct_vendors: {
         Row: {
           vendor: string | null

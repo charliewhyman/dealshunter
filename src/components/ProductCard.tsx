@@ -100,8 +100,8 @@ interface ProductCardProps {
               </a>
             </div>
 
-            {/* Display the product vendor */}
-            <p className="text-sm text-gray-500 mt-1">{product.vendor}</p>
+            {/* Display the product shop_name */}
+            <p className="text-sm text-gray-500 mt-1">{product.shop_name}</p>
 
             <div className="flex items-center justify-between mt-4 flex-wrap gap-2">
               <div className="flex items-center gap-2">
