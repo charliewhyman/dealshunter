@@ -170,7 +170,7 @@ class ProductProcessor:
             'offers': []
         }
 
-    def process_product(self, product, shop_name=None):
+    def process_product(self, product):
         """Process a single product and its related data."""
         if not isinstance(product, dict):
             print(f"Error processing product: Expected a dictionary but got {type(product).__name__}")
@@ -251,6 +251,12 @@ class ProductProcessor:
                 raise
             
             try:
+                fields["shop_name"] = product.get("shop_name", "")
+            except Exception as e:
+                print(f"Error accessing 'shop_name' for product {fields.get('id', 'unknown')}: {e}")
+                raise
+            
+            try:
                 self.collections['products'].append(fields)
             except Exception as e:
                 print(f"Error adding product {fields.get('id', 'unknown')} to products collection: {e}")
@@ -290,13 +296,11 @@ def process_products_file(filepath, user_id):
     """Process a JSON file containing product data and upload to Supabase."""
     try:
         with open(filepath, "r", encoding="utf-8") as file:
-            data = json.load(file)
-            shop_name = data.get("shop_name")
-            products = data.get("products", [])
+            products = json.load(file)
 
         processor = ProductProcessor(user_id)
         for product in products:
-            processor.process_product(product, shop_name)
+            processor.process_product(product)
 
         # Bulk upsert all collections
         for table_name, data in processor.collections.items():

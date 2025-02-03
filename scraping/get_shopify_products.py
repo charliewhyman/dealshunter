@@ -8,6 +8,7 @@ from urllib.parse import urlparse
 
 import requests
 from bs4 import BeautifulSoup
+import concurrent.futures
 
 def is_shopify_store(base_url):
     """Check if the given URL belongs to a Shopify store."""
@@ -21,11 +22,12 @@ def is_shopify_store(base_url):
         pass
     return False
 
-def fetch_shopify_products(base_url, limit=250, max_pages=None):
+def fetch_shopify_products(base_url, shop_name, limit=250, max_pages=None):
     """Fetch products from a Shopify store's API.
 
     Args:
         base_url (str): The base URL of the Shopify store
+        shop_name (str): The name of the shop
         limit (int, optional): Number of products per page. Defaults to 250.
         max_pages (int, optional): Maximum number of pages to fetch. Defaults to None.
 
@@ -34,34 +36,47 @@ def fetch_shopify_products(base_url, limit=250, max_pages=None):
     """
     products = []
     page = 1
+    sleep_time = 2
     while True:
         url = f"{base_url}/products.json?limit={limit}&page={page}"
         print(f"Fetching page {page} from {base_url}...")
+        start_time = time.time()
         try:
             response = requests.get(url, timeout=10)
             response.raise_for_status()
-            data = response.json()
+            try:
+                data = response.json()
+            except json.JSONDecodeError as e:
+                print(f"Error decoding JSON for page {page} from {base_url}: {e}")
+                page += 1
+                continue
+            fetch_time = time.time() - start_time
+            
             if 'products' not in data or not data['products']:
                 print("No more products found.")
                 break
 
-            # Add product URLs to the data
+            # Add product URLs and shop name to the data
             for product in data['products']:
                 handle = product.get('handle')
                 if handle:
                     product_url = f"{base_url}/products/{handle}"
                     product['product_url'] = product_url
+                    product['shop_name'] = shop_name
 
                     # Fetch and parse additional data from the product page
                     parse_product_page(product_url, product)
 
             products.extend(data['products'])
-            print(f"Page {page} fetched: {len(data['products'])} products.")
+            print(f"Page {page} fetched in {fetch_time:.2f}s: {len(data['products'])} products.")
+            
             if max_pages and page >= max_pages:
                 print(f"Reached the maximum page limit: {max_pages}")
                 break
             page += 1
-            time.sleep(4)
+            time.sleep(sleep_time)
+            print(f"Waiting {sleep_time} seconds before next request...")
+
         except requests.exceptions.RequestException as e:
             print(f"Error fetching page {page} from {base_url}: {e}")
             break
@@ -118,52 +133,45 @@ if __name__ == "__main__":
 
     summary_log = []
 
-    for shop_data in shop_urls_data:
+    def process_shop(shop_data):
         shopify_base_url = shop_data["url"]
         category = shop_data.get("category", "Unknown")
-        shop_name = get_shop_name(shop_data) 
+        shop_name = get_shop_name(shop_data)
         output_file = f"output/{shop_name}_products.json"
 
         print(f"Processing shop: {shop_name} (Category: {category})")
         if not is_shopify_store(shopify_base_url):
             print(f"Skipping {shopify_base_url}: Not a Shopify store.")
-            summary_log.append([
-                shop_name, shopify_base_url, category,
-                "Failure: Not a Shopify store"
-            ])
-            continue
+            return [shop_name, shopify_base_url, category, "Failure: Not a Shopify store"]
 
         try:
             shop_products = fetch_shopify_products(
                 shopify_base_url,
+                shop_name,
                 limit=250,
                 max_pages=10
             )
             if shop_products:
                 save_products_to_file(shop_products, output_file)
                 success_msg = f"Success: {len(shop_products)} products fetched"
-                summary_log.append([
-                    shop_name,
-                    shopify_base_url,
-                    category,
-                    success_msg
-                ])
+                return [shop_name, shopify_base_url, category, success_msg]
             else:
                 print(f"No products found for {shopify_base_url}.")
-                summary_log.append([
-                    shop_name,
-                    shopify_base_url,
-                    category,
-                    "Failure: No products found"
-                ])
+                return [shop_name, shopify_base_url, category, "Failure: No products found"]
         except (requests.exceptions.RequestException, json.JSONDecodeError, OSError) as e:
             print(f"Error processing {shopify_base_url}: {e}")
-            summary_log.append([
-                shop_name,
-                shopify_base_url,
-                category,
-                f"Failure: {e}"
-            ])
+            return [shop_name, shopify_base_url, category, f"Failure: {e}"]
+
+    with concurrent.futures.ThreadPoolExecutor(max_workers=5) as executor:
+        future_to_shop = {executor.submit(process_shop, shop_data): shop_data for shop_data in shop_urls_data}
+        for future in concurrent.futures.as_completed(future_to_shop):
+            shop_data = future_to_shop[future]
+            try:
+                result = future.result()
+                summary_log.append(result)
+            except Exception as e:
+                print(f"Error processing {shop_data['url']}: {e}")
+                summary_log.append([shop_data["shop_name"], shop_data["url"], shop_data.get("category", "Unknown"), f"Failure: {e}"])
 
     # Write summary to CSV
     os.makedirs("output", exist_ok=True)
