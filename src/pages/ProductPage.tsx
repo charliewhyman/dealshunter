@@ -12,6 +12,7 @@ function ProductPage() {
   const [comments, setComments] = useState<CommentWithUser[]>([]);
   const [loading, setLoading] = useState(true);
   const [productImage, setProductImage] = useState<string | undefined>(undefined);
+  const [variants, setVariants] = useState<Array<{ title: string, available: boolean }>>([]);
   const { variantPrice, compareAtPrice, offerPrice } = useProductPricing(ProductId!);
 
   useEffect(() => {
@@ -36,6 +37,19 @@ function ProductPage() {
 
         if (!imageError && imageData) {
           setProductImage(imageData.src);
+        }
+
+        // Fetch variants
+        const { data: variantsData, error: variantsError } = await supabase
+          .from('variants')
+          .select('title,inventory_quantity')
+          .eq('product_id', ProductId);
+
+        if (!variantsError && variantsData) {
+          setVariants(variantsData.map(variant => ({
+            title: variant.title,
+            available: variant.inventory_quantity > 0
+          })));
         }
 
         // Query to get comment data and parent comment's text for replies
@@ -115,6 +129,22 @@ function ProductPage() {
               <span className="flex-1 text-center">Get Product</span>
               <ExternalLink className="w-5 h-5 text-white" />
             </a>
+            <div className="flex flex-wrap gap-2 mt-2">
+              {variants.map((variant, index) => 
+                variant.title !== "Default Title" && (
+                  <span
+                    key={index}
+                    className={`text-sm px-2 py-1 rounded-full border ${
+                      variant.available 
+                        ? 'border-gray-300 bg-gray-100' 
+                        : 'border-gray-200 bg-gray-100 text-gray-400 line-through'
+                    }`}
+                  >
+                    {variant.title}
+                  </span>
+                )
+              )}
+            </div>
           </div>
         </div>
 
