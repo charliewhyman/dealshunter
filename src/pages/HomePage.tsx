@@ -18,10 +18,6 @@ export function HomePage() {
   const observerRef = useRef<HTMLDivElement | null>(null);
   const [inStockOnly, setInStockOnly] = useState(false);
 
-  // TODO add filtering by product tag/type
-  // TODO add sorting by votes
-  // TODO add filtering by offer or price reduction
-
   // Fetch unique shop names on component mount
   useEffect(() => {
     async function fetchShopNames() {
@@ -45,7 +41,7 @@ export function HomePage() {
           .from('products')
           .select(`
             *,
-            variants (available),
+            variants:variants!inner(*),
             offers (availability)
           `)
           .order('votes', { ascending: false });
@@ -84,43 +80,6 @@ export function HomePage() {
     fetchProducts(page);
 
   }, [page, selectedShopName, inStockOnly]);
-
-  // Filter out-of-stock products
-  useEffect(() => {
-    async function filterInStockProducts() {
-      setLoading(true);
-      try {
-        const { data, error } = await supabase
-          .from('products')
-          .select(`
-            *,
-            offers!inner (
-              availability
-            )
-          `)
-          .eq('offers.availability', 'https://schema.org/InStock')
-          .range(page * ITEMS_PER_PAGE, (page + 1) * ITEMS_PER_PAGE - 1)
-          .order('votes', { ascending: false });
-
-        if (error) throw error;
-
-        if (data) {
-          setProducts((prev) => {
-            const existingIds = new Set(prev.map((product) => product.id));
-            const uniqueProducts = data.filter((product) => !existingIds.has(product.id));
-            return page === 0 ? data : [...prev, ...uniqueProducts];
-          });
-          setHasMore(data.length > 0);
-        }
-      } catch (error) {
-        console.error('Error filtering products:', error);
-      } finally {
-        setLoading(false);
-      }
-    }
-
-    filterInStockProducts();
-  }, [page]);
 
   // Set up intersection observer for infinite scroll
   useEffect(() => {
