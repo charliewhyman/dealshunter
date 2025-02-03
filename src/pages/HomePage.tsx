@@ -11,8 +11,8 @@ export function HomePage() {
   const [loading, setLoading] = useState(true);
   const [hasMore, setHasMore] = useState(true);
   const [page, setPage] = useState(0);
-  const [vendors, setVendors] = useState<string[]>([]);
-  const [selectedVendor, setSelectedVendor] = useState<string>('');
+  const [shopNames, setShopNames] = useState<string[]>([]);
+  const [selectedShopName, setSelectedShopName] = useState<string>('');
   const observerRef = useRef<HTMLDivElement | null>(null);
   const [inStockOnly, setInStockOnly] = useState(false);
 
@@ -20,19 +20,19 @@ export function HomePage() {
   // TODO add sorting by votes
   // TODO add filtering by offer or price reduction
 
-  // Fetch unique vendors on component mount
+  // Fetch unique shop names on component mount
   useEffect(() => {
-    async function fetchVendors() {
+    async function fetchShopNames() {
       const { data, error } = await supabase
-        .from('distinct_vendors')
-        .select('vendor')
-        .order('vendor', { ascending: true });
+        .from('distinct_shop_names')
+        .select('shop_name')
+        .order('shop_name', { ascending: true });
               
       if (data && !error) {
-        setVendors(data.map(item => item.vendor).filter(Boolean));
+        setShopNames(data.map(item => item.shop_name).filter(Boolean));
       }
     }
-    fetchVendors();
+    fetchShopNames();
   }, []);
 
   useEffect(() => {
@@ -41,7 +41,6 @@ export function HomePage() {
       try {
         let query = supabase
           .from('products')
-
           .select(`
             *,
             variants (available),
@@ -49,8 +48,8 @@ export function HomePage() {
           `)
           .order('votes', { ascending: false });
 
-        if (selectedVendor) {
-          query = query.eq('vendor', selectedVendor);
+        if (selectedShopName) {
+          query = query.ilike('shop_name', `%${selectedShopName}%`);
         }
 
         if (inStockOnly) {
@@ -61,9 +60,9 @@ export function HomePage() {
 
         const { data, error } = await query
           .range(page * ITEMS_PER_PAGE, (page + 1) * ITEMS_PER_PAGE - 1);
-    
+
         if (error) throw error;
-    
+
         if (data) {
           setProducts((prev) => {
             const existingIds = new Set(prev.map((product) => product.id));
@@ -81,8 +80,8 @@ export function HomePage() {
 
     fetchProducts(page);
 
-  }, [page, selectedVendor, inStockOnly]);
-  
+  }, [page, selectedShopName, inStockOnly]);
+
   // Filter out-of-stock products
   useEffect(() => {
     async function filterInStockProducts() {
@@ -141,7 +140,8 @@ export function HomePage() {
       if (currentRef) {
         observer.unobserve(currentRef);
       }
-    };  }, [hasMore, loading]);
+    };
+  }, [hasMore, loading]);
 
   // Handle voting on products
   const handleVote = async (productId: number) => {
@@ -169,18 +169,18 @@ export function HomePage() {
 
       <div className="mb-6 flex gap-4 items-center">
         <select 
-          value={selectedVendor}
+          value={selectedShopName}
           onChange={(e) => {
-            setSelectedVendor(e.target.value);
+            setSelectedShopName(e.target.value);
             setPage(0);
             setProducts([]);
           }}
           className="block w-full max-w-xs rounded-md border border-gray-300 px-3 py-2 bg-white shadow-md hover:shadow-lg transition-shadow cursor-pointer font-semibold text-gray-900"
         >
-          <option value="">All Vendors</option>
-          {vendors.map((vendor) => (
-            <option key={vendor} value={vendor}>
-              {vendor}
+          <option value="">All Shops</option>
+          {shopNames.map((shopName) => (
+            <option key={shopName} value={shopName}>
+              {shopName}
             </option>
           ))}
         </select>
