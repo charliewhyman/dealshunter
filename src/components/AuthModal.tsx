@@ -10,14 +10,14 @@ interface AuthModalProps {
 
 export function AuthModal({ isOpen, onClose }: AuthModalProps) {
   // State management for form fields and UI state
-  const [isSignUp, setIsSignUp] = useState(false);  // Toggle between sign up and sign in modes
+  const [isSignUp, setIsSignUp] = useState(false); // Toggle between sign up and sign in modes
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [username, setUsername] = useState('');
   const [error, setError] = useState('');
   const [message, setMessage] = useState('');
-  const { refreshUser } = useAuth();  // Hook to update user context after successful auth
+  const { refreshUser } = useAuth(); // Hook to update user context after successful auth
 
   if (!isOpen) return null;
 

@@ -29,7 +29,7 @@ export function HomePage() {
         .from('distinct_shop_names')
         .select('shop_name')
         .order('shop_name', { ascending: true });
-              
+
       if (data && !error) {
         setShopNames(data.map(item => item.shop_name).filter(Boolean));
       }
@@ -49,23 +49,23 @@ export function HomePage() {
             offers (availability)
           `)
           .order('votes', { ascending: false });
-  
+
         if (selectedShopName.length > 0) {
           const shopNameConditions = selectedShopName.map(name => `shop_name.ilike.%${name}%`).join(',');
           query = query.or(shopNameConditions);
         }
-  
+
         if (inStockOnly) {
           query = query
             .eq('variants.available', true)
             .eq('offers.availability', 'https://schema.org/InStock');
         }
-  
+
         const { data, error } = await query
           .range(page * ITEMS_PER_PAGE, (page + 1) * ITEMS_PER_PAGE - 1);
-  
+
         if (error) throw error;
-  
+
         if (data) {
           setProducts((prev) => {
             const existingIds = new Set(prev.map((product) => product.id));
@@ -80,9 +80,9 @@ export function HomePage() {
         setLoading(false);
       }
     }
-  
+
     fetchProducts(page);
-  
+
   }, [page, selectedShopName, inStockOnly]);
 
   // Filter out-of-stock products

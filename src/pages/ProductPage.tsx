@@ -7,7 +7,6 @@ import CommentsList from '../components/CommentsList';
 import { useProductPricing } from '../hooks/useProductPricing';
 
 function ProductPage() {
-
   const { ProductId } = useParams<{ ProductId: string }>();
   const [Product, setProduct] = useState<Product | null>(null);
   const [comments, setComments] = useState<CommentWithUser[]>([]);
@@ -123,7 +122,7 @@ function ProductPage() {
         <div className="container mx-auto mt-8">
           <h1 className="text-2xl font-bold mb-4">Comments</h1>
           <CommentsList comments={comments} />
-          </div>
+        </div>
       </div>
     </div>
   );

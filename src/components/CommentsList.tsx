@@ -21,7 +21,7 @@ const CommentItem: React.FC<CommentProps> = ({ comment, level }) => {
             <blockquote>
               {`"${comment.parent_comment.comment_text}"`} <br />
               <span className="text-sm">- Replied to by {comment.parent_comment.profiles?.username || 'Anonymous'}</span>
-            </blockquote> {/* Show the quoted parent comment and username */}
+            </blockquote>
           </div>
         )}
 
