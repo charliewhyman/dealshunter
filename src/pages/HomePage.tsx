@@ -3,6 +3,8 @@ import { Product } from '../types';
 import { supabase } from '../lib/supabase';
 import { Loader2 } from 'lucide-react';
 import { ProductCard } from '../components/ProductCard';
+import Select from 'react-select';
+import { MultiValue } from 'react-select';
 
 const ITEMS_PER_PAGE = 10;
 
@@ -12,7 +14,7 @@ export function HomePage() {
   const [hasMore, setHasMore] = useState(true);
   const [page, setPage] = useState(0);
   const [shopNames, setShopNames] = useState<string[]>([]);
-  const [selectedShopName, setSelectedShopName] = useState<string>('');
+  const [selectedShopName, setSelectedShopName] = useState<string[]>([]);
   const observerRef = useRef<HTMLDivElement | null>(null);
   const [inStockOnly, setInStockOnly] = useState(false);
 
@@ -47,22 +49,23 @@ export function HomePage() {
             offers (availability)
           `)
           .order('votes', { ascending: false });
-
-        if (selectedShopName) {
-          query = query.ilike('shop_name', `%${selectedShopName}%`);
+  
+        if (selectedShopName.length > 0) {
+          const shopNameConditions = selectedShopName.map(name => `shop_name.ilike.%${name}%`).join(',');
+          query = query.or(shopNameConditions);
         }
-
+  
         if (inStockOnly) {
           query = query
             .eq('variants.available', true)
             .eq('offers.availability', 'https://schema.org/InStock');
         }
-
+  
         const { data, error } = await query
           .range(page * ITEMS_PER_PAGE, (page + 1) * ITEMS_PER_PAGE - 1);
-
+  
         if (error) throw error;
-
+  
         if (data) {
           setProducts((prev) => {
             const existingIds = new Set(prev.map((product) => product.id));
@@ -77,9 +80,9 @@ export function HomePage() {
         setLoading(false);
       }
     }
-
+  
     fetchProducts(page);
-
+  
   }, [page, selectedShopName, inStockOnly]);
 
   // Filter out-of-stock products
@@ -164,27 +167,29 @@ export function HomePage() {
     }
   };
 
+  const handleShopChange = (selectedOptions: MultiValue<{ value: string; label: string }>) => {
+    const selectedValues = selectedOptions ? selectedOptions.map((option) => option.value) : [];
+    setSelectedShopName(selectedValues);
+    setPage(0);
+    setProducts([]);
+  };
+
+  const shopOptions = shopNames.map((shopName) => ({
+    value: shopName,
+    label: shopName,
+  }));
+
   return (
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-
       <div className="mb-6 flex gap-4 items-center">
-        <select 
-          value={selectedShopName}
-          onChange={(e) => {
-            setSelectedShopName(e.target.value);
-            setPage(0);
-            setProducts([]);
-          }}
+        <Select
+          isMulti
+          options={shopOptions}
+          value={shopOptions.filter(option => selectedShopName.includes(option.value))}
+          onChange={handleShopChange}
           className="block w-full max-w-xs rounded-md border border-gray-300 px-3 py-2 bg-white shadow-md hover:shadow-lg transition-shadow cursor-pointer font-semibold text-gray-900"
-        >
-          <option value="">All Shops</option>
-          {shopNames.map((shopName) => (
-            <option key={shopName} value={shopName}>
-              {shopName}
-            </option>
-          ))}
-        </select>
-
+          placeholder="Select Shops"
+        />
         <label className="flex items-center gap-2 cursor-pointer">
           <input
             type="checkbox"
