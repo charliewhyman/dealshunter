@@ -73,6 +73,7 @@ def process_variants(product):
             "inventory_quantity": variant.get("inventory_quantity"),
             "requires_shipping": variant.get("requires_shipping"),
             "taxable": variant.get("taxable"),
+            "available": clean_boolean(variant.get("available")),
             "created_at_external": variant.get("created_at"),
             "updated_at": variant.get("updated_at"),
         }
@@ -107,7 +108,7 @@ def process_offers(product):
                 offer.get("sku")
             ),
             "product_id": product["id"],
-            "availability": clean_boolean(offer.get("availability")),
+            "availability": offer.get("availability"),
             "item_condition": offer.get("itemCondition"),
             "price_currency": offer.get("priceCurrency"),
             "price": clean_numeric(offer.get("price")),
