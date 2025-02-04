@@ -85,11 +85,15 @@ def process_images(product):
     images = product.get("images", [])
     return [
         {
-            "id": img["id"],
-            "product_id": product["id"],
-            "src": img["src"],
+            "id": img.get("id"),
+            "product_id": img.get("product_id"),
+            "src": img.get("src"),
             "alt": img.get("alt", ""),
-            "position": img["position"]
+            "position": img.get("position"),
+            "updated_at": img.get("updated_at"),
+            "created_at": img.get("created_at"),
+            "width": img.get("width"),
+            "height": img.get("height"),
         }
         for img in images
     ]
