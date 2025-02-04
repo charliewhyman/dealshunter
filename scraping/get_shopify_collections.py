@@ -1,4 +1,4 @@
-"""Module for scraping product data from Shopify stores using their API and web pages."""
+"""Module for scraping collection data from Shopify stores using their API."""
 
 import csv
 import json
@@ -22,23 +22,23 @@ def is_shopify_store(base_url):
         pass
     return False
 
-def fetch_shopify_products(base_url, shop_name, limit=250, max_pages=None):
-    """Fetch products from a Shopify store's API.
+def fetch_shopify_collections(base_url, shop_name, limit=250, max_pages=None):
+    """Fetch collections from a Shopify store's API.
 
     Args:
         base_url (str): The base URL of the Shopify store
         shop_name (str): The name of the shop
-        limit (int, optional): Number of products per page. Defaults to 250.
+        limit (int, optional): Number of collections per page. Defaults to 250.
         max_pages (int, optional): Maximum number of pages to fetch. Defaults to None.
 
     Returns:
-        list: List of product dictionaries containing product data
+        list: List of collection dictionaries containing collection data
     """
-    products = []
+    collections = []
     page = 1
     sleep_time = 2
     while True:
-        url = f"{base_url}/products.json?limit={limit}&page={page}"
+        url = f"{base_url}/collections.json?limit={limit}&page={page}"
         print(f"Fetching page {page} from {base_url}...")
         start_time = time.time()
         try:
@@ -52,23 +52,20 @@ def fetch_shopify_products(base_url, shop_name, limit=250, max_pages=None):
                 continue
             fetch_time = time.time() - start_time
             
-            if 'products' not in data or not data['products']:
-                print("No more products found.")
+            if 'collections' not in data or not data['collections']:
+                print("No more collections found.")
                 break
 
-            # Add product URLs and shop name to the data
-            for product in data['products']:
-                handle = product.get('handle')
+            # Add collection URLs and shop name to the data
+            for collection in data['collections']:
+                handle = collection.get('handle')
                 if handle:
-                    product_url = f"{base_url}/products/{handle}"
-                    product['product_url'] = product_url
-                    product['shop_name'] = shop_name
+                    collection_url = f"{base_url}/collections/{handle}"
+                    collection['collection_url'] = collection_url
+                    collection['shop_name'] = shop_name
 
-                    # Fetch and parse additional data from the product page
-                    parse_product_page(product_url, product)
-
-            products.extend(data['products'])
-            print(f"Page {page} fetched in {fetch_time:.2f}s: {len(data['products'])} products.")
+            collections.extend(data['collections'])
+            print(f"Page {page} fetched in {fetch_time:.2f}s: {len(data['collections'])} collections.")
             
             if max_pages and page >= max_pages:
                 print(f"Reached the maximum page limit: {max_pages}")
@@ -80,39 +77,19 @@ def fetch_shopify_products(base_url, shop_name, limit=250, max_pages=None):
         except requests.exceptions.RequestException as e:
             print(f"Error fetching page {page} from {base_url}: {e}")
             break
-    return products
+    return collections
 
-def parse_product_page(product_url, product):
-    """Parse additional product data from the product's webpage.
-
-    Args:
-        product_url (str): URL of the product page
-        product (dict): Product dictionary to update with additional data
-    """
-    try:
-        response = requests.get(product_url, timeout=10)
-        response.raise_for_status()
-        soup = BeautifulSoup(response.text, 'html.parser')
-
-        script_tag = soup.find('script', type='application/ld+json')
-        if script_tag:
-            schema_data = json.loads(script_tag.string)
-            if isinstance(schema_data, dict) and schema_data.get('@type') == 'Product':
-                product['offers'] = schema_data.get('offers', [])
-    except requests.exceptions.RequestException as e:
-        print(f"Error fetching product page {product_url}: {e}")
-
-def save_products_to_file(products, file_path):
-    """Save product data to a JSON file.
+def save_collections_to_file(collections, file_path):
+    """Save collection data to a JSON file.
 
     Args:
-        products (list): List of product dictionaries to save
+        collections (list): List of collection dictionaries to save
         file_path (str): Path to the output JSON file
     """
     os.makedirs(os.path.dirname(file_path), exist_ok=True)
     with open(file_path, 'w', encoding='utf-8') as file:
-        json.dump(products, file, indent=4, ensure_ascii=False)
-    print(f"Saved {len(products)} products to {file_path}")
+        json.dump(collections, file, indent=4, ensure_ascii=False)
+    print(f"Saved {len(collections)} collections to {file_path}")
 
 def get_shop_name(shop_data):
     """Get shop name from shop_data dictionary.
@@ -137,7 +114,7 @@ if __name__ == "__main__":
         shopify_base_url = shop_data["url"]
         category = shop_data.get("category", "Unknown")
         shop_name = get_shop_name(shop_data)
-        output_file = f"output/{shop_name}_products.json"
+        output_file = f"output/{shop_name}_collections.json"
 
         print(f"Processing shop: {shop_name} (Category: {category})")
         if not is_shopify_store(shopify_base_url):
@@ -145,19 +122,19 @@ if __name__ == "__main__":
             return [shop_name, shopify_base_url, category, "Failure: Not a Shopify store"]
 
         try:
-            shop_products = fetch_shopify_products(
+            shop_collections = fetch_shopify_collections(
                 shopify_base_url,
                 shop_name,
                 limit=250,
                 max_pages=10
             )
-            if shop_products:
-                save_products_to_file(shop_products, output_file)
-                success_msg = f"Success: {len(shop_products)} products fetched"
+            if shop_collections:
+                save_collections_to_file(shop_collections, output_file)
+                success_msg = f"Success: {len(shop_collections)} collections fetched"
                 return [shop_name, shopify_base_url, category, success_msg]
             else:
-                print(f"No products found for {shopify_base_url}.")
-                return [shop_name, shopify_base_url, category, "Failure: No products found"]
+                print(f"No collections found for {shopify_base_url}.")
+                return [shop_name, shopify_base_url, category, "Failure: No collections found"]
         except (requests.exceptions.RequestException, json.JSONDecodeError, OSError) as e:
             print(f"Error processing {shopify_base_url}: {e}")
             return [shop_name, shopify_base_url, category, f"Failure: {e}"]
@@ -175,9 +152,9 @@ if __name__ == "__main__":
 
     # Write summary to CSV
     os.makedirs("output", exist_ok=True)
-    with open("output/shopify_product_summary.csv", "w", newline="", encoding="utf-8") as csv_file:
+    with open("output/shopify_collections_summary.csv", "w", newline="", encoding="utf-8") as csv_file:
         csvwriter = csv.writer(csv_file)
         csvwriter.writerow(["Shop Name", "URL", "Category", "Summary"])
         csvwriter.writerows(summary_log)
 
-    print("Summary written to output/shopify_product_summary.csv.")
+    print("Summary written to output/shopify_collections_summary.csv.")
