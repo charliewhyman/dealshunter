@@ -316,7 +316,7 @@ def process_products_file(filepath, user_id):
 
 def get_json_files(output_folder):
     """Get all JSON files from the output folder."""
-    return [os.path.join(output_folder, f) for f in os.listdir(output_folder) if f.endswith(".json")]
+    return [os.path.join(output_folder, f) for f in os.listdir(output_folder) if f.endswith("_products.json")]
 
 if __name__ == "__main__":
     USER_UUID = "691aedc4-1055-4b57-adb7-7480febba4c8"
