@@ -6,6 +6,7 @@ import { ExternalLink } from 'lucide-react';
 import CommentsList from '../components/CommentsList';
 import { useProductPricing } from '../hooks/useProductPricing';
 import '../index.css';
+import { format } from 'date-fns/format';
 
 function ProductPage() {
   const { ProductId } = useParams<{ ProductId: string }>();
@@ -149,6 +150,7 @@ function ProductPage() {
               <span className="flex-1 text-center">Get Product</span>
               <ExternalLink className="w-5 h-5 text-white" />
             </a>
+            {/* Variants Section */}
             <div className="flex flex-wrap gap-2 mt-2">
               {variants.map((variant, index) => 
                 variant.title !== "Default Title" && (
@@ -164,6 +166,12 @@ function ProductPage() {
                   </span>
                 )
               )}
+            </div>
+            {/* Last updated section */}
+            <div>
+              <p className="text-sm text-gray-500">{Product.updated_at_external 
+                ? format(new Date(Product.updated_at_external), "MMMM do, yyyy H:mma") 
+                : 'No update date available'}</p>
             </div>
           </div>
         </div>
