@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { ArrowBigUp, ExternalLink, MessageCircle } from 'lucide-react';
+import { ExternalLink } from 'lucide-react';
 import { Product } from '../types'; 
 import { formatDistanceToNow } from 'date-fns';
 import { useNavigate } from 'react-router-dom';
@@ -9,11 +9,9 @@ import '../index.css';
 
 interface ProductCardProps {
   product: Product;
-  onVote: (productId: number) => void; 
 }
 
-export function ProductCard({ product, onVote }: ProductCardProps) {
-  const [commentCount, setCommentCount] = useState(0);
+export function ProductCard({ product }: ProductCardProps) {
   const [productImage, setProductImage] = useState<string | null>(null);
   const [variants, setVariants] = useState<Array<{title: string, available: boolean}>>([]);
   const [allVariantsUnavailable, setAllVariantsUnavailable] = useState(false);
@@ -36,21 +34,6 @@ export function ProductCard({ product, onVote }: ProductCardProps) {
     };
 
     fetchVariantAndImage();
-  }, [product.id]);
-
-  useEffect(() => {
-    const fetchCommentCount = async () => {
-      const { data, error } = await supabase
-        .from('comments')
-        .select('*', { count: 'exact' })
-        .eq('product_id', product.id);
-
-      if (!error) {
-        setCommentCount(data.length);
-      }
-    };
-
-    fetchCommentCount();
   }, [product.id]);
 
   useEffect(() => {
@@ -144,28 +127,6 @@ export function ProductCard({ product, onVote }: ProductCardProps) {
                   </span>
                 )
               )}
-            </div>
-            <div className="flex gap-4">
-              <button
-                onClick={(e) => {
-                  e.stopPropagation();
-                  onVote(product.id);
-                }}
-                className="flex items-center gap-2 px-4 py-2 rounded-full bg-gray-400 hover:bg-gray-200 transition-colors"
-              >
-                <ArrowBigUp className="w-4 h-4" />
-                <span>{product.votes}</span>
-              </button>
-              <button
-                onClick={(e) => {
-                  e.stopPropagation();
-                  navigate(`/products/${product.id}#comments`);
-                }}
-                className="flex items-center gap-2 px-4 py-2 rounded-full bg-gray-400 hover:bg-gray-200 transition-colors"
-              >
-                <MessageCircle className="w-4 h-4" />
-                <span>{commentCount}</span>
-              </button>
             </div>
           </div>
         </div>

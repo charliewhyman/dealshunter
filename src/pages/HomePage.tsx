@@ -43,8 +43,7 @@ export function HomePage() {
             *,
             variants:variants!inner(*),
             offers (availability)
-          `)
-          .order('votes', { ascending: false });
+          `);
 
         if (selectedShopName.length > 0) {
           const shopNameConditions = selectedShopName.map(name => `shop_name.ilike.%${name}%`).join(',');
@@ -104,27 +103,7 @@ export function HomePage() {
       }
     };
   }, [hasMore, loading]);
-
-  // Handle voting on products
-  const handleVote = async (productId: number) => {
-    try {
-      // Call Supabase RPC function to increment votes
-      const { error } = await supabase.rpc('increment_votes', {
-        product_id: productId,
-      });
-
-      if (error) throw error;
-
-      // Optimistically update the UI before server confirmation
-      setProducts((prev) =>
-        prev.map((product) =>
-          product.id === productId ? { ...product, votes: (product.votes ?? 0) + 1 } : product
-        )
-      );
-    } catch (error) {
-      console.error('Error voting:', error);
-    }
-  };
+ 
 
   const handleShopChange = (selectedOptions: MultiValue<{ value: string; label: string }>) => {
     const selectedValues = selectedOptions ? selectedOptions.map((option) => option.value) : [];
@@ -166,7 +145,7 @@ export function HomePage() {
       <div className="space-y-6">
         {products.map((product) => (
           <div key={product.id} className="max-w-4xl mx-auto w-full">
-            <ProductCard product={product} onVote={(productId: number) => handleVote(Number(productId))} />
+            <ProductCard product={product} />
           </div>
         ))}
       </div>

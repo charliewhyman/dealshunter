@@ -1,24 +1,5 @@
-import { User } from "@supabase/supabase-js";
-
 // Supabase types
 export type Product = Tables<'products'>;
-export type Comment = Tables<'comments'>;
-
-export interface CommentWithUser extends Comment {
-  Products: { id: string };
-  profiles: { username: string | null };
-  children?: CommentWithUser[];
-  parent_comment?: { 
-    comment_text: string | null; 
-    profiles: { username: string | null };
-  };
-}
-
-export interface AuthContextType {
-  user: User | null;
-  loading: boolean;
-  refreshUser: () => Promise<void>;
-}
 
 export type Json =
   | string
@@ -56,61 +37,6 @@ export type Database = {
   }
   public: {
     Tables: {
-      comments: {
-        Row: {
-          comment_text: string | null
-          created_at: string
-          deleted_at: string | null
-          flagged_status: number | null
-          id: string
-          product_id: number
-          reply_of: string | null
-          user_id: string
-        }
-        Insert: {
-          comment_text?: string | null
-          created_at?: string
-          deleted_at?: string | null
-          flagged_status?: number | null
-          id?: string
-          product_id: number
-          reply_of?: string | null
-          user_id: string
-        }
-        Update: {
-          comment_text?: string | null
-          created_at?: string
-          deleted_at?: string | null
-          flagged_status?: number | null
-          id?: string
-          product_id?: number
-          reply_of?: string | null
-          user_id?: string
-        }
-        Relationships: [
-          {
-            foreignKeyName: "comments_product_id_fkey"
-            columns: ["product_id"]
-            isOneToOne: false
-            referencedRelation: "products"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "comments_reply_of_fkey"
-            columns: ["reply_of"]
-            isOneToOne: false
-            referencedRelation: "comments"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "comments_user_id_fkey"
-            columns: ["user_id"]
-            isOneToOne: false
-            referencedRelation: "profiles"
-            referencedColumns: ["id"]
-          },
-        ]
-      }
       images: {
         Row: {
           alt: string | null
@@ -290,7 +216,6 @@ export type Database = {
           updated_at_external: string | null
           url: string | null
           vendor: string | null
-          votes: number | null
         }
         Insert: {
           created_at?: string | null
@@ -309,7 +234,6 @@ export type Database = {
           updated_at_external?: string | null
           url?: string | null
           vendor?: string | null
-          votes?: number | null
         }
         Update: {
           created_at?: string | null
@@ -328,96 +252,10 @@ export type Database = {
           updated_at_external?: string | null
           url?: string | null
           vendor?: string | null
-          votes?: number | null
         }
         Relationships: []
       }
-      profiles: {
-        Row: {
-          email: string | null
-          first_name: string | null
-          id: string
-          last_name: string | null
-          phone: string | null
-          username: string | null
-        }
-        Insert: {
-          email?: string | null
-          first_name?: string | null
-          id: string
-          last_name?: string | null
-          phone?: string | null
-          username?: string | null
-        }
-        Update: {
-          email?: string | null
-          first_name?: string | null
-          id?: string
-          last_name?: string | null
-          phone?: string | null
-          username?: string | null
-        }
-        Relationships: []
-      }
-      reports: {
-        Row: {
-          comment_id: string | null
-          created_at: string
-          id: string
-          product_id: number | null
-          report_count: number
-          reported_by: string | null
-          reported_user: string | null
-        }
-        Insert: {
-          comment_id?: string | null
-          created_at?: string
-          id?: string
-          product_id?: number | null
-          report_count?: number
-          reported_by?: string | null
-          reported_user?: string | null
-        }
-        Update: {
-          comment_id?: string | null
-          created_at?: string
-          id?: string
-          product_id?: number | null
-          report_count?: number
-          reported_by?: string | null
-          reported_user?: string | null
-        }
-        Relationships: [
-          {
-            foreignKeyName: "reports_comment_id_fkey"
-            columns: ["comment_id"]
-            isOneToOne: false
-            referencedRelation: "comments"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "reports_product_id_fkey"
-            columns: ["product_id"]
-            isOneToOne: false
-            referencedRelation: "products"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "reports_reported_by_fkey"
-            columns: ["reported_by"]
-            isOneToOne: false
-            referencedRelation: "profiles"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "reports_reported_user_fkey"
-            columns: ["reported_user"]
-            isOneToOne: false
-            referencedRelation: "profiles"
-            referencedColumns: ["id"]
-          },
-        ]
-      }
+      
       variants: {
         Row: {
           available: boolean | null
@@ -495,55 +333,6 @@ export type Database = {
           },
         ]
       }
-      votes: {
-        Row: {
-          comment_id: string | null
-          created_at: string
-          entity_type: Database["public"]["Enums"]["entity_types"]
-          id: string
-          product_id: number | null
-          user_id: string
-        }
-        Insert: {
-          comment_id?: string | null
-          created_at?: string
-          entity_type: Database["public"]["Enums"]["entity_types"]
-          id?: string
-          product_id?: number | null
-          user_id: string
-        }
-        Update: {
-          comment_id?: string | null
-          created_at?: string
-          entity_type?: Database["public"]["Enums"]["entity_types"]
-          id?: string
-          product_id?: number | null
-          user_id?: string
-        }
-        Relationships: [
-          {
-            foreignKeyName: "votes_comment_id_fkey"
-            columns: ["comment_id"]
-            isOneToOne: false
-            referencedRelation: "comments"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "votes_product_id_fkey"
-            columns: ["product_id"]
-            isOneToOne: false
-            referencedRelation: "products"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "votes_user_id_fkey1"
-            columns: ["user_id"]
-            isOneToOne: false
-            referencedRelation: "profiles"
-            referencedColumns: ["id"]
-          },
-        ]
-      }
     }
     Views: {
       distinct_shop_names: {
@@ -559,21 +348,8 @@ export type Database = {
         Relationships: []
       }
     }
-    Functions: {
-      increment_votes:
-        | {
-            Args: Record<PropertyKey, never>
-            Returns: undefined
-          }
-        | {
-            Args: {
-              deal_id: string
-            }
-            Returns: undefined
-          }
-    }
     Enums: {
-      entity_types: "comment" | "user" | "deal"
+      entity_types: "user" | "deal"
     }
     CompositeTypes: {
       [_ in never]: never

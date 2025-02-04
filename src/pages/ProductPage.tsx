@@ -1,9 +1,8 @@
 import { useEffect, useState } from 'react';
 import { useParams } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
-import { Product, CommentWithUser } from '../types';
+import { Product } from '../types';
 import { ExternalLink } from 'lucide-react';
-import CommentsList from '../components/CommentsList';
 import { useProductPricing } from '../hooks/useProductPricing';
 import '../index.css';
 import { format } from 'date-fns/format';
@@ -11,7 +10,6 @@ import { format } from 'date-fns/format';
 function ProductPage() {
   const { ProductId } = useParams<{ ProductId: string }>();
   const [Product, setProduct] = useState<Product | null>(null);
-  const [comments, setComments] = useState<CommentWithUser[]>([]);
   const [loading, setLoading] = useState(true);
   const [productImage, setProductImage] = useState<string | undefined>(undefined);
   const [variants, setVariants] = useState<Array<{ title: string, available: boolean }>>([]);
@@ -73,29 +71,6 @@ function ProductPage() {
           })));
         }
 
-        // Query to get comment data and parent comment's text for replies
-        const { data: commentsData, error: commentsError } = await supabase
-          .from('comments')
-          .select(`
-            *,
-            products (
-              id
-            ),
-            profiles (
-              username
-            ),
-            parent_comment: reply_of (
-              comment_text,
-              profiles (
-                username
-              )
-            )
-          `)
-          .eq('products.id', ProductId);
-
-        if (commentsError) throw commentsError;
-
-        setComments(commentsData as CommentWithUser[]);
       } catch (error) {
         console.error('Error fetching data:', error);
       } finally {
@@ -174,12 +149,6 @@ function ProductPage() {
                 : 'No update date available'}</p>
             </div>
           </div>
-        </div>
-
-        {/* Comments Section */}
-        <div className="container mx-auto mt-8">
-          <h1 className="text-2xl font-bold mb-4">Comments</h1>
-          <CommentsList comments={comments} />
         </div>
       </div>
     </div>

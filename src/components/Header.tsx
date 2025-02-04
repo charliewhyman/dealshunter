@@ -1,28 +1,7 @@
 import { Link } from 'react-router-dom';
-import { LogOut, Search, Tag, User } from 'lucide-react';
-import { signOut } from '../lib/auth';
-import { useState } from 'react';
-import { useAuth } from '../contexts/useAuth';
+import { Search, Tag } from 'lucide-react';
 
-interface HeaderProps {
-  onAuthClick: () => void;
-}
-
-export function Header({ onAuthClick }: HeaderProps) {
-  // Authentication context and loading state
-  const { user, refreshUser } = useAuth();
-  const [loading, setLoading] = useState(false);
-
-  // Handle user sign out with loading state management
-  async function handleSignOut() {
-    setLoading(true);
-    try {
-      await signOut();
-      await refreshUser();
-    } finally {
-      setLoading(false);
-    }
-  }
+export function Header() {
 
   return (
     <header className="bg-white shadow-sm w-full h-16">
@@ -54,42 +33,8 @@ export function Header({ onAuthClick }: HeaderProps) {
               />
             </div>
           </div>
-
-          {/* Right Section - User Authentication
-              - Shows loading spinner during sign out
-              - Displays user email when logged in
-              - Shows sign in button when logged out */}
-          <div className="flex items-center space-x-5 flex-shrink-0">
-            {user ? (
-              <div className="flex items-center">
-                {loading ? (
-                  <div className="animate-spin rounded-full h-5 w-5 border-t-2 border-b-2 border-gray-900"></div>
-                ) : (
-                  <Link 
-                    to="/user" 
-                    className="text-sm text-blue-600 hover:underline mr-4"
-                  >
-                    {user.email || 'Guest'}
-                  </Link>
-                )}
-                <button
-                  onClick={handleSignOut}
-                  className="p-2 text-gray-400 hover:text-gray-500"
-                >
-                  <LogOut className="w-6 h-6" />
-                </button>
-              </div>
-            ) : (
-              <button
-                onClick={onAuthClick}
-                className="p-2 text-gray-400 hover:text-gray-500"
-              >
-                <User className="w-6 h-6" />
-              </button>
-            )}
           </div>
-        </div>
       </div>
     </header>
-  );
-}
+  )
+};
