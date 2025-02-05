@@ -107,16 +107,33 @@ def process_single_file(filename, output_folder):
         with open(output_path, "w", encoding="utf-8") as f:
             json.dump(existing_data, f, indent=4)
 
-def save_result_to_json(result):
+def save_result_to_json(result, output_folder):
     for shop_name, collections in result.items():
-        output_file = f"{shop_name}_collections_to_products.json"
-        print(f"Saving results for shop: {shop_name} to file: {output_file}")
-        with open(output_file, "w", encoding="utf-8") as file:
+        output_path = Path(output_folder) / f"{shop_name}_collections_to_products.json"
+        print(f"Saving results for shop: {shop_name} to file: {output_path}")
+        with open(output_path, "w", encoding="utf-8") as file:
             json.dump(collections, file, indent=4)
+
+def deduplicate_data(data):
+    seen_ids = set()
+    deduplicated_data = []
+    duplicate_logs = []
+
+    for item in data:
+        if (item["product_id"], item["collection_id"]) not in seen_ids:
+            seen_ids.add((item["product_id"], item["collection_id"]))
+            deduplicated_data.append({
+                "product_id": item["product_id"],
+                "collection_id": item["collection_id"]
+            })
+        else:
+            duplicate_logs.append((item["product_id"], item["collection_id"]))
+
+    return deduplicated_data, duplicate_logs
 
 output_folder = "output"
 print("Starting processing of collections...")
 result = process_all_collections(output_folder)
 print("Finished processing collections. Saving results...")
-save_result_to_json(result)
+save_result_to_json(result, output_folder)
 print("All results saved.")
