@@ -14,14 +14,24 @@ export function HomePage() {
   const [loading, setLoading] = useState(true);
   const [hasMore, setHasMore] = useState(true);
   const [page, setPage] = useState(0);
-  const [shopNames, setShopNames] = useState<string[]>([]);
-  const [selectedShopName, setSelectedShopName] = useState<string[]>([]);
   const observerRef = useRef<HTMLDivElement | null>(null);
-  const [inStockOnly, setInStockOnly] = useState(false);
-  const [onSaleOnly, setOnSaleOnly] = useState(false);
-  const [searchQuery, setSearchQuery] = useState('');
+  const [shopNames, setShopNames] = useState<string[]>([]);
 
-  // Fetch unique shop names on component mount
+  // Initialize filters from localStorage
+  const [selectedShopName, setSelectedShopName] = useState<string[]>(
+    JSON.parse(localStorage.getItem('selectedShopName') || '[]')
+  );
+  const [inStockOnly, setInStockOnly] = useState<boolean>(
+    JSON.parse(localStorage.getItem('inStockOnly') || 'false')
+  );
+  const [onSaleOnly, setOnSaleOnly] = useState<boolean>(
+    JSON.parse(localStorage.getItem('onSaleOnly') || 'false')
+  );
+  const [searchQuery, setSearchQuery] = useState<string>(
+    localStorage.getItem('searchQuery') || ''
+  );
+
+  // Fetch unique shop names on mount
   useEffect(() => {
     async function fetchShopNames() {
       const { data, error } = await supabase
@@ -36,6 +46,7 @@ export function HomePage() {
     fetchShopNames();
   }, []);
 
+  // Fetch products when filters or page changes
   useEffect(() => {
     async function fetchProducts(page: number) {
       setLoading(true);
@@ -90,12 +101,33 @@ export function HomePage() {
     }
 
     fetchProducts(page);
-
   }, [page, selectedShopName, inStockOnly, onSaleOnly, searchQuery]);
+
+  // Save filters to localStorage when they change
+  useEffect(() => {
+    localStorage.setItem('selectedShopName', JSON.stringify(selectedShopName));
+  }, [selectedShopName]);
+
+  useEffect(() => {
+    localStorage.setItem('inStockOnly', JSON.stringify(inStockOnly));
+  }, [inStockOnly]);
+
+  useEffect(() => {
+    localStorage.setItem('onSaleOnly', JSON.stringify(onSaleOnly));
+  }, [onSaleOnly]);
+
+  useEffect(() => {
+    localStorage.setItem('searchQuery', searchQuery);
+  }, [searchQuery]);
+
+  // Reset pagination and clear products when filters change
+  useEffect(() => {
+    setPage(0);
+    setProducts([]);
+  }, [selectedShopName, inStockOnly, onSaleOnly, searchQuery]);
 
   // Set up intersection observer for infinite scroll
   useEffect(() => {
-    // Create observer that triggers when last element becomes visible
     const observer = new IntersectionObserver(
       (entries) => {
         if (entries[0].isIntersecting && hasMore && !loading) {
@@ -117,11 +149,10 @@ export function HomePage() {
     };
   }, [hasMore, loading]);
 
+  // Handle shop selection
   const handleShopChange = (selectedOptions: MultiValue<{ value: string; label: string }>) => {
     const selectedValues = selectedOptions ? selectedOptions.map((option) => option.value) : [];
     setSelectedShopName(selectedValues);
-    setPage(0);
-    setProducts([]);
   };
 
   const shopOptions = shopNames.map((shopName) => ({
@@ -129,17 +160,13 @@ export function HomePage() {
     label: shopName,
   }));
 
+  // Handle search input changes
   const handleSearchChange = (e: ChangeEvent<HTMLInputElement>) => {
     setSearchQuery(e.target.value);
   };
 
-  const onSearch = (query: string) => {
-    console.log('Searching for:', query);
-  };
-
   const handleSearchSubmit = (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault();
-    onSearch(searchQuery);
   };
 
   return (
@@ -163,11 +190,7 @@ export function HomePage() {
             <input
               type="checkbox"
               checked={inStockOnly}
-              onChange={(e) => {
-                setInStockOnly(e.target.checked);
-                setPage(0);
-                setProducts([]);
-              }}
+              onChange={(e) => setInStockOnly(e.target.checked)}
               className="rounded border-gray-300"
             />
             <span className="font-semibold text-gray-900">In Stock Only</span>
@@ -176,11 +199,7 @@ export function HomePage() {
             <input
               type="checkbox"
               checked={onSaleOnly}
-              onChange={(e) => {
-                setOnSaleOnly(e.target.checked);
-                setPage(0);
-                setProducts([]);
-              }}
+              onChange={(e) => setOnSaleOnly(e.target.checked)}
               className="rounded border-gray-300"
             />
             <span className="font-semibold text-gray-900">On Sale Only</span>
@@ -193,10 +212,7 @@ export function HomePage() {
             </div>
           ))}
         </div>
-        <div
-          ref={observerRef}
-          className="flex items-center justify-center py-8"
-        >
+        <div ref={observerRef} className="flex items-center justify-center py-8">
           {loading && <Loader2 className="w-8 h-8 animate-spin" />}
         </div>
       </div>
