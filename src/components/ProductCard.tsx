@@ -26,7 +26,7 @@ export function ProductCard({ product }: ProductCardProps) {
         .select('src')
         .eq('product_id', product.id)
         .limit(1)
-        .single();
+        .maybeSingle();
 
       if (!imageError && imageData) {
         setProductImage(imageData.src);
@@ -65,13 +65,16 @@ export function ProductCard({ product }: ProductCardProps) {
       onClick={handleCardClick}
     >
       <div className="flex gap-4 flex-wrap">
-        <div className="flex-shrink-0">
-          <img
-            src={productImage || '/default-image.png'} // Fallback to a default image if none found - TODO add default image
-            alt={product.title || 'Product image'}
-            className="w-24 h-24 object-cover rounded-lg"
-          />
-        </div>
+        {productImage && (
+          <div className="flex-shrink-0">
+            <img
+              src={productImage}
+              alt={product.title || 'Product image'}
+              className="w-24 h-24 object-cover rounded-lg"
+              onError={() => setProductImage(null)}
+            />
+          </div>
+        )}
 
         <div className="flex-grow">
           <div className="flex items-center justify-between">
