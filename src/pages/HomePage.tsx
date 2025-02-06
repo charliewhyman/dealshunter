@@ -6,7 +6,7 @@ import { ProductCard } from '../components/ProductCard';
 import Select from 'react-select';
 import { MultiValue } from 'react-select';
 import { Header } from '../components/Header';
-import { useLocation } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router-dom';
 import _ from 'lodash';
 
 const ITEMS_PER_PAGE = 10;
@@ -19,6 +19,7 @@ export function HomePage() {
   const observerRef = useRef<HTMLDivElement | null>(null);
   const [shopNames, setShopNames] = useState<string[]>([]);
   const location = useLocation();
+  const navigate = useNavigate();
 
   // Initialize filters from localStorage
   const [selectedShopName, setSelectedShopName] = useState<string[]>(
@@ -39,6 +40,7 @@ export function HomePage() {
     selectedShopName: string[];
     inStockOnly: boolean;
     onSaleOnly: boolean;
+    searchQuery: string;
   }
 
   async function fetchFilteredProducts(filters: FilterOptions) {
@@ -69,6 +71,10 @@ export function HomePage() {
           .eq('variants.is_price_lower', true);
       }
 
+      if (filters.searchQuery) {
+        query = query.textSearch('title', filters.searchQuery);
+      }
+
       const { data, error } = await query.range(0, ITEMS_PER_PAGE - 1);
 
       if (error) throw error;
@@ -95,9 +101,10 @@ export function HomePage() {
       selectedShopName,
       inStockOnly,
       onSaleOnly,
+      searchQuery,
     };
     debouncedFetchProducts(filters);
-  }, [selectedShopName, inStockOnly, onSaleOnly, debouncedFetchProducts]);
+  }, [selectedShopName, inStockOnly, onSaleOnly, searchQuery, debouncedFetchProducts]);
 
   // Fetch unique shop names on mount
   useEffect(() => {
@@ -240,6 +247,7 @@ export function HomePage() {
 
   const handleSearchSubmit = (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault();
+    navigate(`/?search=${searchQuery}`);
   };
 
   return (
