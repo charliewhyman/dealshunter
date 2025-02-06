@@ -12,8 +12,10 @@
   "dependencies": {
     "@react-native-async-storage/async-storage": "^2.1.0",
     "@supabase/supabase-js": "^2.46.2",
+    "@types/lodash": "^4.17.15",
     "clsx": "^2.1.1",
     "date-fns": "^4.1.0",
+    "lodash": "^4.17.21",
     "lucide-react": "^0.462.0",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",

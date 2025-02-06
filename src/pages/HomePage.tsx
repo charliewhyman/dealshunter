@@ -7,6 +7,7 @@ import Select from 'react-select';
 import { MultiValue } from 'react-select';
 import { Header } from '../components/Header';
 import { useLocation } from 'react-router-dom';
+import _ from 'lodash';
 
 const ITEMS_PER_PAGE = 10;
 
@@ -32,6 +33,71 @@ export function HomePage() {
   const [searchQuery, setSearchQuery] = useState<string>(
     new URLSearchParams(location.search).get('search') || ''
   );
+
+  // Debounce function to delay filter requests
+  interface FilterOptions {
+    selectedShopName: string[];
+    inStockOnly: boolean;
+    onSaleOnly: boolean;
+  }
+
+  async function fetchFilteredProducts(filters: FilterOptions) {
+    setLoading(true);
+    try {
+      let query = supabase
+        .from('products')
+        .select(`
+          *,
+          variants:variants!inner(*),
+          offers (*)
+        `);
+
+      if (filters.selectedShopName.length > 0) {
+        const shopNameConditions = filters.selectedShopName.map(name => `shop_name.ilike.%${name}%`).join(',');
+        query = query.or(shopNameConditions);
+      }
+
+      if (filters.inStockOnly) {
+        query = query
+          .eq('variants.available', true)
+          .eq('offers.availability', 'https://schema.org/InStock');
+      }
+
+      if (filters.onSaleOnly) {
+        query = query
+          .not('offers.id', 'is', null)
+          .eq('variants.is_price_lower', true);
+      }
+
+      const { data, error } = await query.range(0, ITEMS_PER_PAGE - 1);
+
+      if (error) throw error;
+
+      if (data) {
+        setProducts(data);
+        setHasMore(data.length > 0);
+      }
+    } catch (error) {
+      console.error('Error fetching products:', error);
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  const debouncedFetchProducts = useRef(
+    _.debounce((filters: FilterOptions) => {
+      fetchFilteredProducts(filters);
+    }, 300)
+  ).current;
+
+  useEffect(() => {
+    const filters = {
+      selectedShopName,
+      inStockOnly,
+      onSaleOnly,
+    };
+    debouncedFetchProducts(filters);
+  }, [selectedShopName, inStockOnly, onSaleOnly, debouncedFetchProducts]);
 
   // Fetch unique shop names on mount
   useEffect(() => {
