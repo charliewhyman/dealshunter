@@ -61,6 +61,12 @@ def process_collection_product_pairs(filepath):
         data_to_upsert = []
         for collection_id, product_ids in collection_product_pairs.items():
             for product_id in product_ids:
+                # Validate product_id exists in products table
+                response = supabase.table("products").select("id").eq("id", product_id).execute()
+                if not response.data:
+                    print(f"Skipping product_id {product_id} as it does not exist in products table.")
+                    continue
+
                 data_to_upsert.append({
                     "product_id": product_id,
                     "collection_id": collection_id
@@ -76,6 +82,12 @@ def process_collection_product_pairs(filepath):
     except (json.JSONDecodeError, OSError) as e:
         print(f"Error processing file {filepath}: {e}")
 
+def get_collection_product_json_files(output_folder):
+    """Get all JSON files from the output folder ending with _collections_to_products.json."""
+    return [os.path.join(output_folder, f) for f in os.listdir(output_folder) if f.endswith("_collections_to_products.json")]
+
 if __name__ == "__main__":
-    FILEPATH = 'c:/Users/cwhym/Documents/GitHub/dealshunter/scraping/output/Simply Merino_collections_to_products.json'
-    process_collection_product_pairs(FILEPATH)
+    output_folder = 'c:/Users/cwhym/Documents/GitHub/dealshunter/scraping/output'
+    for json_file in get_collection_product_json_files(output_folder):
+        print(f"Processing file: {json_file}")
+        process_collection_product_pairs(json_file)
