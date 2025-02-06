@@ -17,6 +17,7 @@ export function HomePage() {
   const [selectedShopName, setSelectedShopName] = useState<string[]>([]);
   const observerRef = useRef<HTMLDivElement | null>(null);
   const [inStockOnly, setInStockOnly] = useState(false);
+  const [onSaleOnly, setOnSaleOnly] = useState(false);
 
   // Fetch unique shop names on component mount
   useEffect(() => {
@@ -42,7 +43,7 @@ export function HomePage() {
           .select(`
             *,
             variants:variants!inner(*),
-            offers (availability)
+            offers (*)
           `);
 
         if (selectedShopName.length > 0) {
@@ -54,6 +55,12 @@ export function HomePage() {
           query = query
             .eq('variants.available', true)
             .eq('offers.availability', 'https://schema.org/InStock');
+        }
+
+        if (onSaleOnly) {
+          query = query
+            .not('offers.id', 'is', null)
+            .eq('variants.is_price_lower', true);
         }
 
         const { data, error } = await query
@@ -78,7 +85,7 @@ export function HomePage() {
 
     fetchProducts(page);
 
-  }, [page, selectedShopName, inStockOnly]);
+  }, [page, selectedShopName, inStockOnly, onSaleOnly]);
 
   // Set up intersection observer for infinite scroll
   useEffect(() => {
@@ -103,7 +110,6 @@ export function HomePage() {
       }
     };
   }, [hasMore, loading]);
- 
 
   const handleShopChange = (selectedOptions: MultiValue<{ value: string; label: string }>) => {
     const selectedValues = selectedOptions ? selectedOptions.map((option) => option.value) : [];
@@ -140,6 +146,19 @@ export function HomePage() {
             className="rounded border-gray-300"
           />
           <span className="font-semibold text-gray-900">In Stock Only</span>
+        </label>
+        <label className="flex items-center gap-2 cursor-pointer">
+          <input
+            type="checkbox"
+            checked={onSaleOnly}
+            onChange={(e) => {
+              setOnSaleOnly(e.target.checked);
+              setPage(0);
+              setProducts([]);
+            }}
+            className="rounded border-gray-300"
+          />
+          <span className="font-semibold text-gray-900">On Sale Only</span>
         </label>
       </div>
       <div className="space-y-6">
