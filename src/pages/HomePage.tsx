@@ -131,6 +131,7 @@ export function HomePage() {
     const observer = new IntersectionObserver(
       (entries) => {
         if (entries[0].isIntersecting && hasMore && !loading) {
+          setLoading(true);
           setPage((prev) => prev + 1);
         }
       },
@@ -148,6 +149,10 @@ export function HomePage() {
       }
     };
   }, [hasMore, loading]);
+
+  useEffect(() => {
+    setLoading(false);
+  }, [products]);
 
   // Handle shop selection
   const handleShopChange = (selectedOptions: MultiValue<{ value: string; label: string }>) => {
@@ -206,6 +211,11 @@ export function HomePage() {
           </label>
         </div>
         <div className="space-y-6">
+              {loading && (
+                <div className="flex justify-center items-center min-h-[200px]">
+                  <Loader2 className="w-8 h-8 animate-spin text-blue-600" />
+                </div>
+              )}
           {products.map((product) => (
             <div key={product.id} className="max-w-4xl mx-auto w-full">
               <ProductCard product={product} />
@@ -213,7 +223,6 @@ export function HomePage() {
           ))}
         </div>
         <div ref={observerRef} className="flex items-center justify-center py-8">
-          {loading && <Loader2 className="w-8 h-8 animate-spin" />}
         </div>
       </div>
     </>
