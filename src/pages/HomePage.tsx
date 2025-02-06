@@ -6,6 +6,7 @@ import { ProductCard } from '../components/ProductCard';
 import Select from 'react-select';
 import { MultiValue } from 'react-select';
 import { Header } from '../components/Header';
+import { useLocation } from 'react-router-dom';
 
 const ITEMS_PER_PAGE = 10;
 
@@ -16,6 +17,7 @@ export function HomePage() {
   const [page, setPage] = useState(0);
   const observerRef = useRef<HTMLDivElement | null>(null);
   const [shopNames, setShopNames] = useState<string[]>([]);
+  const location = useLocation();
 
   // Initialize filters from localStorage
   const [selectedShopName, setSelectedShopName] = useState<string[]>(
@@ -28,7 +30,7 @@ export function HomePage() {
     JSON.parse(localStorage.getItem('onSaleOnly') || 'false')
   );
   const [searchQuery, setSearchQuery] = useState<string>(
-    localStorage.getItem('searchQuery') || ''
+    new URLSearchParams(location.search).get('search') || ''
   );
 
   // Fetch unique shop names on mount
