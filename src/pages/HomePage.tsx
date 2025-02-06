@@ -1,10 +1,11 @@
 import { ChangeEvent, FormEvent, useEffect, useRef, useState } from 'react';
 import { Product } from '../types';
 import { supabase } from '../lib/supabase';
-import { Loader2, Search } from 'lucide-react';
+import { Loader2 } from 'lucide-react';
 import { ProductCard } from '../components/ProductCard';
 import Select from 'react-select';
 import { MultiValue } from 'react-select';
+import { Header } from '../components/Header';
 
 const ITEMS_PER_PAGE = 10;
 
@@ -136,77 +137,69 @@ export function HomePage() {
     console.log('Searching for:', query);
   };
 
-  const handleSearchSubmit = (e:FormEvent<HTMLFormElement>) => {
+  const handleSearchSubmit = (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     onSearch(searchQuery);
   };
-  
+
   return (
-    <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-      <div className="mb-6 flex gap-4 items-center">
-        <Select
-          isMulti
-          options={shopOptions}
-          value={shopOptions.filter(option => selectedShopName.includes(option.value))}
-          onChange={handleShopChange}
-          className="block w-full max-w-xs rounded-md border border-gray-300 px-3 py-2 bg-white shadow-md hover:shadow-lg transition-shadow cursor-pointer font-semibold text-gray-900"
-          placeholder="Select Shops"
-        />
-        <label className="flex items-center gap-2 cursor-pointer">
-          <input
-            type="checkbox"
-            checked={inStockOnly}
-            onChange={(e) => {
-              setInStockOnly(e.target.checked);
-              setPage(0);
-              setProducts([]);
-            }}
-            className="rounded border-gray-300"
+    <>
+      <Header
+        searchQuery={searchQuery}
+        handleSearchChange={handleSearchChange}
+        handleSearchSubmit={handleSearchSubmit}
+      />
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+        <div className="mb-6 flex gap-4 items-center">
+          <Select
+            isMulti
+            options={shopOptions}
+            value={shopOptions.filter(option => selectedShopName.includes(option.value))}
+            onChange={handleShopChange}
+            className="block w-full max-w-xs rounded-md border border-gray-300 px-3 py-2 bg-white shadow-md hover:shadow-lg transition-shadow cursor-pointer font-semibold text-gray-900"
+            placeholder="Select Shops"
           />
-          <span className="font-semibold text-gray-900">In Stock Only</span>
-        </label>
-        <label className="flex items-center gap-2 cursor-pointer">
-          <input
-            type="checkbox"
-            checked={onSaleOnly}
-            onChange={(e) => {
-              setOnSaleOnly(e.target.checked);
-              setPage(0);
-              setProducts([]);
-            }}
-            className="rounded border-gray-300"
-          />
-          <span className="font-semibold text-gray-900">On Sale Only</span>
-        </label>
-        <div className="flex items-center space-x-4 flex-shrink-0">
-            {/* Search Bar */}
-            <form onSubmit={handleSearchSubmit} className="relative hidden sm:block">
-              <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                <Search className="h-5 w-5 text-gray-400" />
-              </div>
-              <input
-                type="text"
-                placeholder="Search Products..."
-                value={searchQuery}
-                onChange={handleSearchChange}
-                className="block w-60 pl-10 pr-3 py-2 border border-gray-300 rounded-md leading-5 bg-white placeholder-gray-500 focus:outline-none focus:placeholder-gray-400 focus:ring-1 focus:ring-blue-500 focus:border-blue-500 sm:text-sm text-gray-900"
-              />
-            </form>
-          </div>
+          <label className="flex items-center gap-2 cursor-pointer">
+            <input
+              type="checkbox"
+              checked={inStockOnly}
+              onChange={(e) => {
+                setInStockOnly(e.target.checked);
+                setPage(0);
+                setProducts([]);
+              }}
+              className="rounded border-gray-300"
+            />
+            <span className="font-semibold text-gray-900">In Stock Only</span>
+          </label>
+          <label className="flex items-center gap-2 cursor-pointer">
+            <input
+              type="checkbox"
+              checked={onSaleOnly}
+              onChange={(e) => {
+                setOnSaleOnly(e.target.checked);
+                setPage(0);
+                setProducts([]);
+              }}
+              className="rounded border-gray-300"
+            />
+            <span className="font-semibold text-gray-900">On Sale Only</span>
+          </label>
+        </div>
+        <div className="space-y-6">
+          {products.map((product) => (
+            <div key={product.id} className="max-w-4xl mx-auto w-full">
+              <ProductCard product={product} />
+            </div>
+          ))}
+        </div>
+        <div
+          ref={observerRef}
+          className="flex items-center justify-center py-8"
+        >
+          {loading && <Loader2 className="w-8 h-8 animate-spin" />}
+        </div>
       </div>
-      <div className="space-y-6">
-        {products.map((product) => (
-          <div key={product.id} className="max-w-4xl mx-auto w-full">
-            <ProductCard product={product} />
-          </div>
-        ))}
-      </div>
-      <div
-        ref={observerRef}
-        className="flex items-center justify-center py-8"
-      >
-        {loading && <Loader2 className="w-8 h-8 animate-spin" />}
-      </div>
-    </div>
+    </>
   );
 }
