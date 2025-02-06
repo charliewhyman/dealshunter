@@ -292,6 +292,11 @@ export function HomePage() {
                   <Loader2 className="w-8 h-8 animate-spin text-blue-600" />
                 </div>
               )}
+          {!loading && products.length === 0 && (
+            <div className="flex justify-center items-center min-h-[200px]">
+              <p className="text-gray-900">No products found.</p>
+            </div>
+          )}
           {products.map((product) => (
             <div key={product.id} className="max-w-4xl mx-auto w-full">
               <ProductCard product={product} />
