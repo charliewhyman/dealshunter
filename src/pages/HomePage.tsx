@@ -258,7 +258,7 @@ export function HomePage() {
         handleSearchSubmit={handleSearchSubmit}
       />
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        <div className="mb-6 flex gap-4 items-center">
+        <div className="mb-6 flex gap-8 items-center justify-center">
           <Select
             isMulti
             options={shopOptions}
@@ -274,7 +274,7 @@ export function HomePage() {
               onChange={(e) => setInStockOnly(e.target.checked)}
               className="rounded border-gray-300"
             />
-            <span className="font-semibold text-gray-900">In Stock Only</span>
+            <span className="font-semibold text-gray-900">In Stock</span>
           </label>
           <label className="flex items-center gap-2 cursor-pointer">
             <input
@@ -283,7 +283,7 @@ export function HomePage() {
               onChange={(e) => setOnSaleOnly(e.target.checked)}
               className="rounded border-gray-300"
             />
-            <span className="font-semibold text-gray-900">On Sale Only</span>
+            <span className="font-semibold text-gray-900">On Sale</span>
           </label>
         </div>
         <div className="space-y-6">
