@@ -259,14 +259,14 @@ export function HomePage() {
       />
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         <div className="mb-6 flex gap-8 items-center justify-center">
-          <Select
-            isMulti
-            options={shopOptions}
-            value={shopOptions.filter(option => selectedShopName.includes(option.value))}
-            onChange={handleShopChange}
-            className="block w-full max-w-xs rounded-md border border-gray-300 px-3 py-2 bg-white shadow-md hover:shadow-lg transition-shadow cursor-pointer font-semibold text-gray-900"
-            placeholder="Select Shops"
-          />
+        <Select
+          isMulti
+          options={shopOptions}
+          value={shopOptions.filter(option => selectedShopName.includes(option.value))}
+          onChange={handleShopChange}
+          className="block w-full max-w-xs rounded-md border border-gray-300 px-3 py-2 bg-white shadow-md hover:shadow-lg transition-shadow cursor-pointer font-semibold text-gray-900"
+          placeholder={window.innerWidth < 640 ? 'Shops' : 'Select Shops'}
+        />
           <label className="flex items-center gap-2 cursor-pointer">
             <input
               type="checkbox"
@@ -274,7 +274,7 @@ export function HomePage() {
               onChange={(e) => setInStockOnly(e.target.checked)}
               className="rounded border-gray-300"
             />
-            <span className="font-semibold text-gray-900">In Stock</span>
+            <span className="font-semibold text-gray-900 whitespace-nowrap">In Stock</span>
           </label>
           <label className="flex items-center gap-2 cursor-pointer">
             <input
@@ -283,7 +283,7 @@ export function HomePage() {
               onChange={(e) => setOnSaleOnly(e.target.checked)}
               className="rounded border-gray-300"
             />
-            <span className="font-semibold text-gray-900">On Sale</span>
+            <span className="font-semibold text-gray-900 whitespace-nowrap">On Sale</span>
           </label>
         </div>
         <div className="space-y-6">
