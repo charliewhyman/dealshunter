@@ -1,7 +1,7 @@
-import { useEffect, useRef, useState } from 'react';
+import { ChangeEvent, FormEvent, useEffect, useRef, useState } from 'react';
 import { Product } from '../types';
 import { supabase } from '../lib/supabase';
-import { Loader2 } from 'lucide-react';
+import { Loader2, Search } from 'lucide-react';
 import { ProductCard } from '../components/ProductCard';
 import Select from 'react-select';
 import { MultiValue } from 'react-select';
@@ -18,6 +18,7 @@ export function HomePage() {
   const observerRef = useRef<HTMLDivElement | null>(null);
   const [inStockOnly, setInStockOnly] = useState(false);
   const [onSaleOnly, setOnSaleOnly] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
 
   // Fetch unique shop names on component mount
   useEffect(() => {
@@ -63,6 +64,10 @@ export function HomePage() {
             .eq('variants.is_price_lower', true);
         }
 
+        if (searchQuery) {
+          query = query.textSearch('title', searchQuery);
+        }
+
         const { data, error } = await query
           .range(page * ITEMS_PER_PAGE, (page + 1) * ITEMS_PER_PAGE - 1);
 
@@ -85,7 +90,7 @@ export function HomePage() {
 
     fetchProducts(page);
 
-  }, [page, selectedShopName, inStockOnly, onSaleOnly]);
+  }, [page, selectedShopName, inStockOnly, onSaleOnly, searchQuery]);
 
   // Set up intersection observer for infinite scroll
   useEffect(() => {
@@ -123,6 +128,19 @@ export function HomePage() {
     label: shopName,
   }));
 
+  const handleSearchChange = (e: ChangeEvent<HTMLInputElement>) => {
+    setSearchQuery(e.target.value);
+  };
+
+  const onSearch = (query: string) => {
+    console.log('Searching for:', query);
+  };
+
+  const handleSearchSubmit = (e:FormEvent<HTMLFormElement>) => {
+    e.preventDefault();
+    onSearch(searchQuery);
+  };
+  
   return (
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
       <div className="mb-6 flex gap-4 items-center">
@@ -160,6 +178,21 @@ export function HomePage() {
           />
           <span className="font-semibold text-gray-900">On Sale Only</span>
         </label>
+        <div className="flex items-center space-x-4 flex-shrink-0">
+            {/* Search Bar */}
+            <form onSubmit={handleSearchSubmit} className="relative hidden sm:block">
+              <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                <Search className="h-5 w-5 text-gray-400" />
+              </div>
+              <input
+                type="text"
+                placeholder="Search Products..."
+                value={searchQuery}
+                onChange={handleSearchChange}
+                className="block w-60 pl-10 pr-3 py-2 border border-gray-300 rounded-md leading-5 bg-white placeholder-gray-500 focus:outline-none focus:placeholder-gray-400 focus:ring-1 focus:ring-blue-500 focus:border-blue-500 sm:text-sm text-gray-900"
+              />
+            </form>
+          </div>
       </div>
       <div className="space-y-6">
         {products.map((product) => (
