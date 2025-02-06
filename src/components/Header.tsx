@@ -17,9 +17,9 @@ export function Header({ searchQuery, handleSearchChange, handleSearchSubmit }: 
           {/* Logo Section - Brand identity with icon and text */}
           <div className="flex items-center">
             <Link to="/" className="flex items-center">
-              <Tag className="w-8 h-8 text-blue-600" />
+              <Tag className="w-8 h-8 text-yellow-600" />
               <span className="ml-2 text-xl font-bold text-gray-900">
-                ProductHunt
+                The Canadian Edit
               </span>
             </Link>
           </div>
