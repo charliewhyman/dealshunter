@@ -8,6 +8,7 @@ import { MultiValue } from 'react-select';
 import { Header } from '../components/Header';
 import { useLocation, useNavigate } from 'react-router-dom';
 import _ from 'lodash';
+import Slider from '@mui/material/Slider';
 
 const ITEMS_PER_PAGE = 10;
 
@@ -18,7 +19,13 @@ export function HomePage() {
   const [page, setPage] = useState(0);
   const observerRef = useRef<HTMLDivElement | null>(null);
   const [shopNames, setShopNames] = useState<string[]>([]);
+
   const location = useLocation();
+
+  const [searchQuery, setSearchQuery] = useState<string>(
+    new URLSearchParams(location.search).get('search') || ''
+  );
+
   const navigate = useNavigate();
 
   // Initialize filters from localStorage
@@ -31,64 +38,90 @@ export function HomePage() {
   const [onSaleOnly, setOnSaleOnly] = useState<boolean>(
     JSON.parse(localStorage.getItem('onSaleOnly') || 'false')
   );
-  const [searchQuery, setSearchQuery] = useState<string>(
-    new URLSearchParams(location.search).get('search') || ''
+
+  const [priceRange, setPriceRange] = useState<[number, number]>(
+    JSON.parse(localStorage.getItem('priceRange') || '[0, 9999]')
   );
 
-  // Debounce function to delay filter requests
   interface FilterOptions {
     selectedShopName: string[];
     inStockOnly: boolean;
     onSaleOnly: boolean;
     searchQuery: string;
+    priceRange: [number, number];
   }
 
-  async function fetchFilteredProducts(filters: FilterOptions) {
-    setLoading(true);
-    try {
-      let query = supabase
-        .from('products')
-        .select(`
-          *,
-          variants:variants!inner(*),
-          offers (*)
-        `);
+async function fetchFilteredProducts(filters: FilterOptions) {
+  setLoading(true);
+  try {
+    let query = supabase
+      .from('products')
+      .select(`
+        *,
+        variants!inner (
+          id,
+          available,
+          price,
+          is_price_lower
+        ),
+        offers!left (
+          id,
+          availability
+        )
+      `, { count: 'exact' });
 
-      if (filters.selectedShopName.length > 0) {
-        const shopNameConditions = filters.selectedShopName.map(name => `shop_name.ilike.%${name}%`).join(',');
-        query = query.or(shopNameConditions);
-      }
-
-      if (filters.inStockOnly) {
-        query = query
-          .eq('variants.available', true)
-          .eq('offers.availability', 'https://schema.org/InStock');
-      }
-
-      if (filters.onSaleOnly) {
-        query = query
-          .not('offers.id', 'is', null)
-          .eq('variants.is_price_lower', true);
-      }
-
-      if (filters.searchQuery) {
-        query = query.textSearch('title', filters.searchQuery);
-      }
-
-      const { data, error } = await query.range(0, ITEMS_PER_PAGE - 1);
-
-      if (error) throw error;
-
-      if (data) {
-        setProducts(data);
-        setHasMore(data.length > 0);
-      }
-    } catch (error) {
-      console.error('Error fetching products:', error);
-    } finally {
-      setLoading(false);
+    // Build filter conditions
+    const filterConditions: string[] = [];
+    
+    if (filters.selectedShopName.length > 0) {
+      filterConditions.push(`shop_name.in.(${filters.selectedShopName.map(name => `'${name}'`).join(',')})`);
     }
+
+    if (filters.inStockOnly) {
+      query = query
+        .eq('variants.available', true)
+        .eq('offers.availability', 'https://schema.org/InStock');
+    }
+
+    if (filters.onSaleOnly) {
+      query = query
+        .not('offers.id', 'is', null)
+        .eq('variants.is_price_lower', true);
+    }
+
+    if (filters.searchQuery) {
+      query = query.textSearch('title_search', filters.searchQuery, {
+        config: 'english'
+      });
+    }
+
+    if (filters.priceRange) {
+      query = query
+        .gte('variants.price', filters.priceRange[0])
+        .lte('variants.price', filters.priceRange[1]);
+    }
+
+    // Apply combined filter conditions
+    if (filterConditions.length > 0) {
+      query = query.or(filterConditions.join(','));
+    }
+
+    const { data, error, count } = await query
+      .order('created_at', { ascending: false })
+      .limit(ITEMS_PER_PAGE);
+
+    if (error) throw error;
+
+    if (data) {
+      setProducts(data);
+      setHasMore(count ? count > ITEMS_PER_PAGE : false);
+    }
+  } catch (error) {
+    console.error('Error fetching products:', error);
+  } finally {
+    setLoading(false);
   }
+}
 
   const debouncedFetchProducts = useRef(
     _.debounce((filters: FilterOptions) => {
@@ -102,9 +135,10 @@ export function HomePage() {
       inStockOnly,
       onSaleOnly,
       searchQuery,
+      priceRange,
     };
     debouncedFetchProducts(filters);
-  }, [selectedShopName, inStockOnly, onSaleOnly, searchQuery, debouncedFetchProducts]);
+  }, [selectedShopName, inStockOnly, onSaleOnly, searchQuery, priceRange, debouncedFetchProducts]);  
 
   // Fetch unique shop names on mount
   useEffect(() => {
@@ -126,47 +160,77 @@ export function HomePage() {
     async function fetchProducts(page: number) {
       setLoading(true);
       try {
+        const lastProduct = products[products.length - 1];
         let query = supabase
           .from('products')
           .select(`
             *,
-            variants:variants!inner(*),
-            offers (*)
+            variants!inner (
+              id,
+              available,
+              price,
+              is_price_lower
+            ),
+            offers!left (
+              id,
+              availability
+            )
           `);
-
+    
+        // Build filter conditions
+        const filterConditions: string[] = [];
+        
         if (selectedShopName.length > 0) {
-          const shopNameConditions = selectedShopName.map(name => `shop_name.ilike.%${name}%`).join(',');
-          query = query.or(shopNameConditions);
+          filterConditions.push(`shop_name.in.(${selectedShopName.map(name => `'${name}'`).join(',')})`);
         }
-
+    
         if (inStockOnly) {
           query = query
             .eq('variants.available', true)
             .eq('offers.availability', 'https://schema.org/InStock');
         }
-
+    
         if (onSaleOnly) {
           query = query
             .not('offers.id', 'is', null)
             .eq('variants.is_price_lower', true);
         }
-
+    
         if (searchQuery) {
-          query = query.textSearch('title', searchQuery);
+          query = query.textSearch('title_search', searchQuery, {
+            config: 'english'
+          });
         }
-
+    
+        if (priceRange) {
+          query = query
+            .gte('variants.price', priceRange[0])
+            .lte('variants.price', priceRange[1]);
+        }
+    
+        // Apply combined filter conditions
+        if (filterConditions.length > 0) {
+          query = query.or(filterConditions.join(','));
+        }
+    
+        // Use cursor-based pagination
+        if (page > 0 && lastProduct) {
+          query = query.lt('created_at', lastProduct.created_at);
+        }
+    
         const { data, error } = await query
-          .range(page * ITEMS_PER_PAGE, (page + 1) * ITEMS_PER_PAGE - 1);
-
+          .order('created_at', { ascending: false })
+          .limit(ITEMS_PER_PAGE);
+    
         if (error) throw error;
-
+    
         if (data) {
           setProducts((prev) => {
             const existingIds = new Set(prev.map((product) => product.id));
             const uniqueProducts = data.filter((product) => !existingIds.has(product.id));
             return page === 0 ? data : [...prev, ...uniqueProducts];
           });
-          setHasMore(data.length > 0);
+          setHasMore(data.length === ITEMS_PER_PAGE);
         }
       } catch (error) {
         console.error('Error fetching products:', error);
@@ -176,7 +240,7 @@ export function HomePage() {
     }
 
     fetchProducts(page);
-  }, [page, selectedShopName, inStockOnly, onSaleOnly, searchQuery]);
+  }, [page, selectedShopName, inStockOnly, onSaleOnly, searchQuery, priceRange, products]);
 
   // Save filters to localStorage when they change
   useEffect(() => {
@@ -199,7 +263,7 @@ export function HomePage() {
   useEffect(() => {
     setPage(0);
     setProducts([]);
-  }, [selectedShopName, inStockOnly, onSaleOnly, searchQuery]);
+  }, [selectedShopName, inStockOnly, onSaleOnly, searchQuery, priceRange]);
 
   // Set up intersection observer for infinite scroll
   useEffect(() => {
@@ -286,25 +350,40 @@ export function HomePage() {
             <span className="font-semibold text-gray-900 whitespace-nowrap">On Sale</span>
           </label>
         </div>
-        <div className="space-y-6">
-              {loading && (
-                <div className="flex justify-center items-center min-h-[200px]">
-                  <Loader2 className="w-8 h-8 animate-spin text-blue-600" />
-                </div>
-              )}
-          {!loading && products.length === 0 && (
-            <div className="flex justify-center items-center min-h-[200px]">
-              <p className="text-gray-900">No products found.</p>
-            </div>
-          )}
-          {products.map((product) => (
-            <div key={product.id} className="max-w-4xl mx-auto w-full">
-              <ProductCard product={product} />
-            </div>
-          ))}
+        <div className="w-64 px-4">
+        <p className="font-semibold text-gray-900 mb-2">Price Range</p>
+        <Slider
+          value={priceRange}
+          onChange={(_, newValue) => setPriceRange(newValue as [number, number])}
+          valueLabelDisplay="auto"
+          min={0}
+          max={9999}
+          className="text-blue-600"
+        />
+        <div className="flex justify-between text-sm text-gray-600">
+          <span>${priceRange[0]}</span>
+          <span>${priceRange[1]}</span>
         </div>
-        <div ref={observerRef} className="flex items-center justify-center py-8">
-        </div>
+      </div>
+      <div className="space-y-6">
+            {loading && (
+              <div className="flex justify-center items-center min-h-[200px]">
+                <Loader2 className="w-8 h-8 animate-spin text-blue-600" />
+              </div>
+            )}
+        {!loading && products.length === 0 && (
+          <div className="flex justify-center items-center min-h-[200px]">
+            <p className="text-gray-900">No products found.</p>
+          </div>
+        )}
+        {products.map((product) => (
+          <div key={product.id} className="max-w-4xl mx-auto w-full">
+            <ProductCard product={product} />
+          </div>
+        ))}
+      </div>
+      <div ref={observerRef} className="flex items-center justify-center py-8">
+      </div>
       </div>
     </>
   );
