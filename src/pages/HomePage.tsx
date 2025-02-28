@@ -8,7 +8,6 @@ import { MultiValue } from 'react-select';
 import { Header } from '../components/Header';
 import { useLocation, useNavigate } from 'react-router-dom';
 import _ from 'lodash';
-import Slider from '@mui/material/Slider';
 
 const ITEMS_PER_PAGE = 10;
 
@@ -39,16 +38,12 @@ export function HomePage() {
     JSON.parse(localStorage.getItem('onSaleOnly') || 'false')
   );
 
-  const [priceRange, setPriceRange] = useState<[number, number]>(
-    JSON.parse(localStorage.getItem('priceRange') || '[0, 9999]')
-  );
 
   interface FilterOptions {
     selectedShopName: string[];
     inStockOnly: boolean;
     onSaleOnly: boolean;
     searchQuery: string;
-    priceRange: [number, number];
   }
 
   async function fetchFilteredProducts(filters: FilterOptions) {
@@ -103,12 +98,6 @@ export function HomePage() {
         });
       }
 
-      if (filters.priceRange) {
-        query = query
-          .gte('variants.price', filters.priceRange[0])
-          .lte('variants.price', filters.priceRange[1]);
-      }
-
       // Apply combined filter conditions
       if (filterConditions.length > 0) {
         query = query.or(filterConditions.join(','));
@@ -142,10 +131,9 @@ export function HomePage() {
       inStockOnly,
       onSaleOnly,
       searchQuery,
-      priceRange,
     };
     debouncedFetchProducts(filters);
-  }, [selectedShopName, inStockOnly, onSaleOnly, searchQuery, priceRange, debouncedFetchProducts]);  
+  }, [selectedShopName, inStockOnly, onSaleOnly, searchQuery, debouncedFetchProducts]);  
 
   // Fetch unique shop names on mount
   useEffect(() => {
@@ -217,11 +205,6 @@ export function HomePage() {
           });
         }
     
-        if (priceRange) {
-          query = query
-            .gte('variants.price', priceRange[0])
-            .lte('variants.price', priceRange[1]);
-        }
     
         // Apply combined filter conditions
         if (filterConditions.length > 0) {
@@ -255,7 +238,7 @@ export function HomePage() {
     }
 
     fetchProducts(page);
-  }, [page, selectedShopName, inStockOnly, onSaleOnly, searchQuery, priceRange, products]);
+  }, [page, selectedShopName, inStockOnly, onSaleOnly, searchQuery, products]);
 
   // Save filters to localStorage when they change
   useEffect(() => {
@@ -278,7 +261,7 @@ export function HomePage() {
   useEffect(() => {
     setPage(0);
     setProducts([]);
-  }, [selectedShopName, inStockOnly, onSaleOnly, searchQuery, priceRange]);
+  }, [selectedShopName, inStockOnly, onSaleOnly, searchQuery]);
 
   // Set up intersection observer for infinite scroll
   useEffect(() => {
@@ -367,18 +350,6 @@ export function HomePage() {
         </div>
         <div className="w-64 px-4">
         <p className="font-semibold text-gray-900 mb-2">Price Range</p>
-        <Slider
-          value={priceRange}
-          onChange={(_, newValue) => setPriceRange(newValue as [number, number])}
-          valueLabelDisplay="auto"
-          min={0}
-          max={9999}
-          className="text-blue-600"
-        />
-        <div className="flex justify-between text-sm text-gray-600">
-          <span>${priceRange[0]}</span>
-          <span>${priceRange[1]}</span>
-        </div>
       </div>
       <div className="space-y-6">
             {loading && (
