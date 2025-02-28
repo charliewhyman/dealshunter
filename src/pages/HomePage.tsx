@@ -345,7 +345,7 @@ export function HomePage() {
               onChange={(e) => setOnSaleOnly(e.target.checked)}
               className="rounded border-gray-300"
             />
-            <span className="font-semibold text-gray-900 whitespace-nowrap">On Sale</span>
+            <span className="font-semibold text-gray-900 whitespace-nowrap">On Sale Only</span>
           </label>
         </div>
         <div className="w-64 px-4">
