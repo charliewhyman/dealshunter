@@ -336,7 +336,7 @@ export function HomePage() {
               onChange={(e) => setInStockOnly(e.target.checked)}
               className="rounded border-gray-300"
             />
-            <span className="font-semibold text-gray-900 whitespace-nowrap">In Stock</span>
+            <span className="font-semibold text-gray-900 whitespace-nowrap">In Stock Only</span>
           </label>
           <label className="flex items-center gap-2 cursor-pointer">
             <input
