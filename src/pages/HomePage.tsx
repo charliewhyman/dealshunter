@@ -51,78 +51,85 @@ export function HomePage() {
     priceRange: [number, number];
   }
 
-async function fetchFilteredProducts(filters: FilterOptions) {
-  setLoading(true);
-  try {
-    let query = supabase
-      .from('products')
-      .select(`
-        *,
-        variants!inner (
+  async function fetchFilteredProducts(filters: FilterOptions) {
+    setLoading(true);
+    try {
+      let query = supabase
+        .from('products')
+        .select(`
           id,
-          available,
-          price,
-          is_price_lower
-        ),
-        offers!left (
-          id,
-          availability
-        )
-      `, { count: 'exact' });
+          title,
+          shop_name,
+          created_at,
+          url,
+          description,
+          updated_at_external,
+          variants!inner (
+            id,
+            available,
+            price,
+            compare_at_price,
+            is_price_lower
+          ),
+          offers!left (
+            id,
+            availability,
+            price
+          )
+        `, { count: 'exact' });
 
-    // Build filter conditions
-    const filterConditions: string[] = [];
-    
-    if (filters.selectedShopName.length > 0) {
-      filterConditions.push(`shop_name.in.(${filters.selectedShopName.map(name => `'${name}'`).join(',')})`);
+      // Build filter conditions
+      const filterConditions: string[] = [];
+      
+      if (filters.selectedShopName.length > 0) {
+        filterConditions.push(`shop_name.in.(${filters.selectedShopName.map(name => `'${name}'`).join(',')})`);
+      }
+
+      if (filters.inStockOnly) {
+        query = query
+          .eq('variants.available', true)
+          .eq('offers.availability', 'https://schema.org/InStock');
+      }
+
+      if (filters.onSaleOnly) {
+        query = query
+          .not('offers.id', 'is', null)
+          .eq('variants.is_price_lower', true);
+      }
+
+      if (filters.searchQuery) {
+        query = query.textSearch('title_search', filters.searchQuery, {
+          config: 'english'
+        });
+      }
+
+      if (filters.priceRange) {
+        query = query
+          .gte('variants.price', filters.priceRange[0])
+          .lte('variants.price', filters.priceRange[1]);
+      }
+
+      // Apply combined filter conditions
+      if (filterConditions.length > 0) {
+        query = query.or(filterConditions.join(','));
+      }
+
+      const { data, error, count } = await query
+        .order('created_at', { ascending: false })
+        .limit(ITEMS_PER_PAGE);
+
+      if (error) throw error;
+
+      if (data) {
+        setProducts(data as Product[]);
+        setHasMore(count ? count > ITEMS_PER_PAGE : false);
+      }
+    } catch (error) {
+      console.error('Error fetching products:', error);
+    } finally {
+      setLoading(false);
     }
-
-    if (filters.inStockOnly) {
-      query = query
-        .eq('variants.available', true)
-        .eq('offers.availability', 'https://schema.org/InStock');
-    }
-
-    if (filters.onSaleOnly) {
-      query = query
-        .not('offers.id', 'is', null)
-        .eq('variants.is_price_lower', true);
-    }
-
-    if (filters.searchQuery) {
-      query = query.textSearch('title_search', filters.searchQuery, {
-        config: 'english'
-      });
-    }
-
-    if (filters.priceRange) {
-      query = query
-        .gte('variants.price', filters.priceRange[0])
-        .lte('variants.price', filters.priceRange[1]);
-    }
-
-    // Apply combined filter conditions
-    if (filterConditions.length > 0) {
-      query = query.or(filterConditions.join(','));
-    }
-
-    const { data, error, count } = await query
-      .order('created_at', { ascending: false })
-      .limit(ITEMS_PER_PAGE);
-
-    if (error) throw error;
-
-    if (data) {
-      setProducts(data);
-      setHasMore(count ? count > ITEMS_PER_PAGE : false);
-    }
-  } catch (error) {
-    console.error('Error fetching products:', error);
-  } finally {
-    setLoading(false);
   }
-}
-
   const debouncedFetchProducts = useRef(
     _.debounce((filters: FilterOptions) => {
       fetchFilteredProducts(filters);
@@ -164,16 +171,24 @@ async function fetchFilteredProducts(filters: FilterOptions) {
         let query = supabase
           .from('products')
           .select(`
-            *,
+            id,
+            title,
+            shop_name,
+            created_at,
+            url,
+            description,
+            updated_at_external,
             variants!inner (
               id,
               available,
               price,
+              compare_at_price,
               is_price_lower
             ),
             offers!left (
               id,
-              availability
+              availability,
+              price
             )
           `);
     

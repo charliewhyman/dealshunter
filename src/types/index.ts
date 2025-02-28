@@ -1,5 +1,47 @@
 // Supabase types
-export type Product = Tables<'products'>;
+
+export interface Product {
+
+  id: number;
+
+  title: string;
+  
+  description: string;
+
+  shop_name: string;
+
+  created_at: string;
+
+  url: string;
+
+  updated_at_external: string | null;
+
+  variants: {
+
+    id: number;
+
+    available: boolean;
+
+    price: number;
+
+    compare_at_price: number | null;
+
+    is_price_lower: boolean;
+
+  }[];
+
+  offers: {
+
+    id: number;
+
+    availability: string;
+
+    price: number;
+
+  }[];
+
+}
+
 
 export type Json =
   | string
