@@ -194,9 +194,9 @@ export function HomePage() {
           });
 
         if (error) throw error;
-
+        console.log(selectedShopName);
         if (data && data.length > 0) {
-          const min = data[0].min_price || 0;
+          const min = 0;
           const max = data[0].max_price || 1000;
           setPriceRange([min, max]);
           setSelectedPriceRange([min, max]);
