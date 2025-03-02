@@ -324,6 +324,7 @@ export function HomePage() {
         <div className="w-64 px-4">
           <p className="font-semibold text-gray-900 mb-2">Price Range</p>
           <Range
+            label="Price Range"
             step={1}
             min={priceRange[0]}
             max={priceRange[1]}
@@ -339,8 +340,11 @@ export function HomePage() {
             )}
             renderThumb={({ props }) => (
               <div
+                {...props}
                 key={props.key}
-                style={props.style}
+                style={{
+                  ...props.style,
+                }}
                 className="h-4 w-4 bg-blue-600 rounded-full shadow-lg focus:outline-none"
               />
             )}
