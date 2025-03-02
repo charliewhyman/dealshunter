@@ -39,7 +39,7 @@ export function HomePage() {
   );
   const [priceRange, setPriceRange] = useState<[number, number]>([0, 1000]);
   const [selectedPriceRange, setSelectedPriceRange] = useState<[number, number]>(
-    JSON.parse(localStorage.getItem('selectedPriceRange') || '[0, 1000]')
+    JSON.parse(localStorage.getItem('selectedPriceRange') || '[0, 1000]').map((value: number) => Math.min(Math.max(value, 0), 1000))
   );
 
   interface FilterOptions {
@@ -194,7 +194,6 @@ export function HomePage() {
           });
 
         if (error) throw error;
-        console.log(selectedShopName);
         if (data && data.length > 0) {
           const min = 0;
           const max = data[0].max_price || 1000;
@@ -329,7 +328,12 @@ export function HomePage() {
             min={priceRange[0]}
             max={priceRange[1]}
             values={selectedPriceRange}
-            onChange={(values) => setSelectedPriceRange([values[0], values[1]])}
+            onChange={(values) => {
+              const [minValue, maxValue] = values;
+              if (minValue >= priceRange[0] && maxValue <= priceRange[1]) {
+                setSelectedPriceRange([minValue, maxValue]);
+              }
+            }}
             renderTrack={({ props, children }) => (
               <div
                 {...props}
