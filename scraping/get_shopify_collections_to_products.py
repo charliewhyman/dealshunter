@@ -26,13 +26,13 @@ def get_products_from_collection(collection_url):
         print(f"Could not find product data in {collection_url}")
         return None
 
-def get_shop_name(url):
-    # Load shop URLs from a JSON file to map the URL to the shop name
+def get_shop_id(url):
+    # Load shop URLs from a JSON file to map the URL to the shop id
     with open("shop_urls.json", "r", encoding="utf-8") as file:
         shop_urls = json.load(file)
         for shop in shop_urls:
             if shop["url"] in url:
-                return shop["shop_name"]
+                return shop["shop_id"]
     return None
 
 def process_all_collections(output_folder):

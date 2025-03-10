@@ -27,7 +27,7 @@ def fetch_shopify_products(base_url, shop_id, limit=250, max_pages=None):
 
     Args:
         base_url (str): The base URL of the Shopify store
-        shop_id (str): The name of the shop
+        shop_id (str): The id of the shop
         limit (int, optional): Number of products per page. Defaults to 250.
         max_pages (int, optional): Maximum number of pages to fetch. Defaults to None.
 
@@ -56,7 +56,7 @@ def fetch_shopify_products(base_url, shop_id, limit=250, max_pages=None):
                 print("No more products found.")
                 break
 
-            # Add product URLs and shop name to the data
+            # Add product URLs and shop id to the data
             for product in data['products']:
                 handle = product.get('handle')
                 if handle:
@@ -114,14 +114,14 @@ def save_products_to_file(products, file_path):
         json.dump(products, file, indent=4, ensure_ascii=False)
     print(f"Saved {len(products)} products to {file_path}")
 
-def get_shop_name(shop_data):
-    """Get shop name from shop_data dictionary.
+def get_shop_id(shop_data):
+    """Get shop id from shop_data dictionary.
 
     Args:
         shop_data (dict): Dictionary containing shop data including shop_id
 
     Returns:
-        str: Shop name from the shop_data, or formatted URL if shop_id not found
+        str: Shop id from the shop_data, or formatted URL if shop_id not found
     """
     # Return shop_id if present, otherwise fallback to URL formatting
     return shop_data.get("shop_id") or urlparse(shop_data["url"]).netloc.replace('.', '_')
@@ -177,7 +177,7 @@ if __name__ == "__main__":
     os.makedirs("output", exist_ok=True)
     with open("output/shopify_product_summary.csv", "w", newline="", encoding="utf-8") as csv_file:
         csvwriter = csv.writer(csv_file)
-        csvwriter.writerow(["Shop Name", "URL", "Category", "Summary"])
+        csvwriter.writerow(["Shop ID", "URL", "Category", "Summary"])
         csvwriter.writerows(summary_log)
 
     print("Summary written to output/shopify_product_summary.csv.")
