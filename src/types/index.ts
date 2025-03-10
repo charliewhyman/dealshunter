@@ -1,5 +1,3 @@
-// Supabase types
-
 export interface Product {
 
   id: number;
@@ -42,7 +40,7 @@ export interface Product {
 
 }
 
-
+// Supabase types
 export type Json =
   | string
   | number
@@ -89,7 +87,7 @@ export type Database = {
           id: number
           products_count: number | null
           published_at_external: string | null
-          shop_name: string | null
+          shop_id: number | null
           submitted_by: string
           title: string | null
           updated_at: string | null
@@ -104,7 +102,7 @@ export type Database = {
           id?: number
           products_count?: number | null
           published_at_external?: string | null
-          shop_name?: string | null
+          shop_id?: number | null
           submitted_by: string
           title?: string | null
           updated_at?: string | null
@@ -119,13 +117,20 @@ export type Database = {
           id?: number
           products_count?: number | null
           published_at_external?: string | null
-          shop_name?: string | null
+          shop_id?: number | null
           submitted_by?: string
           title?: string | null
           updated_at?: string | null
           updated_at_external?: string | null
         }
         Relationships: [
+          {
+            foreignKeyName: "collections_shop_id_fkey"
+            columns: ["shop_id"]
+            isOneToOne: false
+            referencedRelation: "shops"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "collections_submitted_by_fkey"
             columns: ["submitted_by"]
@@ -410,10 +415,11 @@ export type Database = {
           id: number
           product_type: string | null
           published_at_external: string | null
-          shop_name: string | null
+          shop_id: number | null
           submitted_by: string
           tags: string[] | null
           title: string | null
+          title_search: unknown | null
           updated_at: string | null
           updated_at_external: string | null
           url: string | null
@@ -429,10 +435,11 @@ export type Database = {
           id: number
           product_type?: string | null
           published_at_external?: string | null
-          shop_name?: string | null
+          shop_id?: number | null
           submitted_by: string
           tags?: string[] | null
           title?: string | null
+          title_search?: unknown | null
           updated_at?: string | null
           updated_at_external?: string | null
           url?: string | null
@@ -448,17 +455,26 @@ export type Database = {
           id?: number
           product_type?: string | null
           published_at_external?: string | null
-          shop_name?: string | null
+          shop_id?: number | null
           submitted_by?: string
           tags?: string[] | null
           title?: string | null
+          title_search?: unknown | null
           updated_at?: string | null
           updated_at_external?: string | null
           url?: string | null
           vendor?: string | null
           votes?: number | null
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "products_shop_id_fkey"
+            columns: ["shop_id"]
+            isOneToOne: false
+            referencedRelation: "shops"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       profiles: {
         Row: {
@@ -546,16 +562,54 @@ export type Database = {
           },
         ]
       }
+      shops: {
+        Row: {
+          category: string | null
+          created_at: string
+          id: number
+          location: string | null
+          returns: string | null
+          shipping: string | null
+          shop_name: string | null
+          tags: string[] | null
+          url: string | null
+        }
+        Insert: {
+          category?: string | null
+          created_at?: string
+          id?: number
+          location?: string | null
+          returns?: string | null
+          shipping?: string | null
+          shop_name?: string | null
+          tags?: string[] | null
+          url?: string | null
+        }
+        Update: {
+          category?: string | null
+          created_at?: string
+          id?: number
+          location?: string | null
+          returns?: string | null
+          shipping?: string | null
+          shop_name?: string | null
+          tags?: string[] | null
+          url?: string | null
+        }
+        Relationships: []
+      }
       variants: {
         Row: {
           available: boolean | null
           compare_at_price: number | null
           created_at: string | null
           created_at_external: string | null
+          discount_percentage: number | null
           featured_image: string | null
           grams: number | null
           id: number
           inventory_quantity: number | null
+          is_price_lower: boolean | null
           option1: string | null
           option2: string | null
           option3: string | null
@@ -574,10 +628,12 @@ export type Database = {
           compare_at_price?: number | null
           created_at?: string | null
           created_at_external?: string | null
+          discount_percentage?: number | null
           featured_image?: string | null
           grams?: number | null
           id: number
           inventory_quantity?: number | null
+          is_price_lower?: boolean | null
           option1?: string | null
           option2?: string | null
           option3?: string | null
@@ -596,10 +652,12 @@ export type Database = {
           compare_at_price?: number | null
           created_at?: string | null
           created_at_external?: string | null
+          discount_percentage?: number | null
           featured_image?: string | null
           grams?: number | null
           id?: number
           inventory_quantity?: number | null
+          is_price_lower?: boolean | null
           option1?: string | null
           option2?: string | null
           option3?: string | null
@@ -674,9 +732,21 @@ export type Database = {
       }
     }
     Views: {
+      distinct_collection_titles: {
+        Row: {
+          title: string | null
+        }
+        Relationships: []
+      }
       distinct_shop_names: {
         Row: {
           shop_name: string | null
+        }
+        Relationships: []
+      }
+      distinct_variant_titles: {
+        Row: {
+          title: string | null
         }
         Relationships: []
       }
@@ -688,6 +758,18 @@ export type Database = {
       }
     }
     Functions: {
+      get_price_range: {
+        Args: {
+          shop_names: string[]
+          in_stock: boolean
+          on_sale: boolean
+          search_query: string
+        }
+        Returns: {
+          min_price: number
+          max_price: number
+        }[]
+      }
       increment_votes:
         | {
             Args: Record<PropertyKey, never>
