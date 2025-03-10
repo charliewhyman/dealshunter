@@ -58,7 +58,8 @@ export function HomePage() {
         .select(`
           id,
           title,
-          shop_name,
+          shop_id,
+          shops ( shop_name ),
           created_at,
           url,
           description,

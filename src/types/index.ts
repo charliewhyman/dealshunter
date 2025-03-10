@@ -6,7 +6,7 @@ export interface Product {
   
   description: string;
 
-  shop_name: string;
+  shop_id: string;
 
   created_at: string;
 
