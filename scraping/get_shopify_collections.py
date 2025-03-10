@@ -101,7 +101,7 @@ def get_shop_id(shop_data):
         str: Shop id from the shop_data, or formatted URL if shop_id not found
     """
     # Return shop_id
-    return shop_data.get("shop_id")
+    return shop_data.get("id")
 
 if __name__ == "__main__":
     # Load shop URLs from JSON file

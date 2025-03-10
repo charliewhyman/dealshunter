@@ -3,6 +3,7 @@ import os
 
 def run_python_scripts():
     scripts = [
+        'upload_shops.py',
         'get_shopify_collections.py',
         'get_shopify_products.py',
         'get_shopify_collections_to_products.py',

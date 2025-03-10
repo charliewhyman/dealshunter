@@ -123,8 +123,8 @@ def get_shop_id(shop_data):
     Returns:
         str: Shop id from the shop_data, or formatted URL if shop_id not found
     """
-    # Return shop_id if present, otherwise fallback to URL formatting
-    return shop_data.get("shop_id") or urlparse(shop_data["url"]).netloc.replace('.', '_')
+    # Return shop_id
+    return shop_data.get("id")
 
 if __name__ == "__main__":
     # Load shop URLs from JSON file
@@ -136,7 +136,7 @@ if __name__ == "__main__":
     def process_shop(shop_data):
         shopify_base_url = shop_data["url"]
         category = shop_data.get("category", "Unknown")
-        shop_id = get_shop_name(shop_data)
+        shop_id = get_shop_id(shop_data)
         output_file = f"output/{shop_id}_products.json"
 
         print(f"Processing shop: {shop_id} (Category: {category})")
