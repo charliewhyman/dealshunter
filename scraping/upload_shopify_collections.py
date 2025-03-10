@@ -98,9 +98,9 @@ class CollectionProcessor:
                 raise
             
             try:
-                fields["shop_name"] = collection["shop_name"]
+                fields["shop_id"] = collection["shop_id"]
             except Exception as e:
-                print(f"Error accessing 'shop_name' for collection {fields.get('id', 'unknown')}: {e}")
+                print(f"Error accessing 'shop_id' for collection {fields.get('id', 'unknown')}: {e}")
                 raise
 
             try:

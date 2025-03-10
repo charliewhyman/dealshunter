@@ -256,9 +256,9 @@ class ProductProcessor:
                 raise
             
             try:
-                fields["shop_name"] = product.get("shop_name", "")
+                fields["shop_id"] = product.get("shop_id", "")
             except Exception as e:
-                print(f"Error accessing 'shop_name' for product {fields.get('id', 'unknown')}: {e}")
+                print(f"Error accessing 'shop_id' for product {fields.get('id', 'unknown')}: {e}")
                 raise
             
             try:
