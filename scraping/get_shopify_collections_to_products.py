@@ -45,28 +45,28 @@ def process_all_collections(output_folder):
                 for collection in collections:
                     collection_url = collection.get("collection_url")
                     if collection_url:
-                        shop_name = get_shop_name(collection_url)
-                        if shop_name:
-                            if shop_name not in result:
-                                result[shop_name] = {}
+                        shop_id = get_shop_id(collection_url)
+                        if shop_id:
+                            if shop_id not in result:
+                                result[shop_id] = {}
                             collection_id = collection.get("id")
                             products = get_products_from_collection(collection_url)
                             if products:
-                                result[shop_name][collection_id] = [product.get('id') for product in products]
+                                result[shop_id][collection_id] = [product.get('id') for product in products]
                             else:
-                                result[shop_name][collection_id] = []
+                                result[shop_id][collection_id] = []
     return result
 
-def process_single_collection(collection, shop_name):
+def process_single_collection(collection, shop_id):
     collection_url = collection.get("collection_url")
     collection_id = collection.get("id")
     if not collection_url:
-        return shop_name, collection_id, []
+        return shop_id, collection_id, []
     
-    print(f"Processing collection ID: {collection_id} for shop: {shop_name}")
+    print(f"Processing collection ID: {collection_id} for shop: {shop_id}")
     products = get_products_from_collection(collection_url)
     time.sleep(2)
-    return shop_name, collection_id, [product.get('id') for product in products] if products else []
+    return shop_id, collection_id, [product.get('id') for product in products] if products else []
 
 def process_single_file(filename, output_folder):
     if not filename.endswith("_collections.json"):
@@ -82,20 +82,20 @@ def process_single_file(filename, output_folder):
     with ThreadPoolExecutor(max_workers=5) as executor:
         futures = []
         for collection in collections:
-            shop_name = get_shop_name(collection.get("collection_url", ""))
-            if shop_name:
+            shop_id = get_shop_id(collection.get("collection_url", ""))
+            if shop_id:
                 futures.append(
-                    executor.submit(process_single_collection, collection, shop_name)
+                    executor.submit(process_single_collection, collection, shop_id)
                 )
         
         for future in futures:
-            shop_name, collection_id, product_ids = future.result()
-            if shop_name not in result:
-                result[shop_name] = {}
-            result[shop_name][collection_id] = product_ids
+            shop_id, collection_id, product_ids = future.result()
+            if shop_id not in result:
+                result[shop_id] = {}
+            result[shop_id][collection_id] = product_ids
     
-    for shop_name, collections in result.items():
-        output_path = Path(output_folder) / f"{shop_name}_collections_to_products.json"
+    for shop_id, collections in result.items():
+        output_path = Path(output_folder) / f"{shop_id}_collections_to_products.json"
         
         existing_data = {}
         if output_path.exists():
@@ -108,9 +108,9 @@ def process_single_file(filename, output_folder):
             json.dump(existing_data, f, indent=4)
 
 def save_result_to_json(result, output_folder):
-    for shop_name, collections in result.items():
-        output_path = Path(output_folder) / f"{shop_name}_collections_to_products.json"
-        print(f"Saving results for shop: {shop_name} to file: {output_path}")
+    for shop_id, collections in result.items():
+        output_path = Path(output_folder) / f"{shop_id}_collections_to_products.json"
+        print(f"Saving results for shop: {shop_id} to file: {output_path}")
         with open(output_path, "w", encoding="utf-8") as file:
             json.dump(collections, file, indent=4)
 
