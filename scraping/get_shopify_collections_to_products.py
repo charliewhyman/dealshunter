@@ -32,7 +32,7 @@ def get_shop_id(url):
         shop_urls = json.load(file)
         for shop in shop_urls:
             if shop["url"] in url:
-                return shop["shop_id"]
+                return shop["id"]
     return None
 
 def process_all_collections(output_folder):
