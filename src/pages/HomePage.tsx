@@ -1,3 +1,4 @@
+// HomePage.tsx
 import { ChangeEvent, FormEvent, useEffect, useRef, useState } from 'react';
 import { Product } from '../types';
 import { supabase } from '../lib/supabase';
@@ -17,17 +18,16 @@ export function HomePage() {
   const [loading, setLoading] = useState(true);
   const [hasMore, setHasMore] = useState(true);
   const [page, setPage] = useState(0);
-  const observerRef = useRef<HTMLDivElement | null>(null);
   const [shopNames, setShopNames] = useState<string[]>([]);
+  const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('asc');
+  const observerRef = useRef<HTMLDivElement | null>(null);
 
   const location = useLocation();
   const [searchQuery, setSearchQuery] = useState<string>(
     new URLSearchParams(location.search).get('search') || ''
   );
-
   const navigate = useNavigate();
 
-  // Initialize filters from localStorage
   const [selectedShopName, setSelectedShopName] = useState<string[]>(
     JSON.parse(localStorage.getItem('selectedShopName') || '[]')
   );
@@ -39,7 +39,9 @@ export function HomePage() {
   );
   const [priceRange, setPriceRange] = useState<[number, number]>([0, 1000]);
   const [selectedPriceRange, setSelectedPriceRange] = useState<[number, number]>(
-    JSON.parse(localStorage.getItem('selectedPriceRange') || '[0, 1000]').map((value: number) => Math.min(Math.max(value, 0), 1000))
+    JSON.parse(localStorage.getItem('selectedPriceRange') || '[0, 1000]').map((value: number) =>
+      Math.min(Math.max(value, 0), 1000)
+    )
   );
 
   interface FilterOptions {
@@ -50,12 +52,17 @@ export function HomePage() {
     selectedPriceRange: [number, number];
   }
 
-  async function fetchFilteredProducts(filters: FilterOptions, page: number) {
+  async function fetchFilteredProducts(
+    filters: FilterOptions,
+    page: number,
+    sortOrder: 'asc' | 'desc'
+  ) {
     setLoading(true);
     try {
       let query = supabase
-        .from('products')
-        .select(`
+        .from('products_with_min_price')
+        .select(
+          `
           id,
           title,
           shop_id,
@@ -64,6 +71,7 @@ export function HomePage() {
           url,
           description,
           updated_at_external,
+          min_price,
           variants!inner (
             id,
             available,
@@ -76,71 +84,61 @@ export function HomePage() {
             availability,
             price
           )
-        `, { count: 'exact' });
-  
-      // Build filter conditions
+        `,
+          { count: 'exact' }
+        );
+
+      // Build filter conditions for shop names.
       const filterConditions: string[] = [];
-      
       if (filters.selectedShopName.length > 0) {
-        filterConditions.push(`shop_name.in.(${filters.selectedShopName.map(name => `'${name}'`).join(',')})`);
+        filterConditions.push(
+          `shop_name.in.(${filters.selectedShopName.map((name) => `'${name}'`).join(',')})`
+        );
       }
-  
+
       if (filters.inStockOnly) {
         query = query
           .eq('variants.available', true)
           .eq('offers.availability', 'https://schema.org/InStock');
       }
-  
+
       if (filters.onSaleOnly) {
-        query = query
-          .not('offers.id', 'is', null)
-          .eq('variants.is_price_lower', true);
+        query = query.not('offers.id', 'is', null).eq('variants.is_price_lower', true);
       }
-  
+
       if (filters.searchQuery) {
         query = query.textSearch('title_search', filters.searchQuery, {
           config: 'english'
         });
       }
-  
-      // Add price range filter
+
       if (filters.selectedPriceRange) {
         query = query
           .gte('variants.price', filters.selectedPriceRange[0])
           .lte('variants.price', filters.selectedPriceRange[1]);
       }
-  
-      // Apply combined filter conditions
+
       if (filterConditions.length > 0) {
         query = query.or(filterConditions.join(','));
       }
-  
-      // Cursor-based pagination
+
+      // Cursor-based pagination using min_price.
       if (page > 0) {
         const lastProduct = products[products.length - 1];
         if (lastProduct) {
-          query = query.lt('created_at', lastProduct.created_at);
+          query = query.lt('min_price', lastProduct.min_price);
         }
       }
-  
-      const { data, error } = await query
-        .order('created_at', { ascending: false })
-        .limit(ITEMS_PER_PAGE);
-  
+
+      // Order by the min_price field.
+      query = query.order('min_price', { ascending: sortOrder === 'asc' });
+      query = query.order('created_at', { ascending: false });
+
+      const { data, error } = await query.limit(ITEMS_PER_PAGE);
       if (error) throw error;
-  
+
       if (data) {
-        setProducts((prev) => {
-          if (page === 0) {
-            // Reset products if it's the first page
-            return data;
-          } else {
-            // Append new products to the existing list
-            const existingIds = new Set(prev.map((product) => product.id));
-            const uniqueProducts = data.filter((product) => !existingIds.has(product.id));
-            return [...prev, ...uniqueProducts];
-          }
-        });
+        setProducts((prev) => (page === 0 ? data : [...prev, ...data]));
         setHasMore(data.length === ITEMS_PER_PAGE);
       }
     } catch (error) {
@@ -151,49 +149,56 @@ export function HomePage() {
   }
 
   const debouncedFetchProducts = useRef(
-    _.debounce((filters: FilterOptions, page: number) => {
-      fetchFilteredProducts(filters, page); // Pass the page parameter
-    }, 300)
+    _.debounce(
+      (filters: FilterOptions, page: number, sortOrder: 'asc' | 'desc') => {
+        fetchFilteredProducts(filters, page, sortOrder);
+      },
+      300
+    )
   ).current;
 
   useEffect(() => {
-    const filters = {
+    const filters: FilterOptions = {
       selectedShopName,
       inStockOnly,
       onSaleOnly,
       searchQuery,
-      selectedPriceRange,
+      selectedPriceRange
     };
-    debouncedFetchProducts(filters, page); // Pass the current page
-  }, [selectedShopName, inStockOnly, onSaleOnly, searchQuery, selectedPriceRange, page, debouncedFetchProducts]);
+    debouncedFetchProducts(filters, page, sortOrder);
+  }, [
+    selectedShopName,
+    inStockOnly,
+    onSaleOnly,
+    searchQuery,
+    selectedPriceRange,
+    page,
+    sortOrder,
+    debouncedFetchProducts
+  ]);
 
-  // Fetch unique shop names on mount
   useEffect(() => {
     async function fetchShopNames() {
       const { data, error } = await supabase
         .from('distinct_shop_names')
         .select('shop_name')
         .order('shop_name', { ascending: true });
-
       if (data && !error) {
-        setShopNames(data.map(item => item.shop_name).filter(Boolean));
+        setShopNames(data.map((item) => item.shop_name).filter(Boolean));
       }
     }
     fetchShopNames();
   }, []);
 
-  // Fetch price range on mount and when filters change
   useEffect(() => {
     async function fetchPriceRange() {
       try {
-        const { data, error } = await supabase
-          .rpc('get_price_range', {
-            shop_names: selectedShopName,
-            in_stock: inStockOnly,
-            on_sale: onSaleOnly,
-            search_query: searchQuery
-          });
-
+        const { data, error } = await supabase.rpc('get_price_range', {
+          shop_names: selectedShopName,
+          in_stock: inStockOnly,
+          on_sale: onSaleOnly,
+          search_query: searchQuery
+        });
         if (error) throw error;
         if (data && data.length > 0) {
           const min = 0;
@@ -205,38 +210,30 @@ export function HomePage() {
         console.error('Error fetching price range:', error);
       }
     }
-
     fetchPriceRange();
   }, [selectedShopName, inStockOnly, onSaleOnly, searchQuery]);
 
-  // Save filters to localStorage when they change
   useEffect(() => {
     localStorage.setItem('selectedShopName', JSON.stringify(selectedShopName));
   }, [selectedShopName]);
-
   useEffect(() => {
     localStorage.setItem('inStockOnly', JSON.stringify(inStockOnly));
   }, [inStockOnly]);
-
   useEffect(() => {
     localStorage.setItem('onSaleOnly', JSON.stringify(onSaleOnly));
   }, [onSaleOnly]);
-
   useEffect(() => {
     localStorage.setItem('searchQuery', searchQuery);
   }, [searchQuery]);
-
   useEffect(() => {
     localStorage.setItem('selectedPriceRange', JSON.stringify(selectedPriceRange));
   }, [selectedPriceRange]);
 
-  // Reset pagination and clear products when filters change
   useEffect(() => {
     setPage(0);
     setProducts([]);
-  }, [selectedShopName, inStockOnly, onSaleOnly, searchQuery, selectedPriceRange]);
+  }, [selectedShopName, inStockOnly, onSaleOnly, searchQuery, selectedPriceRange, sortOrder]);
 
-  // Set up intersection observer for infinite scroll
   useEffect(() => {
     const observer = new IntersectionObserver(
       (entries) => {
@@ -247,11 +244,9 @@ export function HomePage() {
       },
       { threshold: 1.0 }
     );
-
     if (observerRef.current) {
       observer.observe(observerRef.current);
     }
-
     const currentRef = observerRef.current;
     return () => {
       if (currentRef) {
@@ -264,7 +259,6 @@ export function HomePage() {
     setLoading(false);
   }, [products]);
 
-  // Handle shop selection
   const handleShopChange = (selectedOptions: MultiValue<{ value: string; label: string }>) => {
     const selectedValues = selectedOptions ? selectedOptions.map((option) => option.value) : [];
     setSelectedShopName(selectedValues);
@@ -272,10 +266,9 @@ export function HomePage() {
 
   const shopOptions = shopNames.map((shopName) => ({
     value: shopName,
-    label: shopName,
+    label: shopName
   }));
 
-  // Handle search input changes
   const handleSearchChange = (e: ChangeEvent<HTMLInputElement>) => {
     setSearchQuery(e.target.value);
   };
@@ -283,6 +276,10 @@ export function HomePage() {
   const handleSearchSubmit = (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     navigate(`/?search=${searchQuery}`);
+  };
+
+  const toggleSortOrder = () => {
+    setSortOrder((prev) => (prev === 'asc' ? 'desc' : 'asc'));
   };
 
   return (
@@ -293,11 +290,11 @@ export function HomePage() {
         handleSearchSubmit={handleSearchSubmit}
       />
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        <div className="mb-6 flex gap-8 items-center justify-center">
+        <div className="mb-6 flex flex-wrap gap-8 items-center justify-center">
           <Select
             isMulti
             options={shopOptions}
-            value={shopOptions.filter(option => selectedShopName.includes(option.value))}
+            value={shopOptions.filter((option) => selectedShopName.includes(option.value))}
             onChange={handleShopChange}
             className="block w-full max-w-xs rounded-md border border-gray-300 px-3 py-2 bg-white shadow-md hover:shadow-lg transition-shadow cursor-pointer font-semibold text-gray-900"
             placeholder={window.innerWidth < 640 ? 'Shops' : 'Select Shops'}
@@ -320,6 +317,9 @@ export function HomePage() {
             />
             <span className="font-semibold text-gray-900 whitespace-nowrap">On Sale Only</span>
           </label>
+          <button onClick={toggleSortOrder} className="px-4 py-2 bg-blue-600 text-white rounded">
+            Sort Price: {sortOrder === 'asc' ? 'Ascending' : 'Descending'}
+          </button>
         </div>
         <div className="w-64 px-4">
           <p className="font-semibold text-gray-900 mb-2">Price Range</p>
@@ -336,22 +336,12 @@ export function HomePage() {
               }
             }}
             renderTrack={({ props, children }) => (
-              <div
-                {...props}
-                className="h-1 bg-gray-200 rounded-full"
-              >
+              <div {...props} className="h-1 bg-gray-200 rounded-full">
                 {children}
               </div>
             )}
             renderThumb={({ props }) => (
-              <div
-                {...props}
-                key={props.key}
-                style={{
-                  ...props.style,
-                }}
-                className="h-4 w-4 bg-blue-600 rounded-full shadow-lg focus:outline-none"
-              />
+              <div {...props} key={props.key} style={{ ...props.style }} className="h-4 w-4 bg-blue-600 rounded-full shadow-lg focus:outline-none" />
             )}
           />
           <div className="flex justify-between text-sm text-gray-600 mt-2">

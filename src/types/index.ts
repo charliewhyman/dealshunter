@@ -1,43 +1,25 @@
 export interface Product {
-
   id: number;
-
   title: string;
-  
   description: string;
-
   shop_id: string;
-
   created_at: string;
-
   url: string;
-
   updated_at_external: string | null;
-
+  // The min_price is now a direct property from the view
+  min_price: number;
   variants: {
-
     id: number;
-
     available: boolean;
-
     price: number;
-
     compare_at_price: number | null;
-
     is_price_lower: boolean;
-
   }[];
-
   offers: {
-
     id: number;
-
     availability: string;
-
     price: number;
-
   }[];
-
 }
 
 // Supabase types
