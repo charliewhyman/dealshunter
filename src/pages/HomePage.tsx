@@ -4,7 +4,7 @@ import { Product } from '../types';
 import { supabase } from '../lib/supabase';
 import { Loader2 } from 'lucide-react';
 import { ProductCard } from '../components/ProductCard';
-import Select from 'react-select';
+import Select, { SingleValue } from 'react-select';
 import { MultiValue } from 'react-select';
 import { Header } from '../components/Header';
 import { useLocation, useNavigate } from 'react-router-dom';
@@ -259,6 +259,11 @@ export function HomePage() {
     setLoading(false);
   }, [products]);
 
+  const sortOptions = [
+    { value: 'asc', label: 'Price: Low to High' },
+    { value: 'desc', label: 'Price: High to Low' },
+  ];
+
   const handleShopChange = (selectedOptions: MultiValue<{ value: string; label: string }>) => {
     const selectedValues = selectedOptions ? selectedOptions.map((option) => option.value) : [];
     setSelectedShopName(selectedValues);
@@ -278,8 +283,12 @@ export function HomePage() {
     navigate(`/?search=${searchQuery}`);
   };
 
-  const toggleSortOrder = () => {
-    setSortOrder((prev) => (prev === 'asc' ? 'desc' : 'asc'));
+  const handleSortChange = (
+    newValue: SingleValue<{ value: string; label: string }>,
+  ) => {
+    if (newValue) {
+      setSortOrder(newValue.value as 'asc' | 'desc');
+    }
   };
 
   return (
@@ -317,9 +326,13 @@ export function HomePage() {
             />
             <span className="font-semibold text-gray-900 whitespace-nowrap">On Sale Only</span>
           </label>
-          <button onClick={toggleSortOrder} className="px-4 py-2 bg-blue-600 text-white rounded">
-            Sort Price: {sortOrder === 'asc' ? 'Ascending' : 'Descending'}
-          </button>
+          <Select
+            options={sortOptions}
+            value={sortOptions.find((option) => option.value === sortOrder)}
+            onChange={handleSortChange}
+            className="block w-full max-w-xs rounded-md border border-gray-300 px-3 py-2 bg-white shadow-md hover:shadow-lg transition-shadow cursor-pointer font-semibold text-gray-900"
+            placeholder="Sort by Price"
+          />
         </div>
         <div className="w-64 px-4">
           <p className="font-semibold text-gray-900 mb-2">Price Range</p>
