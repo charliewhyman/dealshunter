@@ -89,9 +89,8 @@ export function HomePage() {
       // Build filter conditions for shop names.
       const filterConditions: string[] = [];
       if (filters.selectedShopName.length > 0) {
-        filterConditions.push(
-          `shop_name.in.(${filters.selectedShopName.map((name) => `'${name}'`).join(',')})`
-        );
+        query = query.in('shops.shop_name', filters.selectedShopName)
+
       }
 
       if (filters.inStockOnly) {
@@ -120,13 +119,10 @@ export function HomePage() {
         query = query.or(filterConditions.join(','));
       }
 
-      // Cursor-based pagination using min_price.
-      if (page > 0) {
-        const lastProduct = products[products.length - 1];
-        if (lastProduct) {
-          query = query.lt('min_price', lastProduct.min_price);
-        }
-      }
+      // keyset pagination using min_price.
+      query = query.order('min_price', { ascending: sortOrder === 'asc' })
+            .order('created_at', { ascending: false })
+            .range(page * ITEMS_PER_PAGE, (page + 1) * ITEMS_PER_PAGE - 1);
 
       // Order by the min_price field.
       query = query.order('min_price', { ascending: sortOrder === 'asc' });

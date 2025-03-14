@@ -3,6 +3,7 @@ export interface Product {
   title: string;
   description: string;
   shop_id: string;
+  shop_name?: string | null;
   created_at: string;
   url: string;
   updated_at_external: string | null;
