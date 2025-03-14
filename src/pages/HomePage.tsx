@@ -94,9 +94,10 @@ export function HomePage() {
       }
 
       if (filters.inStockOnly) {
-        query = query
-          .eq('variants.available', true)
-          .eq('offers.availability', 'https://schema.org/InStock');
+        query = query.match({
+          'variants.available': true,
+          'offers.availability': 'https://schema.org/InStock'
+        });
       }
 
       if (filters.onSaleOnly) {
