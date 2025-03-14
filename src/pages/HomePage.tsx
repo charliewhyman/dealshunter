@@ -39,9 +39,7 @@ export function HomePage() {
   );
   const [priceRange, setPriceRange] = useState<[number, number]>([0, 1000]);
   const [selectedPriceRange, setSelectedPriceRange] = useState<[number, number]>(
-    JSON.parse(localStorage.getItem('selectedPriceRange') || '[0, 1000]').map((value: number) =>
-      Math.min(Math.max(value, 0), 1000)
-    )
+    JSON.parse(localStorage.getItem('selectedPriceRange') || '[0, 1000]')
   );
 
   interface FilterOptions {
@@ -191,29 +189,6 @@ export function HomePage() {
   }, []);
 
   useEffect(() => {
-    async function fetchPriceRange() {
-      try {
-        const { data, error } = await supabase.rpc('get_price_range', {
-          shop_names: selectedShopName,
-          in_stock: inStockOnly,
-          on_sale: onSaleOnly,
-          search_query: searchQuery
-        });
-        if (error) throw error;
-        if (data && data.length > 0) {
-          const min = 0;
-          const max = data[0].max_price || 1000;
-          setPriceRange([min, max]);
-          setSelectedPriceRange([min, max]);
-        }
-      } catch (error) {
-        console.error('Error fetching price range:', error);
-      }
-    }
-    fetchPriceRange();
-  }, [selectedShopName, inStockOnly, onSaleOnly, searchQuery]);
-
-  useEffect(() => {
     localStorage.setItem('selectedShopName', JSON.stringify(selectedShopName));
   }, [selectedShopName]);
   useEffect(() => {
@@ -291,6 +266,29 @@ export function HomePage() {
     }
   };
 
+  const handleSliderChange = (values: number[]) => {
+    const [minValue, maxValue] = values;
+    setSelectedPriceRange([minValue, maxValue]);
+  };
+
+  const handlePriceInputChange = (type: 'min' | 'max', value: string) => {
+    const numericValue = parseFloat(value);
+    if (isNaN(numericValue)) return;
+
+    if (type === 'min') {
+      const newMin = Math.min(Math.max(numericValue, 0), selectedPriceRange[1]); // Ensure min is >= 0
+      setSelectedPriceRange([newMin, selectedPriceRange[1]]);
+    } else {
+      const newMax = Math.max(numericValue, selectedPriceRange[0]); // Ensure max is >= min
+      setSelectedPriceRange([selectedPriceRange[0], newMax]);
+
+      // Update the slider's max value if the new max is greater than the current max
+      if (newMax > priceRange[1]) {
+        setPriceRange([priceRange[0], newMax]);
+      }
+    }
+  };
+
   return (
     <>
       <Header
@@ -336,18 +334,31 @@ export function HomePage() {
         </div>
         <div className="w-64 px-4">
           <p className="font-semibold text-gray-900 mb-2">Price Range</p>
+          <div className="flex gap-2 mb-2">
+            <input
+              type="number"
+              value={selectedPriceRange[0]}
+              onChange={(e) => handlePriceInputChange('min', e.target.value)}
+              className="block w-full max-w-xs rounded-md border border-gray-300 px-3 py-2 bg-white shadow-md hover:shadow-lg transition-shadow cursor-pointer font-semibold text-gray-900"
+              min={0} // Ensure min is >= 0
+            />
+            <input
+              type="number"
+              value={selectedPriceRange[1]}
+              onChange={(e) => handlePriceInputChange('max', e.target.value)}
+              className="block w-full max-w-xs rounded-md border border-gray-300 px-3 py-2 bg-white shadow-md hover:shadow-lg transition-shadow cursor-pointer font-semibold text-gray-900"
+              min={selectedPriceRange[0]} // Ensure max is >= min
+            />
+          </div>
           <Range
-            label="Price Range"
             step={1}
-            min={priceRange[0]}
-            max={priceRange[1]}
-            values={selectedPriceRange}
-            onChange={(values) => {
-              const [minValue, maxValue] = values;
-              if (minValue >= priceRange[0] && maxValue <= priceRange[1]) {
-                setSelectedPriceRange([minValue, maxValue]);
-              }
-            }}
+            min={priceRange[0]} // Slider starts at 0
+            max={priceRange[1]} // Slider's max is dynamic
+            values={[
+              Math.min(selectedPriceRange[0], priceRange[1]), // Clamp min value
+              Math.min(selectedPriceRange[1], priceRange[1]), // Clamp max value
+            ]}
+            onChange={handleSliderChange}
             renderTrack={({ props, children }) => (
               <div {...props} className="h-1 bg-gray-200 rounded-full">
                 {children}
