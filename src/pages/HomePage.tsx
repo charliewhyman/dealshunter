@@ -287,98 +287,197 @@ export function HomePage() {
   };
 
   return (
-    <>
+    <div className="min-h-screen bg-white dark:bg-gray-900">
       <Header
         searchQuery={searchQuery}
         handleSearchChange={handleSearchChange}
         handleSearchSubmit={handleSearchSubmit}
       />
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        <div className="mb-6 flex flex-wrap gap-8 items-center justify-center">
-          <Select
-            isMulti
-            options={shopOptions}
-            value={shopOptions.filter((option) => selectedShopName.includes(option.value))}
-            onChange={handleShopChange}
-            className="block w-full max-w-xs rounded-md border border-gray-300 px-3 py-2 bg-white shadow-md hover:shadow-lg transition-shadow cursor-pointer font-semibold text-gray-900"
-            placeholder={window.innerWidth < 640 ? 'Shops' : 'Select Shops'}
-          />
-          <label className="flex items-center gap-2 cursor-pointer">
-            <input
-              type="checkbox"
-              checked={inStockOnly}
-              onChange={(e) => setInStockOnly(e.target.checked)}
-              className="rounded border-gray-300"
-            />
-            <span className="font-semibold text-gray-900 whitespace-nowrap">In Stock Only</span>
-          </label>
-          <label className="flex items-center gap-2 cursor-pointer">
-            <input
-              type="checkbox"
-              checked={onSaleOnly}
-              onChange={(e) => setOnSaleOnly(e.target.checked)}
-              className="rounded border-gray-300"
-            />
-            <span className="font-semibold text-gray-900 whitespace-nowrap">On Sale Only</span>
-          </label>
-          <Select
-            options={sortOptions}
-            value={sortOptions.find((option) => option.value === sortOrder)}
-            onChange={handleSortChange}
-            className="block w-full max-w-xs rounded-md border border-gray-300 px-3 py-2 bg-white shadow-md hover:shadow-lg transition-shadow cursor-pointer font-semibold text-gray-900"
-            placeholder="Sort by Price"
-          />
-        </div>
-        <div className="w-64 px-4">
-          <p className="font-semibold text-gray-900 mb-2">Price Range</p>
-          <div className="flex gap-2 mb-2">
-            <input
-              type="number"
-              value={selectedPriceRange[0]}
-              onChange={(e) => handlePriceInputChange('min', e.target.value)}
-              className="block w-full max-w-xs rounded-md border border-gray-300 px-3 py-2 bg-white shadow-md hover:shadow-lg transition-shadow cursor-pointer font-semibold text-gray-900"
-              min={0} // Ensure min is >= 0
-            />
-            <input
-              type="number"
-              value={selectedPriceRange[1]}
-              onChange={(e) => handlePriceInputChange('max', e.target.value)}
-              className="block w-full max-w-xs rounded-md border border-gray-300 px-3 py-2 bg-white shadow-md hover:shadow-lg transition-shadow cursor-pointer font-semibold text-gray-900"
-              min={selectedPriceRange[0]} // Ensure max is >= min
+        {/* Filters Container */}
+        <div className="mb-6 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+          {/* Shop Filter */}
+          <div className="space-y-2">
+            <label className="block text-sm font-medium text-gray-700 dark:text-gray-200">Shops</label>
+            <Select
+              isMulti
+              options={shopOptions}
+              value={shopOptions.filter((option) => selectedShopName.includes(option.value))}
+              onChange={handleShopChange}
+              className="basic-multi-select"
+              classNamePrefix="select"
+              placeholder="Select shops..."
+              styles={{
+                control: (base, state) => ({
+                  ...base,
+                  borderRadius: '0.375rem',
+                  borderColor: state.isFocused ? '#3b82f6' : '#d1d5db',
+                  minHeight: '42px',
+                  backgroundColor: 'var(--bg-color)',
+                  color: 'var(--text-color)',
+                  boxShadow: state.isFocused ? '0 0 0 1px #3b82f6' : 'none',
+                  '&:hover': {
+                    borderColor: '#3b82f6',
+                  },
+                }),
+                menu: (base) => ({
+                  ...base,
+                  backgroundColor: 'var(--bg-color)',
+                  color: 'var(--text-color)',
+                }),
+                option: (base, state) => ({
+                  ...base,
+                  backgroundColor: state.isFocused ? '#3b82f6' : 'transparent',
+                  color: state.isFocused ? '#fff' : 'var(--text-color)',
+                }),
+                multiValue: (base) => ({
+                  ...base,
+                  backgroundColor: '#e2e8f0',
+                }),
+                multiValueLabel: (base) => ({
+                  ...base,
+                  color: '#1e293b',
+                }),
+              }}
+              theme={(theme) => ({
+                ...theme,
+                colors: {
+                  ...theme.colors,
+                  primary: '#3b82f6',
+                  neutral80: 'var(--text-color)',
+                },
+              })}
             />
           </div>
-          <Range
-            step={1}
-            min={priceRange[0]} // Slider starts at 0
-            max={priceRange[1]} // Slider's max is dynamic
-            values={[
-              Math.min(selectedPriceRange[0], priceRange[1]), // Clamp min value
-              Math.min(selectedPriceRange[1], priceRange[1]), // Clamp max value
-            ]}
-            onChange={handleSliderChange}
-            renderTrack={({ props, children }) => (
-              <div {...props} className="h-1 bg-gray-200 rounded-full">
-                {children}
+  
+          {/* Price Range */}
+          <div className="space-y-2">
+            <label className="block text-sm font-medium text-gray-700 dark:text-gray-200">Price Range ($)</label>
+            <div className="flex flex-col space-y-2">
+              <div className="flex gap-2">
+                <input
+                  type="number"
+                  value={selectedPriceRange[0]}
+                  onChange={(e) => handlePriceInputChange('min', e.target.value)}
+                  className="w-1/2 rounded-md border border-gray-300 dark:border-gray-600 px-3 py-2 shadow-sm focus:border-blue-500 focus:ring-blue-500 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100"
+                  min={0}
+                />
+                <input
+                  type="number"
+                  value={selectedPriceRange[1]}
+                  onChange={(e) => handlePriceInputChange('max', e.target.value)}
+                  className="w-1/2 rounded-md border border-gray-300 dark:border-gray-600 px-3 py-2 shadow-sm focus:border-blue-500 focus:ring-blue-500 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100"
+                  min={selectedPriceRange[0]}
+                />
               </div>
-            )}
-            renderThumb={({ props }) => (
-              <div {...props} key={props.key} style={{ ...props.style }} className="h-4 w-4 bg-blue-600 rounded-full shadow-lg focus:outline-none" />
-            )}
-          />
-          <div className="flex justify-between text-sm text-gray-600 mt-2">
-            <span>${selectedPriceRange[0].toFixed(2)}</span>
-            <span>${selectedPriceRange[1].toFixed(2)}</span>
+              <Range
+                step={1}
+                min={priceRange[0]}
+                max={priceRange[1]}
+                values={[
+                  Math.min(selectedPriceRange[0], priceRange[1]),
+                  Math.min(selectedPriceRange[1], priceRange[1]),
+                ]}
+                onChange={handleSliderChange}
+                renderTrack={({ props, children }) => (
+                  <div
+                    {...props}
+                    className="h-1.5 bg-gray-200 dark:bg-gray-600 rounded-full"
+                  >
+                    {children}
+                  </div>
+                )}
+                renderThumb={({ props }) => (
+                  <div
+                    {...props}
+                    className="h-4 w-4 bg-blue-600 dark:bg-blue-500 rounded-full shadow-lg focus:outline-none ring-2 ring-white dark:ring-gray-800"
+                  />
+                )}
+              />
+            </div>
+          </div>
+  
+          {/* Checkboxes */}
+          <div className="space-y-2">
+            <label className="block text-sm font-medium text-gray-700 dark:text-gray-200">Availability</label>
+            <div className="flex flex-col space-y-2">
+              <label className="inline-flex items-center gap-2">
+                <input
+                  type="checkbox"
+                  checked={inStockOnly}
+                  onChange={(e) => setInStockOnly(e.target.checked)}
+                  className="h-4 w-4 rounded border-gray-300 dark:border-gray-600 text-blue-600 dark:text-blue-500 focus:ring-blue-500 bg-white dark:bg-gray-800"
+                />
+                <span className="text-sm text-gray-900 dark:text-gray-100">In Stock Only</span>
+              </label>
+              <label className="inline-flex items-center gap-2">
+                <input
+                  type="checkbox"
+                  checked={onSaleOnly}
+                  onChange={(e) => setOnSaleOnly(e.target.checked)}
+                  className="h-4 w-4 rounded border-gray-300 dark:border-gray-600 text-blue-600 dark:text-blue-500 focus:ring-blue-500 bg-white dark:bg-gray-800"
+                />
+                <span className="text-sm text-gray-900 dark:text-gray-100">On Sale Only</span>
+              </label>
+            </div>
+          </div>
+  
+          {/* Sort Dropdown */}
+          <div className="space-y-2">
+            <label className="block text-sm font-medium text-gray-700 dark:text-gray-200">Sort By</label>
+            <Select
+              options={sortOptions}
+              value={sortOptions.find((option) => option.value === sortOrder)}
+              onChange={handleSortChange}
+              className="basic-single"
+              classNamePrefix="select"
+              placeholder="Select sort..."
+              styles={{
+                control: (base, state) => ({
+                  ...base,
+                  borderRadius: '0.375rem',
+                  borderColor: state.isFocused ? '#3b82f6' : '#d1d5db',
+                  minHeight: '42px',
+                  backgroundColor: 'var(--bg-color)',
+                  color: 'var(--text-color)',
+                  boxShadow: state.isFocused ? '0 0 0 1px #3b82f6' : 'none',
+                  '&:hover': {
+                    borderColor: '#3b82f6',
+                  },
+                }),
+                menu: (base) => ({
+                  ...base,
+                  backgroundColor: 'var(--bg-color)',
+                  color: 'var(--text-color)',
+                }),
+                option: (base, state) => ({
+                  ...base,
+                  backgroundColor: state.isFocused ? '#3b82f6' : 'transparent',
+                  color: state.isFocused ? '#fff' : 'var(--text-color)',
+                }),
+              }}
+              theme={(theme) => ({
+                ...theme,
+                colors: {
+                  ...theme.colors,
+                  primary: '#3b82f6',
+                  neutral80: 'var(--text-color)',
+                },
+              })}
+            />
           </div>
         </div>
+  
+        {/* Products List */}
         <div className="space-y-6">
           {loading && (
             <div className="flex justify-center items-center min-h-[200px]">
-              <Loader2 className="w-8 h-8 animate-spin text-blue-600" />
+              <Loader2 className="w-8 h-8 animate-spin text-blue-600 dark:text-blue-500" />
             </div>
           )}
           {!loading && products.length === 0 && (
             <div className="flex justify-center items-center min-h-[200px]">
-              <p className="text-gray-900">No products found.</p>
+              <p className="text-gray-900 dark:text-gray-100">No products found.</p>
             </div>
           )}
           {products.map((product) => (
@@ -389,6 +488,6 @@ export function HomePage() {
         </div>
         <div ref={observerRef} className="flex items-center justify-center py-8"></div>
       </div>
-    </>
+    </div>
   );
 }

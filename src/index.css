@@ -79,3 +79,15 @@ button:focus-visible {
   color: grey; /* Example style for unavailable variant */
   text-decoration: line-through; /* Example style for unavailable variant */
 }
+
+:root {
+  --bg-color: #ffffff;
+  --text-color: #1e293b;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg-color: #1e293b;
+    --text-color: #f8fafc;
+  }
+}
