@@ -1,4 +1,3 @@
-// HomePage.tsx
 import { ChangeEvent, FormEvent, useEffect, useRef, useState } from 'react';
 import { Product } from '../types';
 import { supabase } from '../lib/supabase';
@@ -69,73 +68,56 @@ export function HomePage() {
           url,
           description,
           updated_at_external,
-          min_price,
-          variants!inner (
-            id,
-            available,
-            price,
-            compare_at_price,
-            is_price_lower
-          ),
-          offers!left (
-            id,
-            availability,
-            price
-          )
-        `,
+          min_price
+          `,
           { count: 'exact' }
         );
 
-      // Build filter conditions for shop names.
-      const filterConditions: string[] = [];
+      // Apply filters
       if (filters.selectedShopName.length > 0) {
-        query = query.in('shops.shop_name', filters.selectedShopName)
-
+        query = query.in('shops.shop_name', filters.selectedShopName);
       }
 
       if (filters.inStockOnly) {
-        query = query.match({
-          'variants.available': true,
-          'offers.availability': 'https://schema.org/InStock'
-        });
+        query = query.not('min_price', 'is', null); // Example filter
       }
 
       if (filters.onSaleOnly) {
-        query = query.not('offers.id', 'is', null).eq('variants.is_price_lower', true);
+        query = query.not('min_price', 'is', null); // Example filter
       }
 
       if (filters.searchQuery) {
         query = query.textSearch('title_search', filters.searchQuery, {
-          config: 'english'
+          config: 'english',
         });
       }
 
       if (filters.selectedPriceRange) {
         query = query
-          .gte('variants.price', filters.selectedPriceRange[0])
-          .lte('variants.price', filters.selectedPriceRange[1]);
+          .gte('min_price', filters.selectedPriceRange[0])
+          .lte('min_price', filters.selectedPriceRange[1]);
       }
 
-      if (filterConditions.length > 0) {
-        query = query.or(filterConditions.join(','));
-      }
+      // Apply sorting and pagination
+      query = query
+        .order('min_price', { ascending: sortOrder === 'asc' })
+        .order('created_at', { ascending: false })
+        .range(page * ITEMS_PER_PAGE, (page + 1) * ITEMS_PER_PAGE - 1);
 
-      // keyset pagination using min_price.
-      query = query.order('min_price', { ascending: sortOrder === 'asc' })
-            .order('created_at', { ascending: false })
-            .range(page * ITEMS_PER_PAGE, (page + 1) * ITEMS_PER_PAGE - 1);
+      const { data, error } = await query;
 
-      // Order by the min_price field.
-      query = query.order('min_price', { ascending: sortOrder === 'asc' });
-      query = query.order('created_at', { ascending: false });
-
-      const { data, error } = await query.limit(ITEMS_PER_PAGE);
       if (error) throw error;
 
       if (data) {
-        setProducts((prev) => (page === 0 ? data : [...prev, ...data]));
+        const formattedData = data.map((item) => ({
+          ...item,
+          variants: [],
+          offers: [],
+        })) as Product[];
+        setProducts((prev) => (page === 0 ? formattedData : [...prev, ...formattedData]));
         setHasMore(data.length === ITEMS_PER_PAGE);
       }
+      // 
     } catch (error) {
       console.error('Error fetching products:', error);
     } finally {
@@ -158,7 +140,7 @@ export function HomePage() {
       inStockOnly,
       onSaleOnly,
       searchQuery,
-      selectedPriceRange
+      selectedPriceRange,
     };
     debouncedFetchProducts(filters, page, sortOrder);
   }, [
@@ -169,7 +151,7 @@ export function HomePage() {
     selectedPriceRange,
     page,
     sortOrder,
-    debouncedFetchProducts
+    debouncedFetchProducts,
   ]);
 
   useEffect(() => {
@@ -243,7 +225,7 @@ export function HomePage() {
 
   const shopOptions = shopNames.map((shopName) => ({
     value: shopName,
-    label: shopName
+    label: shopName,
   }));
 
   const handleSearchChange = (e: ChangeEvent<HTMLInputElement>) => {
@@ -256,7 +238,7 @@ export function HomePage() {
   };
 
   const handleSortChange = (
-    newValue: SingleValue<{ value: string; label: string }>,
+    newValue: SingleValue<{ value: string; label: string }>
   ) => {
     if (newValue) {
       setSortOrder(newValue.value as 'asc' | 'desc');
@@ -349,7 +331,7 @@ export function HomePage() {
               })}
             />
           </div>
-  
+
           {/* Price Range */}
           <div className="space-y-2">
             <label className="block text-sm font-medium text-gray-700 dark:text-gray-200">Price Range ($)</label>
@@ -380,12 +362,12 @@ export function HomePage() {
                 ]}
                 onChange={handleSliderChange}
                 renderTrack={({ props, children }) => (
-                    <div
-                      {...props}
-                      className="h-1.5 bg-gray-200 dark:bg-gray-600 rounded-full"
-                    >
-                      {children}
-                    </div>
+                  <div
+                    {...props}
+                    className="h-1.5 bg-gray-200 dark:bg-gray-600 rounded-full"
+                  >
+                    {children}
+                  </div>
                 )}
                 renderThumb={({ props }) => {
                   const { key, ...restProps } = props; // Extract the `key` prop
@@ -400,7 +382,7 @@ export function HomePage() {
               />
             </div>
           </div>
-  
+
           {/* Checkboxes */}
           <div className="space-y-2">
             <label className="block text-sm font-medium text-gray-700 dark:text-gray-200">Availability</label>
@@ -425,7 +407,7 @@ export function HomePage() {
               </label>
             </div>
           </div>
-  
+
           {/* Sort Dropdown */}
           <div className="space-y-2">
             <label className="block text-sm font-medium text-gray-700 dark:text-gray-200">Sort By</label>
@@ -471,7 +453,7 @@ export function HomePage() {
             />
           </div>
         </div>
-  
+
         {/* Products List */}
         <div className="space-y-6">
           {loading && (
