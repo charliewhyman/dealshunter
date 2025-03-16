@@ -13,7 +13,7 @@ function ProductPage() {
   const [Product, setProduct] = useState<Product | null>(null);
   const [loading, setLoading] = useState(true);
   const [productImage, setProductImage] = useState<string | undefined>(undefined);
-  const [variants, setVariants] = useState<Array<{ title: string, available: boolean }>>([]);
+  const [variants, setVariants] = useState<Array<{ title: string; available: boolean }>>([]);
   const { variantPrice, compareAtPrice, offerPrice } = useProductPricing(ProductId!);
   const navigate = useNavigate();
   const [searchQuery, setSearchQuery] = useState('');
@@ -30,7 +30,7 @@ function ProductPage() {
         if (ProductError) throw ProductError;
         setProduct(ProductData);
       } catch (error) {
-        console.error("Error fetching data:", error);
+        console.error('Error fetching data:', error);
       }
     };
 
@@ -64,16 +64,17 @@ function ProductPage() {
         // Fetch variants
         const { data: variantsData, error: variantsError } = await supabase
           .from('variants')
-          .select('title,inventory_quantity,available')
+          .select('title, inventory_quantity, available')
           .eq('product_id', ProductId);
 
         if (!variantsError && variantsData) {
-          setVariants(variantsData.map(variant => ({
-            title: variant.title,
-            available: variant.available
-          })));
+          setVariants(
+            variantsData.map((variant) => ({
+              title: variant.title,
+              available: variant.available,
+            }))
+          );
         }
-
       } catch (error) {
         console.error('Error fetching data:', error);
       } finally {
@@ -92,8 +93,8 @@ function ProductPage() {
     navigate(`/?search=${searchQuery}`);
   };
 
-  if (loading) return <p className="text-gray-900">Loading...</p>;
-  if (!Product) return <p className="text-gray-900">Product not found.</p>;
+  if (loading) return <p className="text-gray-900 dark:text-gray-100">Loading...</p>;
+  if (!Product) return <p className="text-gray-900 dark:text-gray-100">Product not found.</p>;
 
   return (
     <>
@@ -102,8 +103,8 @@ function ProductPage() {
         handleSearchChange={handleSearchChange}
         handleSearchSubmit={handleSearchSubmit}
       />
-      <div className="p-6">
-        <div className="text-gray-900">
+      <div className="p-6 bg-white dark:bg-gray-900">
+        <div className="text-gray-900 dark:text-gray-100">
           <div className="flex gap-6 items-center">
             {/* Photo Section */}
             <img
@@ -118,18 +119,18 @@ function ProductPage() {
               {variantPrice !== null && (
                 <>
                   {offerPrice !== null && offerPrice <= variantPrice ? (
-                    <span className="text-2xl font-bold text-green-600">
+                    <span className="text-2xl font-bold text-green-600 dark:text-green-500">
                       ${offerPrice.toFixed(2)}
                     </span>
                   ) : (
-                    <span className="text-2xl font-bold text-green-600">
+                    <span className="text-2xl font-bold text-green-600 dark:text-green-500">
                       ${variantPrice.toFixed(2)}
                     </span>
                   )}
                 </>
               )}
               {compareAtPrice && (
-                <p className="text-sm text-gray-500 line-through">
+                <p className="text-sm text-gray-500 dark:text-gray-400 line-through">
                   ${compareAtPrice.toFixed(2)}
                 </p>
               )}
@@ -138,33 +139,36 @@ function ProductPage() {
                 href={Product.url ?? '#'}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="relative flex items-center justify-center gap-2 px-3 py-1 text-sm font-medium rounded-md text-white bg-blue-600 hover:bg-blue-700 w-1/3"
+                className="relative flex items-center justify-center gap-2 px-3 py-1 text-sm font-medium rounded-md text-white bg-blue-600 hover:bg-blue-700 dark:bg-blue-500 dark:hover:bg-blue-600 w-1/3"
               >
                 <span className="flex-1 text-center">Get Product</span>
                 <ExternalLink className="w-5 h-5 text-white" />
               </a>
               {/* Variants Section */}
               <div className="flex flex-wrap gap-2 mt-2">
-                {variants.map((variant, index) => 
-                  variant.title !== "Default Title" && (
-                    <span
-                      key={index}
-                      className={`text-sm px-2 py-1 rounded-full border ${
-                        variant.available 
-                          ? 'border-gray-300 bg-gray-100 available' 
-                          : 'border-gray-200 bg-gray-100 unavailable'
-                      }`}
-                    >
-                      {variant.title}
-                    </span>
-                  )
+                {variants.map(
+                  (variant, index) =>
+                    variant.title !== 'Default Title' && (
+                      <span
+                        key={index}
+                        className={`text-sm px-2 py-1 rounded-full border ${
+                          variant.available
+                            ? 'border-gray-300 dark:border-gray-600 bg-gray-100 dark:bg-gray-700 text-gray-900 dark:text-gray-100'
+                            : 'border-gray-200 dark:border-gray-600 bg-gray-100 dark:bg-gray-700 text-gray-500 dark:text-gray-400'
+                        }`}
+                      >
+                        {variant.title}
+                      </span>
+                    )
                 )}
               </div>
               {/* Last updated section */}
               <div>
-                <p className="text-sm text-gray-500">{Product.updated_at_external 
-                  ? format(new Date(Product.updated_at_external), "MMMM do, yyyy H:mma") 
-                  : 'No update date available'}</p>
+                <p className="text-sm text-gray-500 dark:text-gray-400">
+                  {Product.updated_at_external
+                    ? format(new Date(Product.updated_at_external), 'MMMM do, yyyy H:mma')
+                    : 'No update date available'}
+                </p>
               </div>
             </div>
           </div>
@@ -173,4 +177,5 @@ function ProductPage() {
     </>
   );
 }
+
 export default ProductPage;
