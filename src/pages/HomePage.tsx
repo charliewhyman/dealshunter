@@ -380,19 +380,23 @@ export function HomePage() {
                 ]}
                 onChange={handleSliderChange}
                 renderTrack={({ props, children }) => (
-                  <div
-                    {...props}
-                    className="h-1.5 bg-gray-200 dark:bg-gray-600 rounded-full"
-                  >
-                    {children}
-                  </div>
+                    <div
+                      {...props}
+                      className="h-1.5 bg-gray-200 dark:bg-gray-600 rounded-full"
+                    >
+                      {children}
+                    </div>
                 )}
-                renderThumb={({ props }) => (
-                  <div
-                    {...props}
-                    className="h-4 w-4 bg-blue-600 dark:bg-blue-500 rounded-full shadow-lg focus:outline-none ring-2 ring-white dark:ring-gray-800"
-                  />
-                )}
+                renderThumb={({ props }) => {
+                  const { key, ...restProps } = props; // Extract the `key` prop
+                  return (
+                    <div
+                      key={key} // Pass `key` directly
+                      {...restProps} // Spread the remaining props
+                      className="h-4 w-4 bg-blue-600 dark:bg-blue-500 rounded-full shadow-lg focus:outline-none ring-2 ring-white dark:ring-gray-800"
+                    />
+                  );
+                }}
               />
             </div>
           </div>
