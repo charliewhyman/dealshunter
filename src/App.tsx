@@ -5,7 +5,8 @@ import ProductPage from './pages/ProductPage';
 function App() {
   return (
     <Router>
-      <div className="min-h-screen bg-gray-50">
+      {/* Main app container */}
+      <div className="min-h-screen bg-gray-50 dark:bg-gray-900">
         <Routes>
           <Route path="/" element={<HomePage />} />
           <Route path="/Products/:ProductId" element={<ProductPage />} />

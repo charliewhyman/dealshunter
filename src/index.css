@@ -29,9 +29,11 @@ a:hover {
 body {
   margin: 0;
   display: flex;
-  flex-direction: column; 
+  flex-direction: column;
   min-height: 100vh;
   min-width: 320px;
+  background-color: var(--bg-color); /* Use CSS variable for background */
+  color: var(--text-color); /* Use CSS variable for text color */
 }
 
 h1 {
