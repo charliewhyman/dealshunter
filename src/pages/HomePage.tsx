@@ -63,62 +63,70 @@ export function HomePage() {
           id,
           title,
           shop_id,
-          shops ( shop_name ),
+          shop_name,
           created_at,
           url,
           description,
           updated_at_external,
-          min_price
+          min_price,
+          in_stock,
+          on_sale
           `,
           { count: 'exact' }
         );
-
+  
       // Apply filters
       if (filters.selectedShopName.length > 0) {
-        query = query.in('shops.shop_name', filters.selectedShopName);
+        query = query.in('shop_name', filters.selectedShopName);
       }
-
+  
       if (filters.inStockOnly) {
-        query = query.not('min_price', 'is', null); // Example filter
+        query = query.eq('in_stock', true);
       }
-
+  
       if (filters.onSaleOnly) {
-        query = query.not('min_price', 'is', null); // Example filter
+        query = query.eq('on_sale', true);
       }
-
+  
       if (filters.searchQuery) {
         query = query.textSearch('title_search', filters.searchQuery, {
           config: 'english',
         });
       }
-
+  
       if (filters.selectedPriceRange) {
         query = query
           .gte('min_price', filters.selectedPriceRange[0])
           .lte('min_price', filters.selectedPriceRange[1]);
       }
-
+  
       // Apply sorting and pagination
       query = query
         .order('min_price', { ascending: sortOrder === 'asc' })
         .order('created_at', { ascending: false })
         .range(page * ITEMS_PER_PAGE, (page + 1) * ITEMS_PER_PAGE - 1);
-
+  
       const { data, error, count } = await query;
-
-      if (error) throw error;
-
-      if (data) {
-        const formattedData = data.map((item) => ({
-          ...item,
-          variants: [],
-          offers: [],
-        })) as Product[];
-
-        setProducts((prev) => (page === 0 ? formattedData : [...prev, ...formattedData]));
-        setHasMore(count ? data.length === ITEMS_PER_PAGE : false);
+  
+      if (error) {
+        throw new Error(`Supabase query error: ${error.message}`);
       }
-      // 
+  
+      if (!data || data.length === 0) {
+        setProducts([]);
+        setHasMore(false);
+        return;
+      }
+  
+      // Format the data to match the Product interface
+      const formattedData = data.map((item) => ({
+        ...item,
+        variants: [], // Add empty variants array (if needed)
+        offers: [], // Add empty offers array
+      })) as Product[];
+  
+      setProducts((prev) => (page === 0 ? formattedData : [...prev, ...formattedData]));
+      setHasMore(count ? data.length === ITEMS_PER_PAGE : false);
     } catch (error) {
       console.error('Error fetching products:', error);
     } finally {

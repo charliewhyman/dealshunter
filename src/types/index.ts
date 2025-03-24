@@ -7,13 +7,9 @@ export interface Product {
   created_at: string;
   url: string;
   updated_at_external: string | null;
-  // The min_price is now a direct property from the view
   min_price: number;
   variants: {
     id: number;
-    available: boolean;
-    price: number;
-    compare_at_price: number | null;
     is_price_lower: boolean;
   }[];
   offers: {
@@ -60,8 +56,27 @@ export type Database = {
   }
   public: {
     Tables: {
+      collection_groups: {
+        Row: {
+          created_at: string
+          group_name: string | null
+          id: number
+        }
+        Insert: {
+          created_at?: string
+          group_name?: string | null
+          id?: number
+        }
+        Update: {
+          created_at?: string
+          group_name?: string | null
+          id?: number
+        }
+        Relationships: []
+      }
       collections: {
         Row: {
+          collection_group_id: number | null
           collection_url: string | null
           created_at: string
           deleted_at: string | null
@@ -77,6 +92,7 @@ export type Database = {
           updated_at_external: string | null
         }
         Insert: {
+          collection_group_id?: number | null
           collection_url?: string | null
           created_at?: string
           deleted_at?: string | null
@@ -92,6 +108,7 @@ export type Database = {
           updated_at_external?: string | null
         }
         Update: {
+          collection_group_id?: number | null
           collection_url?: string | null
           created_at?: string
           deleted_at?: string | null
@@ -159,7 +176,21 @@ export type Database = {
             foreignKeyName: "comments_product_id_fkey"
             columns: ["product_id"]
             isOneToOne: false
+            referencedRelation: "product_min_prices"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "comments_product_id_fkey"
+            columns: ["product_id"]
+            isOneToOne: false
             referencedRelation: "products"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "comments_product_id_fkey"
+            columns: ["product_id"]
+            isOneToOne: false
+            referencedRelation: "products_with_min_price"
             referencedColumns: ["id"]
           },
           {
@@ -233,7 +264,21 @@ export type Database = {
             foreignKeyName: "images_product_id_fkey"
             columns: ["product_id"]
             isOneToOne: false
+            referencedRelation: "product_min_prices"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "images_product_id_fkey"
+            columns: ["product_id"]
+            isOneToOne: false
             referencedRelation: "products"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "images_product_id_fkey"
+            columns: ["product_id"]
+            isOneToOne: false
+            referencedRelation: "products_with_min_price"
             referencedColumns: ["id"]
           },
         ]
@@ -289,7 +334,21 @@ export type Database = {
             foreignKeyName: "offers_product_id_fkey"
             columns: ["product_id"]
             isOneToOne: false
+            referencedRelation: "product_min_prices"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "offers_product_id_fkey"
+            columns: ["product_id"]
+            isOneToOne: false
             referencedRelation: "products"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "offers_product_id_fkey"
+            columns: ["product_id"]
+            isOneToOne: false
+            referencedRelation: "products_with_min_price"
             referencedColumns: ["id"]
           },
         ]
@@ -321,7 +380,21 @@ export type Database = {
             foreignKeyName: "options_product_id_fkey"
             columns: ["product_id"]
             isOneToOne: false
+            referencedRelation: "product_min_prices"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "options_product_id_fkey"
+            columns: ["product_id"]
+            isOneToOne: false
             referencedRelation: "products"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "options_product_id_fkey"
+            columns: ["product_id"]
+            isOneToOne: false
+            referencedRelation: "products_with_min_price"
             referencedColumns: ["id"]
           },
         ]
@@ -357,7 +430,21 @@ export type Database = {
             foreignKeyName: "product_collections_product_id_fkey"
             columns: ["product_id"]
             isOneToOne: false
+            referencedRelation: "product_min_prices"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "product_collections_product_id_fkey"
+            columns: ["product_id"]
+            isOneToOne: false
             referencedRelation: "products"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "product_collections_product_id_fkey"
+            columns: ["product_id"]
+            isOneToOne: false
+            referencedRelation: "products_with_min_price"
             referencedColumns: ["id"]
           },
         ]
@@ -383,7 +470,21 @@ export type Database = {
             foreignKeyName: "product_tags_product_id_fkey"
             columns: ["product_id"]
             isOneToOne: false
+            referencedRelation: "product_min_prices"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "product_tags_product_id_fkey"
+            columns: ["product_id"]
+            isOneToOne: false
             referencedRelation: "products"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "product_tags_product_id_fkey"
+            columns: ["product_id"]
+            isOneToOne: false
+            referencedRelation: "products_with_min_price"
             referencedColumns: ["id"]
           },
         ]
@@ -526,7 +627,21 @@ export type Database = {
             foreignKeyName: "reports_product_id_fkey"
             columns: ["product_id"]
             isOneToOne: false
+            referencedRelation: "product_min_prices"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "reports_product_id_fkey"
+            columns: ["product_id"]
+            isOneToOne: false
             referencedRelation: "products"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "reports_product_id_fkey"
+            columns: ["product_id"]
+            isOneToOne: false
+            referencedRelation: "products_with_min_price"
             referencedColumns: ["id"]
           },
           {
@@ -659,7 +774,21 @@ export type Database = {
             foreignKeyName: "variants_product_id_fkey"
             columns: ["product_id"]
             isOneToOne: false
+            referencedRelation: "product_min_prices"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "variants_product_id_fkey"
+            columns: ["product_id"]
+            isOneToOne: false
             referencedRelation: "products"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "variants_product_id_fkey"
+            columns: ["product_id"]
+            isOneToOne: false
+            referencedRelation: "products_with_min_price"
             referencedColumns: ["id"]
           },
         ]
@@ -701,7 +830,21 @@ export type Database = {
             foreignKeyName: "votes_product_id_fkey"
             columns: ["product_id"]
             isOneToOne: false
+            referencedRelation: "product_min_prices"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "votes_product_id_fkey"
+            columns: ["product_id"]
+            isOneToOne: false
             referencedRelation: "products"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "votes_product_id_fkey"
+            columns: ["product_id"]
+            isOneToOne: false
+            referencedRelation: "products_with_min_price"
             referencedColumns: ["id"]
           },
           {
@@ -738,6 +881,37 @@ export type Database = {
           vendor: string | null
         }
         Relationships: []
+      }
+      product_min_prices: {
+        Row: {
+          id: number | null
+          min_price: number | null
+        }
+        Relationships: []
+      }
+      products_with_min_price: {
+        Row: {
+          created_at: string | null
+          description: string | null
+          id: number | null
+          in_stock: boolean | null
+          min_price: number | null
+          on_sale: boolean | null
+          shop_id: number | null
+          shop_name: string | null
+          title: string | null
+          updated_at_external: string | null
+          url: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "products_shop_id_fkey"
+            columns: ["shop_id"]
+            isOneToOne: false
+            referencedRelation: "shops"
+            referencedColumns: ["id"]
+          },
+        ]
       }
     }
     Functions: {
