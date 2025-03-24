@@ -104,7 +104,7 @@ export function HomePage() {
         .order('created_at', { ascending: false })
         .range(page * ITEMS_PER_PAGE, (page + 1) * ITEMS_PER_PAGE - 1);
 
-      const { data, error } = await query;
+      const { data, error, count } = await query;
 
       if (error) throw error;
 
@@ -114,8 +114,9 @@ export function HomePage() {
           variants: [],
           offers: [],
         })) as Product[];
+
         setProducts((prev) => (page === 0 ? formattedData : [...prev, ...formattedData]));
-        setHasMore(data.length === ITEMS_PER_PAGE);
+        setHasMore(count ? data.length === ITEMS_PER_PAGE : false);
       }
       // 
     } catch (error) {
