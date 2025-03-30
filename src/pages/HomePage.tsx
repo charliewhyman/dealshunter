@@ -31,14 +31,14 @@ export function HomePage() {
     JSON.parse(localStorage.getItem('selectedShopName') || '[]')
   );
   const [inStockOnly, setInStockOnly] = useState<boolean>(
-    JSON.parse(localStorage.getItem('inStockOnly') || 'false')
+    JSON.parse(localStorage.getItem('inStockOnly') || 'true')
   );
   const [onSaleOnly, setOnSaleOnly] = useState<boolean>(
     JSON.parse(localStorage.getItem('onSaleOnly') || 'false')
   );
-  const [priceRange, setPriceRange] = useState<[number, number]>([0, 1000]);
+  const [priceRange, setPriceRange] = useState<[number, number]>([15, 1000]);
   const [selectedPriceRange, setSelectedPriceRange] = useState<[number, number]>(
-    JSON.parse(localStorage.getItem('selectedPriceRange') || '[0, 1000]')
+    JSON.parse(localStorage.getItem('selectedPriceRange') || '[15, 1000]')
   );
 
   interface FilterOptions {
