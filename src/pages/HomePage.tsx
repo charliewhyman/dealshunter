@@ -95,29 +95,25 @@ export function HomePage() {
         .order('created_at', { ascending: false })
         .range(page * ITEMS_PER_PAGE, (page + 1) * ITEMS_PER_PAGE - 1);
   
-      const { data, error, count } = await query;
+      const { data, error } = await query;
   
       if (error) {
         throw new Error(`Supabase query error: ${error.message}`);
       }
   
-      if (!data || data.length === 0) {
-        setProducts([]);
-        setHasMore(false);
-        return;
-      }
-  
       // Format the data to match the Product interface
-      const formattedData = data.map((item) => ({
+      const formattedData = data?.map((item) => ({
         ...item,
         variants: [], // Add empty variants array (if needed)
         offers: [], // Add empty offers array
-      })) as Product[];
+      })) as Product[] || [];
   
       setProducts((prev) => (page === 0 ? formattedData : [...prev, ...formattedData]));
-      setHasMore(count ? data.length === ITEMS_PER_PAGE : false);
+      setHasMore(data ? data.length === ITEMS_PER_PAGE : false);
     } catch (error) {
       console.error('Error fetching products:', error);
+      setProducts([]);
+      setHasMore(false);
     } finally {
       setLoading(false);
     }
@@ -454,21 +450,28 @@ export function HomePage() {
 
         {/* Products List */}
         <div className="space-y-6">
-          {loading && (
+          {loading && page === 0 ? ( // Only show loading for initial load
             <div className="flex justify-center items-center min-h-[200px]">
               <Loader2 className="w-8 h-8 animate-spin text-blue-600 dark:text-blue-500" />
             </div>
-          )}
-          {!loading && products.length === 0 && (
+          ) : products.length === 0 ? (
             <div className="flex justify-center items-center min-h-[200px]">
               <p className="text-gray-900 dark:text-gray-100">No products found.</p>
             </div>
+          ) : (
+            <>
+              {products.map((product) => (
+                <div key={product.id} className="max-w-4xl mx-auto w-full">
+                  <ProductCard product={product} />
+                </div>
+              ))}
+              {loading && page > 0 && ( // Show loading spinner only for subsequent pages
+                <div className="flex justify-center items-center py-4">
+                  <Loader2 className="w-8 h-8 animate-spin text-blue-600 dark:text-blue-500" />
+                </div>
+              )}
+            </>
           )}
-          {products.map((product) => (
-            <div key={product.id} className="max-w-4xl mx-auto w-full">
-              <ProductCard product={product} />
-            </div>
-          ))}
         </div>
         <div ref={observerRef} className="flex items-center justify-center py-8"></div>
       </div>
