@@ -59,21 +59,9 @@ export function HomePage() {
       let query = supabase
         .from('products_with_min_price')
         .select(
-          `
-          id,
-          title,
-          shop_id,
-          shop_name,
-          created_at,
-          url,
-          description,
-          updated_at_external,
-          min_price,
-          in_stock,
-          on_sale
-          `,
+          'id, title, shop_id, shop_name, created_at, url, description, updated_at_external, min_price, in_stock, on_sale',
           { count: 'exact' }
-        );
+        );        
   
       // Apply filters
       if (filters.selectedShopName.length > 0) {
@@ -89,8 +77,9 @@ export function HomePage() {
       }
   
       if (filters.searchQuery) {
-        query = query.textSearch('title_search', filters.searchQuery, {
+        query = query.textSearch('fts', filters.searchQuery, {
           config: 'english',
+          type: 'websearch', 
         });
       }
   
