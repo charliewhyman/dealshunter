@@ -1,4 +1,4 @@
-import { ChangeEvent, FormEvent, useEffect, useRef, useState } from 'react';
+import { ChangeEvent, FormEvent, useCallback, useEffect, useRef, useState } from 'react';
 import { Product } from '../types';
 import { supabase } from '../lib/supabase';
 import { Loader2 } from 'lucide-react';
@@ -41,7 +41,6 @@ export function HomePage() {
   const PRICE_RANGE: [number, number] = [15, 1000];
   const [selectedPriceRange, setSelectedPriceRange] = useState<[number, number]>(() => {
     const savedRange = JSON.parse(localStorage.getItem('selectedPriceRange') || 'null');
-    // Validate the saved range against our min/max constraints
     return savedRange && savedRange[0] >= PRICE_RANGE[0] && savedRange[1] <= PRICE_RANGE[1] 
       ? savedRange 
       : [...PRICE_RANGE];
@@ -55,77 +54,82 @@ export function HomePage() {
     selectedPriceRange: [number, number];
   }
 
-  async function fetchFilteredProducts(
-    filters: FilterOptions,
-    page: number,
-    sortOrder: 'asc' | 'desc'
-  ) {
-    setLoading(true);
-    try {
-      let query = supabase
-        .from('products_with_min_price')
-        .select(
-          'id, title, shop_id, shop_name, created_at, url, description, updated_at_external, min_price, in_stock, on_sale',
-          { count: 'exact' }
-        );        
-  
-      // Apply filters
-      if (filters.selectedShopName.length > 0) {
-        query = query.in('shop_name', filters.selectedShopName);
-      }
-  
-      if (filters.inStockOnly) {
-        query = query.eq('in_stock', true);
-      }
-  
-      if (filters.onSaleOnly) {
-        query = query.eq('on_sale', true);
-      }
-  
-      if (filters.searchQuery) {
-        query = query.textSearch('fts', filters.searchQuery, {
-          config: 'english',
-          type: 'websearch', 
-        });
-      }
-  
-      if (filters.selectedPriceRange) {
+  const fetchFilteredProducts = useCallback(
+    async (filters: FilterOptions, page: number, sortOrder: 'asc' | 'desc') => {
+      setLoading(true);
+      try {
+        let query = supabase
+          .from('products_with_min_price')
+          .select(
+            'id, title, shop_id, shop_name, created_at, url, description, updated_at_external, min_price, in_stock, on_sale',
+            { count: 'exact' }
+          );        
+    
+        // Apply filters
+        if (filters.selectedShopName.length > 0) {
+          query = query.in('shop_name', filters.selectedShopName);
+        }
+    
+        if (filters.inStockOnly) {
+          query = query.eq('in_stock', true);
+        }
+    
+        if (filters.onSaleOnly) {
+          query = query.eq('on_sale', true);
+        }
+    
+        if (filters.searchQuery) {
+          query = query.textSearch('fts', filters.searchQuery, {
+            config: 'english',
+            type: 'websearch', 
+          });
+        }
+    
+        if (filters.selectedPriceRange) {
+          query = query
+            .gte('min_price', filters.selectedPriceRange[0])
+            .lte('min_price', filters.selectedPriceRange[1]);
+        }
+    
+        // Apply sorting and pagination
         query = query
-          .gte('min_price', filters.selectedPriceRange[0])
-          .lte('min_price', filters.selectedPriceRange[1]);
+          .order('min_price', { ascending: sortOrder === 'asc' })
+          .order('created_at', { ascending: false })
+          .range(page * ITEMS_PER_PAGE, (page + 1) * ITEMS_PER_PAGE - 1);
+    
+        const { data, error } = await query;
+    
+        if (error) {
+          throw new Error(`Supabase query error: ${error.message}`);
+        }
+    
+        const formattedData = data?.map((item) => ({
+          ...item,
+          variants: [],
+          offers: [],
+        })) as Product[] || [];
+    
+        setProducts(prev => {
+          if (page === 0) return formattedData;
+          
+          const newItems = formattedData.filter(
+            newItem => !prev.some(existingItem => existingItem.id === newItem.id)
+          );
+          
+          return [...prev, ...newItems];
+        });
+        setHasMore(formattedData.length === ITEMS_PER_PAGE);
+        setInitialLoad(false);
+      } catch (error) {
+        console.error('Error fetching products:', error);
+        setProducts([]);
+        setHasMore(false);
+      } finally {
+        setLoading(false);
       }
-  
-      // Apply sorting and pagination
-      query = query
-        .order('min_price', { ascending: sortOrder === 'asc' })
-        .order('created_at', { ascending: false })
-        .range(page * ITEMS_PER_PAGE, (page + 1) * ITEMS_PER_PAGE - 1);
-  
-      const { data, error } = await query;
-  
-      if (error) {
-        throw new Error(`Supabase query error: ${error.message}`);
-      }
-  
-      // Format the data to match the Product interface
-      const formattedData = data?.map((item) => ({
-        ...item,
-        variants: [],
-        offers: [],
-      })) as Product[] || [];
-  
-      setProducts((prev) => (page === 0 ? formattedData : [...prev, ...formattedData]));
-      setHasMore(data ? data.length === ITEMS_PER_PAGE : false);
-      setInitialLoad(false);
-    } catch (error) {
-      console.error('Error fetching products:', error);
-      setProducts([]);
-      setHasMore(false);
-      setInitialLoad(false);
-    } finally {
-      setLoading(false);
-    }
-  }
+    },
+    []
+  );
 
   const debouncedFetchProducts = useRef(
     _.debounce(
@@ -151,15 +155,16 @@ export function HomePage() {
       debouncedFetchProducts(filters, page, sortOrder);
     }
   }, [
-    selectedShopName,
-    inStockOnly,
-    onSaleOnly,
-    searchQuery,
-    selectedPriceRange,
-    page,
-    sortOrder,
-    debouncedFetchProducts,
+    selectedShopName, 
+    inStockOnly, 
+    onSaleOnly, 
+    searchQuery, 
+    selectedPriceRange, 
+    page, 
+    sortOrder, 
+    debouncedFetchProducts, 
     products.length,
+    fetchFilteredProducts
   ]);
 
   useEffect(() => {
@@ -200,8 +205,8 @@ export function HomePage() {
   useEffect(() => {
     const observer = new IntersectionObserver(
       (entries) => {
-        if (entries[0].isIntersecting && hasMore && !loading) {
-          setPage((prev) => prev + 1);
+        if (entries[0].isIntersecting && hasMore && !loading && !initialLoad) {
+          setPage(prev => prev + 1);
         }
       },
       { threshold: 1.0 }
@@ -215,7 +220,7 @@ export function HomePage() {
         observer.unobserve(currentRef);
       }
     };
-  }, [hasMore, loading]);
+  }, [hasMore, loading, initialLoad]);
 
   const sortOptions = [
     { value: 'asc', label: 'Price: Low to High' },
@@ -260,14 +265,14 @@ export function HomePage() {
   
     if (type === 'min') {
       const newMin = Math.min(
-        Math.max(numericValue, PRICE_RANGE[0]), // Ensure >= min range
-        selectedPriceRange[1]                  // Don't exceed current max
+        Math.max(numericValue, PRICE_RANGE[0]),
+        selectedPriceRange[1]
       );
       setSelectedPriceRange([newMin, selectedPriceRange[1]]);
     } else {
       const newMax = Math.max(
-        Math.min(numericValue, PRICE_RANGE[1]), // Ensure <= max range
-        selectedPriceRange[0]                  // Don't go below current min
+        Math.min(numericValue, PRICE_RANGE[1]),
+        selectedPriceRange[0]
       );
       setSelectedPriceRange([selectedPriceRange[0], newMax]);
     }
@@ -374,8 +379,8 @@ export function HomePage() {
                 min={PRICE_RANGE[0]}
                 max={PRICE_RANGE[1]}
                 values={[
-                  Math.max(selectedPriceRange[0], PRICE_RANGE[0]), // Ensure value >= min
-                  Math.min(selectedPriceRange[1], PRICE_RANGE[1])  // Ensure value <= max
+                  Math.max(selectedPriceRange[0], PRICE_RANGE[0]),
+                  Math.min(selectedPriceRange[1], PRICE_RANGE[1])
                 ]}
                 onChange={handleSliderChange}
                 renderTrack={({ props, children }) => (
