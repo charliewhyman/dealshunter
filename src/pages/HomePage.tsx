@@ -15,6 +15,7 @@ const ITEMS_PER_PAGE = 10;
 export function HomePage() {
   const [products, setProducts] = useState<Product[]>([]);
   const [loading, setLoading] = useState(true);
+  const [initialLoad, setInitialLoad] = useState(true);
   const [hasMore, setHasMore] = useState(true);
   const [page, setPage] = useState(0);
   const [shopNames, setShopNames] = useState<string[]>([]);
@@ -104,16 +105,18 @@ export function HomePage() {
       // Format the data to match the Product interface
       const formattedData = data?.map((item) => ({
         ...item,
-        variants: [], // Add empty variants array (if needed)
-        offers: [], // Add empty offers array
+        variants: [],
+        offers: [],
       })) as Product[] || [];
   
       setProducts((prev) => (page === 0 ? formattedData : [...prev, ...formattedData]));
       setHasMore(data ? data.length === ITEMS_PER_PAGE : false);
+      setInitialLoad(false);
     } catch (error) {
       console.error('Error fetching products:', error);
       setProducts([]);
       setHasMore(false);
+      setInitialLoad(false);
     } finally {
       setLoading(false);
     }
@@ -136,7 +139,12 @@ export function HomePage() {
       searchQuery,
       selectedPriceRange,
     };
-    debouncedFetchProducts(filters, page, sortOrder);
+    
+    if (page === 0 && products.length === 0) {
+      fetchFilteredProducts(filters, page, sortOrder);
+    } else {
+      debouncedFetchProducts(filters, page, sortOrder);
+    }
   }, [
     selectedShopName,
     inStockOnly,
@@ -146,6 +154,7 @@ export function HomePage() {
     page,
     sortOrder,
     debouncedFetchProducts,
+    products.length,
   ]);
 
   useEffect(() => {
@@ -180,13 +189,13 @@ export function HomePage() {
   useEffect(() => {
     setPage(0);
     setProducts([]);
+    setInitialLoad(true);
   }, [selectedShopName, inStockOnly, onSaleOnly, searchQuery, selectedPriceRange, sortOrder]);
 
   useEffect(() => {
     const observer = new IntersectionObserver(
       (entries) => {
         if (entries[0].isIntersecting && hasMore && !loading) {
-          setLoading(true);
           setPage((prev) => prev + 1);
         }
       },
@@ -202,10 +211,6 @@ export function HomePage() {
       }
     };
   }, [hasMore, loading]);
-
-  useEffect(() => {
-    setLoading(false);
-  }, [products]);
 
   const sortOptions = [
     { value: 'asc', label: 'Price: Low to High' },
@@ -249,18 +254,29 @@ export function HomePage() {
     if (isNaN(numericValue)) return;
 
     if (type === 'min') {
-      const newMin = Math.min(Math.max(numericValue, 0), selectedPriceRange[1]); // Ensure min is >= 0
+      const newMin = Math.min(Math.max(numericValue, 0), selectedPriceRange[1]);
       setSelectedPriceRange([newMin, selectedPriceRange[1]]);
     } else {
-      const newMax = Math.max(numericValue, selectedPriceRange[0]); // Ensure max is >= min
+      const newMax = Math.max(numericValue, selectedPriceRange[0]);
       setSelectedPriceRange([selectedPriceRange[0], newMax]);
 
-      // Update the slider's max value if the new max is greater than the current max
       if (newMax > priceRange[1]) {
         setPriceRange([priceRange[0], newMax]);
       }
     }
   };
+
+  function ProductCardSkeleton() {
+    return (
+      <div className="max-w-4xl mx-auto w-full bg-gray-100 dark:bg-gray-800 rounded-lg p-4 animate-pulse">
+        <div className="h-6 bg-gray-300 dark:bg-gray-700 rounded w-3/4 mb-2"></div>
+        <div className="h-4 bg-gray-300 dark:bg-gray-700 rounded w-1/2 mb-4"></div>
+        <div className="h-4 bg-gray-300 dark:bg-gray-700 rounded w-full mb-1"></div>
+        <div className="h-4 bg-gray-300 dark:bg-gray-700 rounded w-5/6 mb-1"></div>
+        <div className="h-4 bg-gray-300 dark:bg-gray-700 rounded w-2/3"></div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-white dark:bg-gray-900">
@@ -364,11 +380,11 @@ export function HomePage() {
                   </div>
                 )}
                 renderThumb={({ props }) => {
-                  const { key, ...restProps } = props; // Extract the `key` prop
+                  const { key, ...restProps } = props;
                   return (
                     <div
-                      key={key} // Pass `key` directly
-                      {...restProps} // Spread the remaining props
+                      key={key}
+                      {...restProps}
                       className="h-4 w-4 bg-blue-600 dark:bg-blue-500 rounded-full shadow-lg focus:outline-none ring-2 ring-white dark:ring-gray-800"
                     />
                   );
@@ -450,9 +466,11 @@ export function HomePage() {
 
         {/* Products List */}
         <div className="space-y-6">
-          {loading && page === 0 ? ( // Only show loading for initial load
-            <div className="flex justify-center items-center min-h-[200px]">
-              <Loader2 className="w-8 h-8 animate-spin text-blue-600 dark:text-blue-500" />
+          {initialLoad ? (
+            <div className="space-y-4">
+              {[...Array(3)].map((_, i) => (
+                <ProductCardSkeleton key={i} />
+              ))}
             </div>
           ) : products.length === 0 ? (
             <div className="flex justify-center items-center min-h-[200px]">
@@ -465,7 +483,7 @@ export function HomePage() {
                   <ProductCard product={product} />
                 </div>
               ))}
-              {loading && page > 0 && ( // Show loading spinner only for subsequent pages
+              {loading && page > 0 && (
                 <div className="flex justify-center items-center py-4">
                   <Loader2 className="w-8 h-8 animate-spin text-blue-600 dark:text-blue-500" />
                 </div>
@@ -473,7 +491,7 @@ export function HomePage() {
             </>
           )}
         </div>
-        <div ref={observerRef} className="flex items-center justify-center py-8"></div>
+        <div ref={observerRef} className="h-1" />
       </div>
     </div>
   );
