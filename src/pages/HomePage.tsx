@@ -37,10 +37,15 @@ export function HomePage() {
   const [onSaleOnly, setOnSaleOnly] = useState<boolean>(
     JSON.parse(localStorage.getItem('onSaleOnly') || 'false')
   );
-  const [priceRange, setPriceRange] = useState<[number, number]>([15, 1000]);
-  const [selectedPriceRange, setSelectedPriceRange] = useState<[number, number]>(
-    JSON.parse(localStorage.getItem('selectedPriceRange') || '[15, 1000]')
-  );
+
+  const PRICE_RANGE: [number, number] = [15, 1000];
+  const [selectedPriceRange, setSelectedPriceRange] = useState<[number, number]>(() => {
+    const savedRange = JSON.parse(localStorage.getItem('selectedPriceRange') || 'null');
+    // Validate the saved range against our min/max constraints
+    return savedRange && savedRange[0] >= PRICE_RANGE[0] && savedRange[1] <= PRICE_RANGE[1] 
+      ? savedRange 
+      : [...PRICE_RANGE];
+  });
 
   interface FilterOptions {
     selectedShopName: string[];
@@ -252,17 +257,19 @@ export function HomePage() {
   const handlePriceInputChange = (type: 'min' | 'max', value: string) => {
     const numericValue = parseFloat(value);
     if (isNaN(numericValue)) return;
-
+  
     if (type === 'min') {
-      const newMin = Math.min(Math.max(numericValue, 0), selectedPriceRange[1]);
+      const newMin = Math.min(
+        Math.max(numericValue, PRICE_RANGE[0]), // Ensure >= min range
+        selectedPriceRange[1]                  // Don't exceed current max
+      );
       setSelectedPriceRange([newMin, selectedPriceRange[1]]);
     } else {
-      const newMax = Math.max(numericValue, selectedPriceRange[0]);
+      const newMax = Math.max(
+        Math.min(numericValue, PRICE_RANGE[1]), // Ensure <= max range
+        selectedPriceRange[0]                  // Don't go below current min
+      );
       setSelectedPriceRange([selectedPriceRange[0], newMax]);
-
-      if (newMax > priceRange[1]) {
-        setPriceRange([priceRange[0], newMax]);
-      }
     }
   };
 
@@ -364,11 +371,11 @@ export function HomePage() {
               </div>
               <Range
                 step={1}
-                min={priceRange[0]}
-                max={priceRange[1]}
+                min={PRICE_RANGE[0]}
+                max={PRICE_RANGE[1]}
                 values={[
-                  Math.min(selectedPriceRange[0], priceRange[1]),
-                  Math.min(selectedPriceRange[1], priceRange[1]),
+                  Math.max(selectedPriceRange[0], PRICE_RANGE[0]), // Ensure value >= min
+                  Math.min(selectedPriceRange[1], PRICE_RANGE[1])  // Ensure value <= max
                 ]}
                 onChange={handleSliderChange}
                 renderTrack={({ props, children }) => (
