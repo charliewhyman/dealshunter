@@ -477,26 +477,26 @@ export function HomePage() {
         </div>
 
         {/* Products List */}
-        <div className="space-y-6">
+        <div className="grid grid-cols-1 md:grid-cols-1 lg:grid-cols-4 gap-4">
           {initialLoad ? (
-            <div className="space-y-4">
-              {[...Array(3)].map((_, i) => (
+            <>
+              {[...Array(4)].map((_, i) => (
                 <ProductCardSkeleton key={i} />
               ))}
-            </div>
+            </>
           ) : products.length === 0 ? (
-            <div className="flex justify-center items-center min-h-[200px]">
+            <div className="col-span-full flex justify-center items-center min-h-[200px]">
               <p className="text-gray-900 dark:text-gray-100">No products found.</p>
             </div>
           ) : (
             <>
               {products.map((product) => (
-                <div key={product.id} className="max-w-4xl mx-auto w-full">
+                <div key={product.id} className="w-full">
                   <ProductCard product={product} />
                 </div>
               ))}
               {loading && page > 0 && (
-                <div className="flex justify-center items-center py-4">
+                <div className="col-span-full flex justify-center items-center py-4">
                   <Loader2 className="w-8 h-8 animate-spin text-blue-600 dark:text-blue-500" />
                 </div>
               )}
