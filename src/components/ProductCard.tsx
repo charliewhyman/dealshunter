@@ -73,6 +73,7 @@ export function ProductCard({ product }: ProductCardProps) {
           <div className="flex-shrink-0">
             <img
               src={productImage}
+              loading='lazy'
               alt={product.title || 'Product image'}
               className="w-24 h-24 object-cover rounded-lg"
               onError={() => setProductImage(null)}

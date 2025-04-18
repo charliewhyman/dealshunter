@@ -109,6 +109,7 @@ function ProductPage() {
             {/* Photo Section */}
             <img
               src={productImage ?? '/default-image.png'}
+              loading='lazy'
               alt={Product?.title ?? 'Product image'}
               className="w-1/3 object-cover rounded-md"
             />
