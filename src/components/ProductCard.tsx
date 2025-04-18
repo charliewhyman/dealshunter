@@ -20,7 +20,6 @@ export function ProductCard({ product }: ProductCardProps) {
 
   useEffect(() => {
     const fetchVariantAndImage = async () => {
-      // Fetch image URL from the images table
       const { data: imageData, error: imageError } = await supabase
         .from('images')
         .select('src')
@@ -63,101 +62,88 @@ export function ProductCard({ product }: ProductCardProps) {
 
   return (
     <div
-      className={`bg-white dark:bg-gray-800 rounded-lg shadow-md p-6 hover:shadow-lg transition-shadow cursor-pointer ${
+      className={`flex flex-col items-center text-center justify-between h-full bg-white dark:bg-gray-800 rounded-lg shadow-md p-4 hover:shadow-lg transition-shadow cursor-pointer ${
         allVariantsUnavailable ? 'opacity-50' : ''
       }`}
       onClick={handleCardClick}
     >
-      <div className="flex gap-4 flex-wrap">
-        {productImage && (
-          <div className="flex-shrink-0">
-            <img
-              src={productImage}
-              loading='lazy'
-              alt={product.title || 'Product image'}
-              className="w-24 h-24 object-cover rounded-lg"
-              onError={() => setProductImage(null)}
-            />
-          </div>
+      {/* Image */}
+      {productImage && (
+        <img
+          src={productImage}
+          loading="lazy"
+          alt={product.title || 'Product image'}
+          className="w-full h-48 object-cover rounded mb-4"
+          onError={() => setProductImage(null)}
+        />
+      )}
+
+      {/* Title and Link */}
+      <div className="w-full flex items-start justify-between mb-1">
+        <h2
+          className={`text-base font-semibold text-gray-900 dark:text-gray-100 text-left line-clamp-2 ${
+            allVariantsUnavailable ? 'line-through' : ''
+          }`}
+        >
+          {product.title}
+        </h2>
+        <a
+          href={product.url || '#'}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="text-blue-600 hover:text-blue-800 dark:text-blue-400 dark:hover:text-blue-300 ml-2"
+          onClick={(e) => e.stopPropagation()}
+        >
+          <ExternalLink className="w-5 h-5 shrink-0" />
+        </a>
+      </div>
+
+      {/* Shop Name */}
+      <p className="text-sm text-gray-500 dark:text-gray-400 w-full text-left mb-2">
+        {product.shop_name}
+      </p>
+
+      {/* Price */}
+      <div className="flex items-center justify-center gap-2 mb-3">
+        {variantPrice !== null && (
+          <>
+            <span className="text-lg font-bold text-green-600 dark:text-green-500">
+              ${offerPrice?.toFixed(2) ?? variantPrice.toFixed(2)}
+            </span>
+            {compareAtPrice && compareAtPrice > (offerPrice ?? variantPrice) && (
+              <span className="text-sm text-gray-500 dark:text-gray-400 line-through">
+                ${compareAtPrice.toFixed(2)}
+              </span>
+            )}
+          </>
         )}
+      </div>
 
-        <div className="flex-grow">
-          <div className="flex items-center justify-between">
-            <h2
-              className={`text-xl font-semibold text-gray-900 dark:text-gray-100 ${
-                allVariantsUnavailable ? 'line-through' : ''
-              }`}
-            >
-              {product.title}
-            </h2>
-            <a
-              href={product.url || '#'} // Fallback to '#' if product.url is null
-              target="_blank"
-              rel="noopener noreferrer"
-              className="text-blue-600 hover:text-blue-800 dark:text-blue-400 dark:hover:text-blue-300"
-              onClick={(e) => e.stopPropagation()} // Prevent card redirection
-            >
-              <ExternalLink className="w-5 h-5" />
-            </a>
-          </div>
-
-          {/* Display the product shop_name */}
-          <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">{product.shop_name}</p>
-
-          <div className="flex items-center justify-between mt-4 flex-wrap gap-2">
-            <div className="flex items-center gap-2">
-              {variantPrice !== null && (
-                <>
-                  {offerPrice !== null && offerPrice <= variantPrice ? (
-                    <>
-                      <span className="text-2xl font-bold text-green-600 dark:text-green-500">
-                        ${offerPrice.toFixed(2)}
-                      </span>
-                      {compareAtPrice && compareAtPrice > offerPrice && (
-                        <span className="text-sm text-gray-500 dark:text-gray-400 line-through">
-                          ${compareAtPrice.toFixed(2)}
-                        </span>
-                      )}
-                    </>
-                  ) : (
-                    <>
-                      <span className="text-2xl font-bold text-green-600 dark:text-green-500">
-                        ${variantPrice.toFixed(2)}
-                      </span>
-                      {compareAtPrice && compareAtPrice > variantPrice && (
-                        <span className="text-sm text-gray-500 dark:text-gray-400 line-through">
-                          ${compareAtPrice.toFixed(2)}
-                        </span>
-                      )}
-                    </>
-                  )}
-                </>
-              )}
-            </div>
-            <div className="flex flex-wrap gap-2 mt-2">
-              {variants.map(
-                (variant, index) =>
-                  variant.title !== 'Default Title' && (
-                    <span
-                      key={index}
-                      className={`text-sm px-2 py-1 rounded-full border ${
-                        variant.available
-                          ? 'border-gray-300 dark:border-gray-600 bg-gray-100 dark:bg-gray-700 text-gray-900 dark:text-gray-100'
-                          : 'border-gray-200 dark:border-gray-600 bg-gray-100 dark:bg-gray-700 text-gray-500 dark:text-gray-400'
-                      }`}
-                    >
-                      {variant.title}
-                    </span>
-                  )
-              )}
-            </div>
-          </div>
+      {/* Variants */}
+      {variants.length > 0 && (
+        <div className="flex flex-wrap justify-center gap-1 mb-3">
+          {variants.map(
+            (variant, index) =>
+              variant.title !== 'Default Title' && (
+                <span
+                  key={index}
+                  className={`text-xs px-2 py-1 rounded-full border ${
+                    variant.available
+                      ? 'border-gray-300 dark:border-gray-600 bg-gray-100 dark:bg-gray-700 text-gray-900 dark:text-gray-100'
+                      : 'border-gray-200 dark:border-gray-600 bg-gray-100 dark:bg-gray-700 text-gray-500 dark:text-gray-400'
+                  }`}
+                >
+                  {variant.title}
+                </span>
+              )
+          )}
         </div>
-      </div>
+      )}
 
-      <div className="mt-2 text-sm text-gray-500 dark:text-gray-400">
+      {/* Timestamp */}
+      <p className="text-xs text-gray-400 mt-auto">
         Posted {formatDistanceToNow(new Date(product.created_at || ''))} ago
-      </div>
+      </p>
     </div>
   );
 }

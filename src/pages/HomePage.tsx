@@ -475,15 +475,12 @@ export function HomePage() {
             />
           </div>
         </div>
-
         {/* Products List */}
-        <div className="grid grid-cols-1 md:grid-cols-1 lg:grid-cols-4 gap-4">
+        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-x-6 gap-y-10">
           {initialLoad ? (
-            <>
-              {[...Array(4)].map((_, i) => (
-                <ProductCardSkeleton key={i} />
-              ))}
-            </>
+            Array.from({ length: 8 }).map((_, i) => (
+              <ProductCardSkeleton key={i} />
+            ))
           ) : products.length === 0 ? (
             <div className="col-span-full flex justify-center items-center min-h-[200px]">
               <p className="text-gray-900 dark:text-gray-100">No products found.</p>
@@ -491,7 +488,7 @@ export function HomePage() {
           ) : (
             <>
               {products.map((product) => (
-                <div key={product.id} className="w-full">
+                <div key={product.id} className="h-full">
                   <ProductCard product={product} />
                 </div>
               ))}
