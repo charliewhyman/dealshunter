@@ -448,45 +448,52 @@ export function HomePage() {
                 },
               })}
             />
-                        <div></div>
-                    </div>
-            {/* Second Row - Checkboxes and Reset Button */}
-          <div className="flex justify-between items-center mt-4">
-            {/* Checkboxes */}
-            <div className="flex items-center space-x-6">
-              <label className="flex items-center space-x-2">
-                <input
-                  type="checkbox"
-                  checked={inStockOnly}
-                  onChange={(e) => setInStockOnly(e.target.checked)}
-                  className="h-4 w-4 rounded border-gray-300 dark:border-gray-600 text-blue-600 dark:text-blue-500 focus:ring-blue-500 bg-white dark:bg-gray-800"
-                />
-                <span className="text-sm text-gray-900 dark:text-gray-100">In Stock Only</span>
-              </label>
-              <label className="flex items-center space-x-2">
-                <input
-                  type="checkbox"
-                  checked={onSaleOnly}
-                  onChange={(e) => setOnSaleOnly(e.target.checked)}
-                  className="h-4 w-4 rounded border-gray-300 dark:border-gray-600 text-blue-600 dark:text-blue-500 focus:ring-blue-500 bg-white dark:bg-gray-800"
-                />
-                <span className="text-sm text-gray-900 dark:text-gray-100">On Sale Only</span>
-              </label>
-            </div>
-
-            {/* Reset Filters Button */}
-            <button 
-              onClick={() => {
-                setSelectedShopName([]);
-                setInStockOnly(true);
-                setOnSaleOnly(false);
-                setSelectedPriceRange([...PRICE_RANGE]);
-              }}
-              className="text-sm text-blue-600 dark:text-blue-400 hover:underline"
-            >
-              Reset Filters
-            </button>
+            <div></div>
           </div>
+
+          {/* Second Row - Checkboxes and Reset Button */}
+          <div className="flex justify-between items-center mt-4 space-x-4">
+            {/* Checkboxes */}
+            <label className="flex items-center space-x-2">
+            <input
+              type="checkbox"
+              checked={inStockOnly}
+              onChange={(e) => setInStockOnly(e.target.checked)}
+              className="h-4 w-4 rounded border-gray-300 dark:border-gray-600 text-blue-600 dark:text-blue-500 focus:ring-blue-500 bg-white dark:bg-gray-800"
+            />
+            <span className="text-sm text-gray-900 dark:text-gray-100 text-center whitespace-nowrap">
+              In Stock Only
+            </span>
+          </label>
+          <label className="flex items-center space-x-2">
+            <input
+              type="checkbox"
+              checked={onSaleOnly}
+              onChange={(e) => setOnSaleOnly(e.target.checked)}
+              className="h-4 w-4 rounded border-gray-300 dark:border-gray-600 text-blue-600 dark:text-blue-500 focus:ring-blue-500 bg-white dark:bg-gray-800"
+            />
+            <span className="text-sm text-gray-900 dark:text-gray-100 text-center whitespace-nowrap">
+              On Sale Only
+            </span>
+          </label>
+          
+            {/* Reset Filters Button */}
+            <div className="flex items-center">
+              <button 
+                onClick={() => {
+                  setSelectedShopName([]);
+                  setInStockOnly(true);
+                  setOnSaleOnly(false);
+                  setSelectedPriceRange([...PRICE_RANGE]);
+                }}
+                className="text-sm text-blue-600 dark:text-blue-400 hover:underline"
+              >
+                Reset Filters
+              </button>
+            </div>
+          </div>
+
+
         </div>
 
         {/* Products List */}
