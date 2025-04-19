@@ -1,7 +1,7 @@
 import { ChangeEvent, FormEvent, useCallback, useEffect, useRef, useState } from 'react';
 import { Product } from '../types';
 import { supabase } from '../lib/supabase';
-import { Loader2 } from 'lucide-react';
+import { Loader2, ChevronDown, ChevronUp } from 'lucide-react';
 import { ProductCard } from '../components/ProductCard';
 import Select, { SingleValue } from 'react-select';
 import { MultiValue } from 'react-select';
@@ -21,6 +21,7 @@ export function HomePage() {
   const [shopNames, setShopNames] = useState<string[]>([]);
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('asc');
   const observerRef = useRef<HTMLDivElement | null>(null);
+  const [showFilters, setShowFilters] = useState(false);
 
   const location = useLocation();
   const [searchQuery, setSearchQuery] = useState<string>(
@@ -298,8 +299,25 @@ export function HomePage() {
         handleSearchSubmit={handleSearchSubmit}
       />
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+        {/* Mobile Filters Toggle */}
+        <div className="lg:hidden mb-4">
+          <button
+            onClick={() => setShowFilters(!showFilters)}
+            className="flex items-center justify-between w-full px-4 py-2 bg-gray-100 dark:bg-gray-800 rounded-md"
+          >
+            <span className="font-medium text-gray-900 dark:text-gray-100">
+              Filters
+            </span>
+            {showFilters ? (
+              <ChevronUp className="h-5 w-5 text-gray-600 dark:text-gray-400" />
+            ) : (
+              <ChevronDown className="h-5 w-5 text-gray-600 dark:text-gray-400" />
+            )}
+          </button>
+        </div>
+
         {/* Filters Container */}
-        <div className="mb-6">
+        <div className={`mb-6 ${!showFilters ? 'hidden lg:block' : ''}`}>
           {/* First Row - Main Filters */}
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 items-start sticky top-0 bg-white dark:bg-gray-900 pt-4 pb-4 z-10">
             {/* Shop Filter */}
@@ -326,25 +344,25 @@ export function HomePage() {
                       borderColor: '#3b82f6',
                     },
                   }),
-                menu: (base) => ({
-                  ...base,
-                  backgroundColor: 'var(--bg-color)',
-                  color: 'var(--text-color)',
-                }),
-                option: (base, state) => ({
-                  ...base,
-                  backgroundColor: state.isFocused ? '#3b82f6' : 'transparent',
-                  color: state.isFocused ? '#fff' : 'var(--text-color)',
-                }),
-                multiValue: (base) => ({
-                  ...base,
-                  backgroundColor: '#e2e8f0',
-                }),
-                multiValueLabel: (base) => ({
-                  ...base,
-                  color: '#1e293b',
-                }),
-              }}
+                  menu: (base) => ({
+                    ...base,
+                    backgroundColor: 'var(--bg-color)',
+                    color: 'var(--text-color)',
+                  }),
+                  option: (base, state) => ({
+                    ...base,
+                    backgroundColor: state.isFocused ? '#3b82f6' : 'transparent',
+                    color: state.isFocused ? '#fff' : 'var(--text-color)',
+                  }),
+                  multiValue: (base) => ({
+                    ...base,
+                    backgroundColor: '#e2e8f0',
+                  }),
+                  multiValueLabel: (base) => ({
+                    ...base,
+                    color: '#1e293b',
+                  }),
+                }}
               theme={(theme) => ({
                 ...theme,
                 colors: {
@@ -492,8 +510,6 @@ export function HomePage() {
               </button>
             </div>
           </div>
-
-
         </div>
 
         {/* Products List */}
