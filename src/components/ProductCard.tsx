@@ -104,20 +104,17 @@ export function ProductCard({ product }: ProductCardProps) {
       </p>
 
       {/* Price */}
-      <div className="flex items-center justify-center gap-2 mb-3">
-        {variantPrice !== null && (
-          <>
-            <span className="text-lg font-bold text-green-600 dark:text-green-500">
-              ${offerPrice?.toFixed(2) ?? variantPrice.toFixed(2)}
-            </span>
-            {compareAtPrice && compareAtPrice > (offerPrice ?? variantPrice) && (
-              <span className="text-sm text-gray-500 dark:text-gray-400 line-through">
-                ${compareAtPrice.toFixed(2)}
-              </span>
-            )}
-          </>
+      <div className="flex items-center gap-3 text-3xl font-semibold">
+        <span className="text-green-600 dark:text-green-500">
+          ${offerPrice?.toFixed(2) ?? variantPrice?.toFixed(2) ?? '0.00'}
+        </span>
+        {compareAtPrice && compareAtPrice > ((offerPrice ?? variantPrice) ?? 0) && (
+          <span className="text-lg text-gray-500 dark:text-gray-400 line-through">
+            ${compareAtPrice.toFixed(2)}
+          </span>
         )}
-      </div>
+</div>
+
 
       {/* Variants */}
       {variants.length > 0 && (
