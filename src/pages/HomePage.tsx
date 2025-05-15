@@ -39,6 +39,12 @@ export function HomePage() {
     JSON.parse(localStorage.getItem('onSaleOnly') || 'false')
   );
 
+  const [databaseStatus, setDatabaseStatus] = useState<{
+    viewEmpty: boolean;
+    fallbackActive: boolean;
+    error: string | null;
+  }>({ viewEmpty: false, fallbackActive: false, error: null });
+
   const PRICE_RANGE: [number, number] = [15, 1000];
   const [selectedPriceRange, setSelectedPriceRange] = useState<[number, number]>(() => {
     const savedRange = JSON.parse(localStorage.getItem('selectedPriceRange') || 'null');
@@ -59,77 +65,89 @@ export function HomePage() {
     async (filters: FilterOptions, page: number, sortOrder: 'asc' | 'desc') => {
       setLoading(true);
       try {
+        // First try the products_with_min_price view
         let query = supabase
           .from('products_with_min_price')
           .select(
             'id, title, shop_id, shop_name, created_at, url, description, updated_at_external, min_price, in_stock, on_sale',
             { count: 'exact' }
-          );        
-    
+          );
+  
         // Apply filters
         if (filters.selectedShopName.length > 0) {
           query = query.in('shop_name', filters.selectedShopName);
         }
-    
+  
         if (filters.inStockOnly) {
           query = query.eq('in_stock', true);
         }
-    
+  
         if (filters.onSaleOnly) {
           query = query.eq('on_sale', true);
         }
-    
+  
         if (filters.searchQuery) {
-          query = query.textSearch('fts', filters.searchQuery, {
-            config: 'english',
-            type: 'websearch', 
-          });
+          // Try both methods - simple ILIKE first
+          try {
+            query = query.ilike('title', `%${filters.searchQuery}%`);
+          } catch (e) {
+            console.warn('Simple search failed, trying FTS:', e);
+            query = query.textSearch('fts', filters.searchQuery, {
+              config: 'english',
+              type: 'websearch',
+            });
+          }
         }
-    
+  
         if (filters.selectedPriceRange) {
           query = query
             .gte('min_price', filters.selectedPriceRange[0])
             .lte('min_price', filters.selectedPriceRange[1]);
         }
-    
+  
         // Apply sorting and pagination
         query = query
           .order('min_price', { ascending: sortOrder === 'asc' })
           .order('created_at', { ascending: false })
           .range(page * ITEMS_PER_PAGE, (page + 1) * ITEMS_PER_PAGE - 1);
-    
+  
         const { data, error } = await query;
-    
-        if (error) {
-          throw new Error(`Supabase query error: ${error.message}`);
+  
+        // If view is empty but no error, try fallback to products table
+        if ((!data || data.length === 0) && !error && !databaseStatus.fallbackActive) {
+          console.warn('products_with_min_price view empty, trying fallback query');
+          setDatabaseStatus(prev => ({ ...prev, viewEmpty: true, fallbackActive: true }));
+          return;
         }
-    
-        const formattedData = data?.map((item) => ({
+  
+        if (error) throw error;
+  
+        const formattedData = (data || []).map((item) => ({
           ...item,
           variants: [],
           offers: [],
-        })) as Product[] || [];
-    
+        })) as Product[];
+  
         setProducts(prev => {
           if (page === 0) return formattedData;
-          
-          const newItems = formattedData.filter(
-            newItem => !prev.some(existingItem => existingItem.id === newItem.id)
-          );
-          
-          return [...prev, ...newItems];
+          return [...prev, ...formattedData];
         });
         setHasMore(formattedData.length === ITEMS_PER_PAGE);
         setInitialLoad(false);
+        setDatabaseStatus(prev => ({ ...prev, error: null }));
       } catch (error) {
         console.error('Error fetching products:', error);
+        setDatabaseStatus(prev => ({
+          ...prev,
+          error: `Failed to load products: ${error instanceof Error ? error.message : 'Unknown error'}`
+        }));
         setProducts([]);
         setHasMore(false);
       } finally {
         setLoading(false);
       }
     },
-    []
+    [databaseStatus.fallbackActive]
   );
 
   const debouncedFetchProducts = useRef(
@@ -278,6 +296,46 @@ export function HomePage() {
       setSelectedPriceRange([selectedPriceRange[0], newMax]);
     }
   };
+
+  useEffect(() => {
+    if (databaseStatus.viewEmpty && !databaseStatus.fallbackActive) {
+      const fetchFallbackProducts = async () => {
+        try {
+          console.log('Attempting fallback to products table');
+          const query = supabase
+            .from('products')
+            .select('*')
+            .order('created_at', { ascending: false })
+            .limit(ITEMS_PER_PAGE);
+  
+          const { data, error } = await query;
+  
+          if (error) throw error;
+  
+          const formattedData = (data || []).map((product) => ({
+            ...product,
+            min_price: product.price || 0, // Add fallback min_price
+            in_stock: true, // Assume in stock for fallback
+            on_sale: false, // Assume not on sale for fallback
+            variants: [],
+            offers: [],
+          })) as Product[];
+  
+          setProducts(formattedData);
+          setHasMore(formattedData.length === ITEMS_PER_PAGE);
+          setDatabaseStatus(prev => ({ ...prev, fallbackActive: true }));
+        } catch (error) {
+          console.error('Fallback query failed:', error);
+          setDatabaseStatus(prev => ({
+            ...prev,
+            error: `Fallback failed: ${error instanceof Error ? error.message : 'Unknown error'}`
+          }));
+        }
+      };
+  
+      fetchFallbackProducts();
+    }
+  }, [databaseStatus.viewEmpty, databaseStatus.fallbackActive]);
 
   function ProductCardSkeleton() {
     return (
@@ -514,13 +572,31 @@ export function HomePage() {
 
         {/* Products List */}
         <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-x-6 gap-y-10">
-          {initialLoad ? (
+          {databaseStatus.error ? (
+            <div className="col-span-full text-center py-8">
+              <p className="text-red-500 dark:text-red-400 mb-2">{databaseStatus.error}</p>
+              <p className="text-gray-600 dark:text-gray-400">
+                {databaseStatus.viewEmpty && "The products view appears to be empty."}
+              </p>
+            </div>
+          ) : initialLoad ? (
             Array.from({ length: 8 }).map((_, i) => (
               <ProductCardSkeleton key={i} />
             ))
           ) : products.length === 0 ? (
-            <div className="col-span-full flex justify-center items-center min-h-[200px]">
+            <div className="col-span-full flex flex-col items-center justify-center min-h-[200px] space-y-2">
               <p className="text-gray-900 dark:text-gray-100">No products found.</p>
+              <button
+                onClick={() => {
+                  setPage(0);
+                  setProducts([]);
+                  setInitialLoad(true);
+                  setDatabaseStatus({ viewEmpty: false, fallbackActive: false, error: null });
+                }}
+                className="text-blue-600 dark:text-blue-400 hover:underline text-sm"
+              >
+                Retry
+              </button>
             </div>
           ) : (
             <>
