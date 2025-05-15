@@ -21,66 +21,48 @@ function ProductPage() {
   useEffect(() => {
     const fetchProductData = async () => {
       try {
+        setLoading(true);
+        
+        // Fetch product
         const { data: ProductData, error: ProductError } = await supabase
           .from('products')
           .select('*')
           .eq('id', ProductId)
           .single();
-
+  
         if (ProductError) throw ProductError;
+        if (!ProductData) {
+          setProduct(null);
+          return;
+        }
+        
         setProduct(ProductData);
-      } catch (error) {
-        console.error('Error fetching data:', error);
-      }
-    };
-
-    fetchProductData();
-  }, [ProductId]);
-
-  useEffect(() => {
-    const fetchProductData = async () => {
-      try {
-        const { data: ProductData, error: ProductError } = await supabase
-          .from('products')
-          .select('*')
-          .eq('id', ProductId)
-          .single();
-
-        if (ProductError) throw ProductError;
-        setProduct(ProductData);
-
-        // Fetch image URL
-        const { data: imageData, error: imageError } = await supabase
+  
+        // Fetch image
+        const { data: imageData } = await supabase
           .from('images')
           .select('src')
           .eq('product_id', ProductId)
           .limit(1)
           .single();
-
-        if (!imageError && imageData) {
-          setProductImage(imageData.src);
-        }
-
+  
+        setProductImage(imageData?.src);
+  
         // Fetch variants
-        const { data: variantsData, error: variantsError } = await supabase
+        const { data: variantsData } = await supabase
           .from('variants')
-          .select('title, inventory_quantity, available')
+          .select('title, available')
           .eq('product_id', ProductId);
-
-        if (!variantsError && variantsData) {
-          setVariants(
-            variantsData.map((variant) => ({
-              title: variant.title,
-              available: variant.available,
-            }))
-          );
-        }
+  
+        setVariants(variantsData || []);
       } catch (error) {
         console.error('Error fetching data:', error);
+        setProduct(null);
       } finally {
         setLoading(false);
       }
     };
+  
     if (ProductId) fetchProductData();
   }, [ProductId]);
 
@@ -94,7 +76,14 @@ function ProductPage() {
   };
 
   if (loading) return <p className="text-gray-900 dark:text-gray-100">Loading...</p>;
-  if (!Product) return <p className="text-gray-900 dark:text-gray-100">Product not found.</p>;
+  if (!Product) return (
+    <div className="max-w-7xl mx-auto px-4 py-8 text-center">
+      <p className="text-gray-900 dark:text-gray-100 text-xl">Product not found.</p>
+      <p className="text-gray-600 dark:text-gray-400 mt-2">
+        The product with ID {ProductId} could not be loaded.
+      </p>
+    </div>
+  );
 
   return (
     <>
