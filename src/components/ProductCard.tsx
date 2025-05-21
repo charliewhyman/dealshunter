@@ -1,7 +1,6 @@
 import { useEffect, useState } from 'react';
 import { ExternalLink } from 'lucide-react';
 import { Product } from '../types';
-import { formatDistanceToNow } from 'date-fns';
 import { useNavigate } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
 import { useProductPricing } from '../hooks/useProductPricing';
@@ -112,7 +111,7 @@ export function ProductCard({ product }: ProductCardProps) {
         {/* Title and External Link */}
         <div className="flex items-start justify-between mb-2">
           <h3
-            className={`text-sm font-medium text-gray-900 dark:text-gray-100 text-left line-clamp-2 ${
+            className={`text-md font-medium text-gray-900 dark:text-gray-100 text-left line-clamp-2 ${
               allVariantsUnavailable ? 'line-through' : ''
             }`}
           >
@@ -133,7 +132,7 @@ export function ProductCard({ product }: ProductCardProps) {
         {/* Price Information */}
         <div className="mt-auto">
           <div className="flex items-baseline gap-2">
-            <span className="text-lg font-bold text-gray-900 dark:text-gray-100">
+            <span className="text-2xl font-bold text-gray-900 dark:text-gray-100">
               ${offerPrice?.toFixed(2) ?? variantPrice?.toFixed(2) ?? '0.00'}
             </span>
             {compareAtPrice && compareAtPrice > ((offerPrice ?? variantPrice) ?? 0) && (
@@ -165,10 +164,11 @@ export function ProductCard({ product }: ProductCardProps) {
           )}
         </div>
 
-        {/* Timestamp */}
+        {/* Timestamp 
         <p className="text-xs text-gray-400 mt-2">
           Added {formatDistanceToNow(new Date(product.created_at || ''))} ago
         </p>
+        */}
       </div>
     </div>
   );
