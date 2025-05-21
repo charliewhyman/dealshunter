@@ -1,7 +1,7 @@
 import { ChangeEvent, FormEvent, useCallback, useEffect, useRef, useState } from 'react';
 import { Product } from '../types';
 import { supabase } from '../lib/supabase';
-import { Loader2, ChevronDown, ChevronUp } from 'lucide-react';
+import { Loader2, ChevronDown, ChevronUp, X } from 'lucide-react';
 import { ProductCard } from '../components/ProductCard';
 import Select, { SingleValue } from 'react-select';
 import { MultiValue } from 'react-select';
@@ -356,217 +356,304 @@ export function HomePage() {
         handleSearchChange={handleSearchChange}
         handleSearchSubmit={handleSearchSubmit}
       />
+      
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        {/* Mobile Filters Toggle */}
-        <div className="lg:hidden mb-4">
-          <button
-            onClick={() => setShowFilters(!showFilters)}
-            className="flex items-center justify-between w-full px-4 py-2 bg-gray-100 dark:bg-gray-800 rounded-md"
-          >
-            <span className="font-medium text-gray-900 dark:text-gray-100">
-              Filters
-            </span>
-            {showFilters ? (
-              <ChevronUp className="h-5 w-5 text-gray-600 dark:text-gray-400" />
-            ) : (
-              <ChevronDown className="h-5 w-5 text-gray-600 dark:text-gray-400" />
+        {/* Filters Section - Improved Layout */}
+        <div className="mb-8">
+          {/* Mobile Filters Toggle - Improved */}
+          <div className="lg:hidden mb-4">
+            <button
+              onClick={() => setShowFilters(!showFilters)}
+              className="flex items-center justify-between w-full px-4 py-3 bg-gray-100 dark:bg-gray-800 rounded-lg shadow-sm"
+            >
+              <div className="flex items-center space-x-2">
+                <span className="font-medium text-gray-900 dark:text-gray-100">
+                  Filters
+                </span>
+                {selectedShopName.length > 0 || 
+                 inStockOnly !== true || 
+                 onSaleOnly !== false || 
+                 !_.isEqual(selectedPriceRange, PRICE_RANGE) ? (
+                  <span className="inline-flex items-center justify-center px-2 py-1 text-xs font-bold leading-none text-white bg-blue-600 rounded-full">
+                    Active
+                  </span>
+                ) : null}
+              </div>
+              {showFilters ? (
+                <ChevronUp className="h-5 w-5 text-gray-600 dark:text-gray-400" />
+              ) : (
+                <ChevronDown className="h-5 w-5 text-gray-600 dark:text-gray-400" />
+              )}
+            </button>
+          </div>
+
+          {/* Filters Container - Improved Layout */}
+          <div className="flex flex-wrap items-end gap-4 bg-white dark:bg-gray-800 rounded-lg shadow-sm p-4 mb-6">
+  {/* Shop Filter */}
+  <div className="min-w-[200px] flex-1">
+    <div className="flex flex-col h-full">
+      <label className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+        Shops {selectedShopName.length > 0 && (
+          <span className="ml-1 text-xs text-gray-500 dark:text-gray-400">
+            ({selectedShopName.length} selected)
+          </span>
+        )}
+      </label>
+      <div className="flex-1 flex items-end">
+        <Select
+          isMulti
+          options={shopOptions}
+          value={shopOptions.filter((option) => selectedShopName.includes(option.value))}
+          onChange={handleShopChange}
+          className="basic-multi-select w-full"
+          classNamePrefix="select"
+          placeholder="All shops"
+          isClearable={false}
+          components={{
+            DropdownIndicator: () => null,
+            IndicatorSeparator: () => null,
+          }}
+          styles={{
+            control: (provided) => ({
+              ...provided,
+              minHeight: '38px',
+              borderRadius: '0.375rem',
+              borderColor: '#d1d5db',
+              backgroundColor: 'transparent',
+              '&:hover': {
+                borderColor: '#9ca3af',
+              },
+            }),
+            multiValue: (base) => ({
+              ...base,
+              backgroundColor: '#e5e7eb',
+              borderRadius: '0.375rem',
+            }),
+            multiValueLabel: (base) => ({
+              ...base,
+              color: '#111827',
+              padding: '0.25rem 0.5rem',
+            }),
+            multiValueRemove: (base) => ({
+              ...base,
+              borderRadius: '0 0.375rem 0.375rem 0',
+              color: '#6b7280',
+              ':hover': {
+                backgroundColor: '#d1d5db',
+                color: '#ef4444',
+              },
+            })
+          }}
+        />
+      </div>
+    </div>
+  </div>
+
+  {/* Price Range Filter */}
+  <div className="min-w-[300px] flex-1">
+    <div className="flex flex-col h-full">
+      <label className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-">
+        Price Range
+      </label>
+      <div className="flex items-center gap-5 h-[38px]">
+        <div className="relative w-24">
+          <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500">$</span>
+          <input
+            type="number"
+            value={selectedPriceRange[0]}
+            onChange={(e) => handlePriceInputChange('min', e.target.value)}
+            className="w-full pl-8 pr-3 py-1.5 border border-gray-300 rounded-m bg-transparent"
+            min={PRICE_RANGE[0]}
+            max={selectedPriceRange[1]}
+          />
+        </div>
+        
+        <div className="flex-1">
+          <Range
+            step={1}
+            min={PRICE_RANGE[0]}
+            max={PRICE_RANGE[1]}
+            values={selectedPriceRange}
+            onChange={handleSliderChange}
+            renderTrack={({ props, children }) => (
+              <div {...props} className="h-2 bg-gray-200 rounded-full">
+                {children}
+              </div>
             )}
-          </button>
+            renderThumb={({ props }) => (
+              <div {...props} className="h-4 w-4 bg-blue-600 rounded-full"/>
+            )}
+          />
         </div>
 
-        {/* Filters Container */}
-        <div className={`mb-6 ${!showFilters ? 'hidden lg:block' : ''}`}>
-          {/* First Row - Main Filters */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 items-start sticky top-0 bg-white dark:bg-gray-900 pt-4 pb-4 z-10">
-            {/* Shop Filter */}
-            <div className="space-y-2 h-full">
-              <label className="block text-sm font-medium text-gray-700 dark:text-gray-200 mb-1">Shops</label>
-              <Select
-                isMulti
-                options={shopOptions}
-                value={shopOptions.filter((option) => selectedShopName.includes(option.value))}
-                onChange={handleShopChange}
-                className="basic-multi-select"
-                classNamePrefix="select"
-                placeholder="Select shops..."
-                styles={{
-                  control: (base, state) => ({
-                    ...base,
-                    borderRadius: '0.375rem',
-                    borderColor: state.isFocused ? '#3b82f6' : '#d1d5db',
-                    minHeight: '42px',
-                    backgroundColor: 'var(--bg-color)',
-                    color: 'var(--text-color)',
-                    boxShadow: state.isFocused ? '0 0 0 1px #3b82f6' : 'none',
-                    '&:hover': {
-                      borderColor: '#3b82f6',
-                    },
-                  }),
-                  menu: (base) => ({
-                    ...base,
-                    backgroundColor: 'var(--bg-color)',
-                    color: 'var(--text-color)',
-                  }),
-                  option: (base, state) => ({
-                    ...base,
-                    backgroundColor: state.isFocused ? '#3b82f6' : 'transparent',
-                    color: state.isFocused ? '#fff' : 'var(--text-color)',
-                  }),
-                  multiValue: (base) => ({
-                    ...base,
-                    backgroundColor: '#e2e8f0',
-                  }),
-                  multiValueLabel: (base) => ({
-                    ...base,
-                    color: '#1e293b',
-                  }),
-                }}
-              theme={(theme) => ({
-                ...theme,
-                colors: {
-                  ...theme.colors,
-                  primary: '#3b82f6',
-                  neutral80: 'var(--text-color)',
-                },
-              })}
-            />
-          </div>
-          <div className="space-y-2 h-full">
-              <label className="block text-sm font-medium text-gray-700 dark:text-gray-200 mb-1">Price Range ($)</label>
-              <div className="flex flex-col space-y-2">
-                <div className="flex gap-2">
-                  <input
-                    type="number"
-                    value={selectedPriceRange[0]}
-                    onChange={(e) => handlePriceInputChange('min', e.target.value)}
-                    className="w-full rounded-md border border-gray-300 dark:border-gray-600 px-3 py-2 shadow-sm focus:border-blue-500 focus:ring-blue-500 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100"
-                    min={0}
-                  />
-                  <input
-                    type="number"
-                    value={selectedPriceRange[1]}
-                    onChange={(e) => handlePriceInputChange('max', e.target.value)}
-                    className="w-full rounded-md border border-gray-300 dark:border-gray-600 px-3 py-2 shadow-sm focus:border-blue-500 focus:ring-blue-500 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100"
-                    min={selectedPriceRange[0]}
-                  />
-                </div>
-                <Range
-                  step={1}
-                  min={PRICE_RANGE[0]}
-                  max={PRICE_RANGE[1]}
-                  values={[
-                    Math.max(selectedPriceRange[0], PRICE_RANGE[0]),
-                    Math.min(selectedPriceRange[1], PRICE_RANGE[1])
-                  ]}
-                  onChange={handleSliderChange}
-                  renderTrack={({ props, children }) => (
-                    <div
-                      {...props}
-                      className="h-1.5 w-full bg-gray-200 dark:bg-gray-600 rounded-full"
-                    >
-                      {children}
-                    </div>
-                  )}
-                  renderThumb={({ props }) => {
-                    const { key, ...restProps } = props;
-                    return (
-                      <div
-                        key={key}
-                        {...restProps}
-                        className="h-4 w-4 bg-blue-600 dark:bg-blue-500 rounded-full shadow-lg focus:outline-none ring-2 ring-white dark:ring-gray-800"
-                      />
-                    );
-                  }}
-                />
-              </div>
-            </div>
-            
-            {/* Sort Dropdown */}
-            <div className="space-y-2 h-full">
-              <label className="block text-sm font-medium text-gray-700 dark:text-gray-200 mb-1">Sort By</label>
-              <Select
-                options={sortOptions}
-                value={sortOptions.find((option) => option.value === sortOrder)}
-                onChange={handleSortChange}
-                className="basic-single"
-                classNamePrefix="select"
-                placeholder="Select sort..."
-                styles={{
-                  control: (base, state) => ({
-                    ...base,
-                    borderRadius: '0.375rem',
-                    borderColor: state.isFocused ? '#3b82f6' : '#d1d5db',
-                    minHeight: '42px',
-                    backgroundColor: 'var(--bg-color)',
-                    color: 'var(--text-color)',
-                    boxShadow: state.isFocused ? '0 0 0 1px #3b82f6' : 'none',
-                    '&:hover': {
-                      borderColor: '#3b82f6',
-                    },
-                  }),
-                menu: (base) => ({
-                  ...base,
-                  backgroundColor: 'var(--bg-color)',
-                  color: 'var(--text-color)',
-                }),
-                option: (base, state) => ({
-                  ...base,
-                  backgroundColor: state.isFocused ? '#3b82f6' : 'transparent',
-                  color: state.isFocused ? '#fff' : 'var(--text-color)',
-                }),
-              }}
-              theme={(theme) => ({
-                ...theme,
-                colors: {
-                  ...theme.colors,
-                  primary: '#3b82f6',
-                  neutral80: 'var(--text-color)',
-                },
-              })}
-            />
-            <div></div>
-          </div>
+        <div className="relative w-24">
+          <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500">$</span>
+          <input
+            type="number"
+            value={selectedPriceRange[1]}
+            onChange={(e) => handlePriceInputChange('max', e.target.value)}
+            className="w-full pl-8 pr-3 py-1.5 border border-gray-300 rounded-md bg-transparent"
+            min={selectedPriceRange[0]}
+            max={PRICE_RANGE[1]}
+          />
+        </div>
+      </div>
+    </div>
+  </div>
+  
+  {/* Sort Dropdown */}
+  <div className="min-w-[180px] flex-1">
+    <div className="flex flex-col h-full">
+      <label className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+        Sort By
+      </label>
+      <Select
+        options={sortOptions}
+        value={sortOptions.find((option) => option.value === sortOrder)}
+        onChange={handleSortChange}
+        className="react-select-container w-full"
+        classNamePrefix="react-select"
+        placeholder="Featured"
+        isSearchable={false}
+        styles={{
+          control: (provided) => ({
+            ...provided,
+            minHeight: '38px',
+            borderRadius: '0.375rem',
+            borderColor: '#d1d5db',
+            backgroundColor: 'transparent',
+            '&:hover': {
+              borderColor: '#9ca3af',
+            },
+          }),
+          singleValue: (base) => ({
+            ...base,
+            color: 'inherit',
+          }),
+          menu: (base) => ({
+            ...base,
+            backgroundColor: 'hsl(var(--background))',
+            borderColor: 'hsl(var(--border))',
+          }),
+          option: (base, state) => ({
+            ...base,
+            backgroundColor: state.isFocused
+              ? 'hsl(var(--accent))'
+              : 'transparent',
+            color: state.isFocused
+              ? 'hsl(var(--accent-foreground))'
+              : 'inherit',
+          }),
+        }}
+      />
+    </div>
+  </div>
 
-          {/* Second Row - Checkboxes and Reset Button */}
-          <div className="flex justify-between items-center mt-4 space-x-4">
-            {/* Checkboxes */}
-            <label className="flex items-center space-x-2">
-            <input
-              type="checkbox"
-              checked={inStockOnly}
-              onChange={(e) => setInStockOnly(e.target.checked)}
-              className="h-4 w-4 rounded border-gray-300 dark:border-gray-600 text-blue-600 dark:text-blue-500 focus:ring-blue-500 bg-white dark:bg-gray-800"
-            />
-            <span className="text-sm text-gray-900 dark:text-gray-100 text-center whitespace-nowrap">
-              In Stock Only
-            </span>
-          </label>
-          <label className="flex items-center space-x-2">
-            <input
-              type="checkbox"
-              checked={onSaleOnly}
-              onChange={(e) => setOnSaleOnly(e.target.checked)}
-              className="h-4 w-4 rounded border-gray-300 dark:border-gray-600 text-blue-600 dark:text-blue-500 focus:ring-blue-500 bg-white dark:bg-gray-800"
-            />
-            <span className="text-sm text-gray-900 dark:text-gray-100 text-center whitespace-nowrap">
-              On Sale Only
-            </span>
-          </label>
-          
-            {/* Reset Filters Button */}
-            <div className="flex items-center">
-              <button 
-                onClick={() => {
-                  setSelectedShopName([]);
-                  setInStockOnly(true);
-                  setOnSaleOnly(false);
-                  setSelectedPriceRange([...PRICE_RANGE]);
-                }}
-                className="text-sm text-blue-600 dark:text-blue-400 hover:underline"
-              >
-                Reset Filters
-              </button>
-            </div>
+  {/* Checkboxes */}
+  <div className="flex items-center gap-4 h-[38px]">
+    <label className="inline-flex items-center gap-2">
+      <input
+        type="checkbox"
+        checked={inStockOnly}
+        onChange={(e) => setInStockOnly(e.target.checked)}
+        className="h-4 w-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500 dark:border-gray-600 dark:bg-gray-700 dark:checked:bg-blue-600"
+      />
+      <span className="text-sm text-gray-700 dark:text-gray-300">In Stock</span>
+    </label>
+    <label className="inline-flex items-center space-x-2">
+      <input
+        type="checkbox"
+        checked={onSaleOnly}
+        onChange={(e) => setOnSaleOnly(e.target.checked)}
+        className="h-4 w-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500 dark:border-gray-600 dark:bg-gray-700 dark:checked:bg-blue-600"
+      />
+      <span className="text-sm text-gray-700 dark:text-gray-300">On Sale</span>
+    </label>
+</div>
+
+            {/* Active Filters & Reset - Improved Standard UI */}
+            {(selectedShopName.length > 0 || 
+              inStockOnly !== true || 
+              onSaleOnly !== false || 
+              !_.isEqual(selectedPriceRange, PRICE_RANGE)) && (
+              <div className="mt-4 pt-4 border-t border-gray-200 dark:border-gray-700">
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span className="text-sm font-medium text-gray-700 dark:text-gray-300">
+                      Active filters:
+                    </span>
+                    
+                    {selectedShopName.length > 0 && (
+                      <div className="flex flex-wrap items-center gap-2">
+                        {selectedShopName.map(shop => (
+                          <div 
+                            key={shop}
+                            className="inline-flex items-center rounded-md bg-blue-50 dark:bg-blue-900/30 px-2 py-1 text-xs font-medium text-blue-700 dark:text-blue-200 ring-1 ring-inset ring-blue-700/10 dark:ring-blue-500/30"
+                          >
+                            {shop}
+                            <button 
+                              onClick={() => setSelectedShopName(prev => prev.filter(s => s !== shop))}
+                              className="ml-1.5 inline-flex text-blue-500 hover:text-blue-700 dark:text-blue-300 dark:hover:text-blue-100"
+                            >
+                              <X className="h-3 w-3" />
+                            </button>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                    
+                    {!_.isEqual(selectedPriceRange, PRICE_RANGE) && (
+                      <div className="inline-flex items-center rounded-md bg-blue-50 dark:bg-blue-900/30 px-2 py-1 text-xs font-medium text-blue-700 dark:text-blue-200 ring-1 ring-inset ring-blue-700/10 dark:ring-blue-500/30">
+                        ${selectedPriceRange[0]} - ${selectedPriceRange[1]}
+                        <button 
+                          onClick={() => setSelectedPriceRange([...PRICE_RANGE])}
+                          className="ml-1.5 inline-flex text-blue-500 hover:text-blue-700 dark:text-blue-300 dark:hover:text-blue-100"
+                        >
+                          <X className="h-3 w-3" />
+                        </button>
+                      </div>
+                    )}
+                    
+                    {inStockOnly !== true && (
+                      <div className="inline-flex items-center rounded-md bg-blue-50 dark:bg-blue-900/30 px-2 py-1 text-xs font-medium text-blue-700 dark:text-blue-200 ring-1 ring-inset ring-blue-700/10 dark:ring-blue-500/30">
+                        Include Out of Stock
+                        <button 
+                          onClick={() => setInStockOnly(true)}
+                          className="ml-1.5 inline-flex text-blue-500 hover:text-blue-700 dark:text-blue-300 dark:hover:text-blue-100"
+                        >
+                          <X className="h-3 w-3" />
+                        </button>
+                      </div>
+                    )}
+                    
+                    {onSaleOnly !== false && (
+                      <div className="inline-flex items-center rounded-md bg-blue-50 dark:bg-blue-900/30 px-2 py-1 text-xs font-medium text-blue-700 dark:text-blue-200 ring-1 ring-inset ring-blue-700/10 dark:ring-blue-500/30">
+                        On Sale Only
+                        <button 
+                          onClick={() => setOnSaleOnly(false)}
+                          className="ml-1.5 inline-flex text-blue-500 hover:text-blue-700 dark:text-blue-300 dark:hover:text-blue-100"
+                        >
+                          <X className="h-3 w-3" />
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                  
+                  <button
+                    onClick={() => {
+                      setSelectedShopName([]);
+                      setInStockOnly(true);
+                      setOnSaleOnly(false);
+                      setSelectedPriceRange([...PRICE_RANGE]);
+                    }}
+                    className="text-sm font-medium text-blue-600 hover:text-blue-800 dark:text-blue-400 dark:hover:text-blue-300 whitespace-nowrap"
+                  >
+                    Clear all filters
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
           </div>
         </div>
 
@@ -615,7 +702,5 @@ export function HomePage() {
         </div>
         <div ref={observerRef} className="h-1" />
       </div>
-    </div>
-    </div>
   );
 }
