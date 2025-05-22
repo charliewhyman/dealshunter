@@ -65,27 +65,28 @@ export function ProductCard({ product }: ProductCardProps) {
 
   return (
     <div
-      className={`relative flex flex-col h-full bg-white dark:bg-gray-800 rounded-lg shadow-sm hover:shadow-md transition-all cursor-pointer overflow-hidden ${
+      className={`relative flex flex-col h-full bg-white dark:bg-gray-800 rounded-md shadow-sm hover:shadow-md transition-all cursor-pointer overflow-hidden ${
         allVariantsUnavailable ? 'opacity-80' : ''
       }`}
       onClick={handleCardClick}
+      style={{ margin: '0 10px' }} // Add horizontal margin for spacing
     >
       {/* Discount Badge */}
       {compareAtPrice && compareAtPrice > ((offerPrice ?? variantPrice) ?? 0) && (
-        <div className="absolute top-3 left-3 bg-red-600 text-white text-xs font-bold px-2 py-1 rounded z-10">
+        <div className="absolute top-2 left-2 bg-red-600 text-white text-xs font-bold px-1.5 py-0.5 rounded z-10">
           {discountPercentage}% OFF
         </div>
       )}
 
       {/* Availability Badge */}
       {allVariantsUnavailable && (
-        <div className="absolute top-3 right-3 bg-gray-800 text-white text-xs font-bold px-2 py-1 rounded z-10">
+        <div className="absolute top-2 right-2 bg-gray-800 text-white text-xs font-bold px-1.5 py-0.5 rounded z-10">
           UNAVAILABLE
         </div>
       )}
 
       {/* Image Container */}
-      <div className="relative w-full pt-[100%] overflow-hidden">
+      <div className="relative w-full pt-[70%] overflow-hidden">
         {productImage ? (
           <img
             src={productImage}
@@ -102,7 +103,7 @@ export function ProductCard({ product }: ProductCardProps) {
       </div>
 
       {/* Product Info */}
-      <div className="p-4 flex flex-col flex-grow">
+      <div className="p-3 flex flex-col flex-grow">
         {/* Shop Name */}
         <p className="text-xs text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-1">
           {product.shop_name}
@@ -111,7 +112,7 @@ export function ProductCard({ product }: ProductCardProps) {
         {/* Title and External Link */}
         <div className="flex items-start justify-between mb-2">
           <h3
-            className={`text-md font-medium text-gray-900 dark:text-gray-100 text-left line-clamp-2 ${
+            className={`text-sm font-medium text-gray-900 dark:text-gray-100 text-left line-clamp-2 ${
               allVariantsUnavailable ? 'line-through' : ''
             }`}
           >
@@ -131,12 +132,12 @@ export function ProductCard({ product }: ProductCardProps) {
 
         {/* Price Information */}
         <div className="mt-auto">
-          <div className="flex items-baseline gap-2">
-            <span className="text-2xl font-bold text-gray-900 dark:text-gray-100">
+          <div className="flex items-baseline gap-1">
+            <span className="text-lg font-bold text-gray-900 dark:text-gray-100">
               ${offerPrice?.toFixed(2) ?? variantPrice?.toFixed(2) ?? '0.00'}
             </span>
             {compareAtPrice && compareAtPrice > ((offerPrice ?? variantPrice) ?? 0) && (
-              <span className="text-sm text-gray-500 dark:text-gray-400 line-through">
+              <span className="text-xs text-gray-500 dark:text-gray-400 line-through">
                 ${compareAtPrice.toFixed(2)}
               </span>
             )}
@@ -163,12 +164,6 @@ export function ProductCard({ product }: ProductCardProps) {
             </div>
           )}
         </div>
-
-        {/* Timestamp 
-        <p className="text-xs text-gray-400 mt-2">
-          Added {formatDistanceToNow(new Date(product.created_at || ''))} ago
-        </p>
-        */}
       </div>
     </div>
   );

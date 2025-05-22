@@ -357,7 +357,7 @@ export function HomePage() {
         handleSearchSubmit={handleSearchSubmit}
       />
       
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4 mt-6">
         {/* Filters Section - Improved Layout */}
         <div className="mb-8">
           {/* Mobile Filters Toggle - Improved */}
@@ -658,7 +658,7 @@ export function HomePage() {
         </div>
 
         {/* Products List */}
-        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-x-6 gap-y-10">
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-x-4 gap-y-6">
           {databaseStatus.error ? (
             <div className="col-span-full text-center py-8">
               <p className="text-red-500 dark:text-red-400 mb-2">{databaseStatus.error}</p>
