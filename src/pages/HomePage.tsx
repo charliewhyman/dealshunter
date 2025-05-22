@@ -452,7 +452,7 @@ export function HomePage() {
   {/* Price Range Filter */}
   <div className="min-w-[300px] flex-1">
     <div className="flex flex-col h-full">
-      <label className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-">
+      <label className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
         Price Range
       </label>
       <div className="flex items-center gap-5 h-[38px]">
