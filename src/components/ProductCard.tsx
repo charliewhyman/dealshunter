@@ -14,6 +14,7 @@ export function ProductCard({ product }: ProductCardProps) {
   const [productImage, setProductImage] = useState<string | null>(null);
   const [variants, setVariants] = useState<Array<{ title: string; available: boolean }>>([]);
   const [allVariantsUnavailable, setAllVariantsUnavailable] = useState(false);
+  const [showAllVariants, setShowAllVariants] = useState(false);
   const navigate = useNavigate();
   const { variantPrice, compareAtPrice, offerPrice } = useProductPricing(product.id);
 
@@ -42,13 +43,15 @@ export function ProductCard({ product }: ProductCardProps) {
         .eq('product_id', product.id);
 
       if (!variantsError && variantsData) {
-        setVariants(
-          variantsData.map((variant) => ({
+        const filteredVariants = variantsData
+          .filter(variant => variant.title !== 'Default Title')
+          .map(variant => ({
             title: variant.title,
             available: variant.available,
-          }))
-        );
-        setAllVariantsUnavailable(variantsData.every((variant) => !variant.available));
+          }));
+        
+        setVariants(filteredVariants);
+        setAllVariantsUnavailable(filteredVariants.every(variant => !variant.available));
       }
     };
 
@@ -63,13 +66,17 @@ export function ProductCard({ product }: ProductCardProps) {
     ? Math.round(((compareAtPrice - (offerPrice ?? variantPrice)) / compareAtPrice) * 100)
     : 0;
 
+  // Limit displayed variants to 3 unless showAllVariants is true
+  const displayedVariants = showAllVariants ? variants : variants.slice(0, 3);
+  const hasHiddenVariants = variants.length > 3 && !showAllVariants;
+
   return (
     <div
       className={`relative flex flex-col h-full bg-white dark:bg-gray-800 rounded-md shadow-sm hover:shadow-md transition-all cursor-pointer overflow-hidden ${
         allVariantsUnavailable ? 'opacity-80' : ''
       }`}
       onClick={handleCardClick}
-      style={{ margin: '0 10px' }} // Add horizontal margin for spacing
+      style={{ margin: '0 10px' }}
     >
       {/* Discount Badge */}
       {compareAtPrice && compareAtPrice > ((offerPrice ?? variantPrice) ?? 0) && (
@@ -145,22 +152,43 @@ export function ProductCard({ product }: ProductCardProps) {
 
           {/* Variants */}
           {variants.length > 0 && (
-            <div className="flex flex-wrap gap-1 mt-2">
-              {variants.map(
-                (variant, index) =>
-                  variant.title !== 'Default Title' && (
-                    <span
-                      key={index}
-                      className={`text-xs px-2 py-1 rounded-full border ${
-                        variant.available
-                          ? 'border-gray-300 dark:border-gray-600 bg-gray-100 dark:bg-gray-700 text-gray-900 dark:text-gray-100'
-                          : 'border-gray-200 dark:border-gray-600 bg-gray-100 dark:bg-gray-700 text-gray-500 dark:text-gray-400'
-                      }`}
-                    >
-                      {variant.title}
-                    </span>
-                  )
-              )}
+            <div className="mt-2">
+              <div className="flex flex-wrap gap-1">
+                {displayedVariants.map((variant, index) => (
+                  <span
+                    key={index}
+                    className={`text-xs px-2 py-1 rounded-full border ${
+                      variant.available
+                        ? 'border-gray-300 dark:border-gray-600 bg-gray-100 dark:bg-gray-700 text-gray-900 dark:text-gray-100'
+                        : 'border-gray-200 dark:border-gray-600 bg-gray-100 dark:bg-gray-700 text-gray-500 dark:text-gray-400'
+                    }`}
+                  >
+                    {variant.title}
+                  </span>
+                ))}
+                {hasHiddenVariants && (
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setShowAllVariants(true);
+                    }}
+                    className="text-xs px-2 py-1 rounded-full border border-gray-300 dark:border-gray-600 bg-gray-100 dark:bg-gray-700 text-gray-900 dark:text-gray-100 hover:bg-gray-200 dark:hover:bg-gray-600"
+                  >
+                    +{variants.length - 3} more
+                  </button>
+                )}
+                {showAllVariants && (
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setShowAllVariants(false);
+                    }}
+                    className="text-xs px-2 py-1 rounded-full border border-gray-300 dark:border-gray-600 bg-gray-100 dark:bg-gray-700 text-gray-900 dark:text-gray-100 hover:bg-gray-200 dark:hover:bg-gray-600"
+                  >
+                    Show less
+                  </button>
+                )}
+              </div>
             </div>
           )}
         </div>
