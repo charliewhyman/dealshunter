@@ -351,16 +351,17 @@ export function HomePage() {
 
   return (
     <div className="min-h-screen bg-white dark:bg-gray-900">
-      <Header
-        searchQuery={searchQuery}
-        handleSearchChange={handleSearchChange}
-        handleSearchSubmit={handleSearchSubmit}
-      />
-      
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4 mt-6">
-        {/* Filters Section - Improved Layout */}
-        <div className="mb-8">
-          {/* Mobile Filters Toggle - Improved */}
+    <Header
+      searchQuery={searchQuery}
+      handleSearchChange={handleSearchChange}
+      handleSearchSubmit={handleSearchSubmit}
+    />
+    
+    <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4 mt-6">
+      <div className="flex flex-col lg:flex-row gap-6">
+        {/* Vertical Filters Sidebar - Now Sticky */}
+        <div className="lg:w-64 xl:w-72">
+          {/* Mobile Filters Toggle */}
           <div className="lg:hidden mb-4">
             <button
               onClick={() => setShowFilters(!showFilters)}
@@ -386,321 +387,328 @@ export function HomePage() {
               )}
             </button>
           </div>
-
-          {/* Filters Container - Improved Layout */}
-          <div className="flex flex-wrap items-end gap-4 bg-white dark:bg-gray-800 rounded-lg shadow-sm p-4 mb-6">
-  {/* Shop Filter */}
-  <div className="min-w-[200px] flex-1">
-    <div className="flex flex-col h-full">
-      <label className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-        Shops {selectedShopName.length > 0 && (
-          <span className="ml-1 text-xs text-gray-500 dark:text-gray-400">
-            ({selectedShopName.length} selected)
-          </span>
-        )}
-      </label>
-      <div className="flex-1 flex items-end">
-        <Select
-          isMulti
-          options={shopOptions}
-          value={shopOptions.filter((option) => selectedShopName.includes(option.value))}
-          onChange={handleShopChange}
-          className="basic-multi-select w-full"
-          classNamePrefix="select"
-          placeholder="All shops"
-          isClearable={false}
-          components={{
-            DropdownIndicator: () => null,
-            IndicatorSeparator: () => null,
-          }}
-          styles={{
-            control: (provided) => ({
-              ...provided,
-              minHeight: '38px',
-              borderRadius: '0.375rem',
-              borderColor: '#d1d5db',
-              backgroundColor: 'transparent',
-              '&:hover': {
-                borderColor: '#9ca3af',
-              },
-            }),
-            multiValue: (base) => ({
-              ...base,
-              backgroundColor: '#e5e7eb',
-              borderRadius: '0.375rem',
-            }),
-            multiValueLabel: (base) => ({
-              ...base,
-              color: '#111827',
-              padding: '0.25rem 0.5rem',
-            }),
-            multiValueRemove: (base) => ({
-              ...base,
-              borderRadius: '0 0.375rem 0.375rem 0',
-              color: '#6b7280',
-              ':hover': {
-                backgroundColor: '#d1d5db',
-                color: '#ef4444',
-              },
-            })
-          }}
-        />
-      </div>
-    </div>
-  </div>
-
-  {/* Price Range Filter */}
-  <div className="min-w-[300px] flex-1">
-    <div className="flex flex-col h-full">
-      <label className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-        Price Range
-      </label>
-      <div className="flex items-center gap-5 h-[38px]">
-        <div className="relative w-24">
-          <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500">$</span>
-          <input
-            type="number"
-            value={selectedPriceRange[0]}
-            onChange={(e) => handlePriceInputChange('min', e.target.value)}
-            className="w-full pl-8 pr-3 py-1.5 border border-gray-300 rounded-m bg-transparent"
-            min={PRICE_RANGE[0]}
-            max={selectedPriceRange[1]}
-          />
-        </div>
-        
-        <div className="flex-1">
-          <Range
-            step={1}
-            min={PRICE_RANGE[0]}
-            max={PRICE_RANGE[1]}
-            values={selectedPriceRange}
-            onChange={handleSliderChange}
-            renderTrack={({ props, children }) => (
-              <div {...props} className="h-2 bg-gray-200 rounded-full">
-                {children}
-              </div>
-            )}
-            renderThumb={({ props }) => (
-              <div {...props} className="h-4 w-4 bg-blue-600 rounded-full"/>
-            )}
-          />
-        </div>
-
-        <div className="relative w-24">
-          <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500">$</span>
-          <input
-            type="number"
-            value={selectedPriceRange[1]}
-            onChange={(e) => handlePriceInputChange('max', e.target.value)}
-            className="w-full pl-8 pr-3 py-1.5 border border-gray-300 rounded-md bg-transparent"
-            min={selectedPriceRange[0]}
-            max={PRICE_RANGE[1]}
-          />
-        </div>
-      </div>
-    </div>
-  </div>
   
-  {/* Sort Dropdown */}
-  <div className="min-w-[180px] flex-1">
-    <div className="flex flex-col h-full">
-      <label className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-        Sort By
-      </label>
-      <Select
-        options={sortOptions}
-        value={sortOptions.find((option) => option.value === sortOrder)}
-        onChange={handleSortChange}
-        className="react-select-container w-full"
-        classNamePrefix="react-select"
-        placeholder="Featured"
-        isSearchable={false}
-        styles={{
-          control: (provided) => ({
-            ...provided,
-            minHeight: '38px',
-            borderRadius: '0.375rem',
-            borderColor: '#d1d5db',
-            backgroundColor: 'transparent',
-            '&:hover': {
-              borderColor: '#9ca3af',
-            },
-          }),
-          singleValue: (base) => ({
-            ...base,
-            color: 'inherit',
-          }),
-          menu: (base) => ({
-            ...base,
-            backgroundColor: 'hsl(var(--background))',
-            borderColor: 'hsl(var(--border))',
-          }),
-          option: (base, state) => ({
-            ...base,
-            backgroundColor: state.isFocused
-              ? 'hsl(var(--accent))'
-              : 'transparent',
-            color: state.isFocused
-              ? 'hsl(var(--accent-foreground))'
-              : 'inherit',
-          }),
-        }}
-      />
-    </div>
-  </div>
-
-  {/* Checkboxes */}
-  <div className="flex items-center gap-4 h-[38px]">
-    <label className="inline-flex items-center gap-2">
-      <input
-        type="checkbox"
-        checked={inStockOnly}
-        onChange={(e) => setInStockOnly(e.target.checked)}
-        className="h-4 w-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500 dark:border-gray-600 dark:bg-gray-700 dark:checked:bg-blue-600"
-      />
-      <span className="text-sm text-gray-700 dark:text-gray-300">In Stock</span>
-    </label>
-    <label className="inline-flex items-center space-x-2">
-      <input
-        type="checkbox"
-        checked={onSaleOnly}
-        onChange={(e) => setOnSaleOnly(e.target.checked)}
-        className="h-4 w-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500 dark:border-gray-600 dark:bg-gray-700 dark:checked:bg-blue-600"
-      />
-      <span className="text-sm text-gray-700 dark:text-gray-300">On Sale</span>
-    </label>
-</div>
-
-            {/* Active Filters & Reset - Improved Standard UI */}
-            {(selectedShopName.length > 0 || 
-              inStockOnly !== true || 
-              onSaleOnly !== false || 
-              !_.isEqual(selectedPriceRange, PRICE_RANGE)) && (
-              <div className="mt-4 pt-4 border-t border-gray-200 dark:border-gray-700">
-                <div className="flex flex-wrap items-center justify-between gap-3">
-                  <div className="flex flex-wrap items-center gap-2">
-                    <span className="text-sm font-medium text-gray-700 dark:text-gray-300">
-                      Active filters:
+          {/* Filters Container - Sticky and Full Height */}
+          <div className={`${showFilters ? 'block' : 'hidden'} lg:block lg:sticky lg:top-24 lg:h-[calc(100vh-8rem)] lg:overflow-y-auto`}>
+            <div className="bg-white dark:bg-gray-800 rounded-lg shadow-sm p-4 mb-6 space-y-6">
+              {/* Shop Filter */}
+              <div>
+                <h3 className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-3">
+                  Shops {selectedShopName.length > 0 && (
+                    <span className="ml-1 text-xs text-gray-500 dark:text-gray-400">
+                      ({selectedShopName.length} selected)
                     </span>
-                    
-                    {selectedShopName.length > 0 && (
-                      <div className="flex flex-wrap items-center gap-2">
-                        {selectedShopName.map(shop => (
-                          <div 
-                            key={shop}
-                            className="inline-flex items-center rounded-md bg-blue-50 dark:bg-blue-900/30 px-2 py-1 text-xs font-medium text-blue-700 dark:text-blue-200 ring-1 ring-inset ring-blue-700/10 dark:ring-blue-500/30"
-                          >
-                            {shop}
-                            <button 
-                              onClick={() => setSelectedShopName(prev => prev.filter(s => s !== shop))}
-                              className="ml-1.5 inline-flex text-blue-500 hover:text-blue-700 dark:text-blue-300 dark:hover:text-blue-100"
-                            >
-                              <X className="h-3 w-3" />
-                            </button>
-                          </div>
-                        ))}
-                      </div>
-                    )}
-                    
-                    {!_.isEqual(selectedPriceRange, PRICE_RANGE) && (
-                      <div className="inline-flex items-center rounded-md bg-blue-50 dark:bg-blue-900/30 px-2 py-1 text-xs font-medium text-blue-700 dark:text-blue-200 ring-1 ring-inset ring-blue-700/10 dark:ring-blue-500/30">
-                        ${selectedPriceRange[0]} - ${selectedPriceRange[1]}
-                        <button 
-                          onClick={() => setSelectedPriceRange([...PRICE_RANGE])}
-                          className="ml-1.5 inline-flex text-blue-500 hover:text-blue-700 dark:text-blue-300 dark:hover:text-blue-100"
-                        >
-                          <X className="h-3 w-3" />
-                        </button>
-                      </div>
-                    )}
-                    
-                    {inStockOnly !== true && (
-                      <div className="inline-flex items-center rounded-md bg-blue-50 dark:bg-blue-900/30 px-2 py-1 text-xs font-medium text-blue-700 dark:text-blue-200 ring-1 ring-inset ring-blue-700/10 dark:ring-blue-500/30">
-                        Include Out of Stock
-                        <button 
-                          onClick={() => setInStockOnly(true)}
-                          className="ml-1.5 inline-flex text-blue-500 hover:text-blue-700 dark:text-blue-300 dark:hover:text-blue-100"
-                        >
-                          <X className="h-3 w-3" />
-                        </button>
-                      </div>
-                    )}
-                    
-                    {onSaleOnly !== false && (
-                      <div className="inline-flex items-center rounded-md bg-blue-50 dark:bg-blue-900/30 px-2 py-1 text-xs font-medium text-blue-700 dark:text-blue-200 ring-1 ring-inset ring-blue-700/10 dark:ring-blue-500/30">
-                        On Sale Only
-                        <button 
-                          onClick={() => setOnSaleOnly(false)}
-                          className="ml-1.5 inline-flex text-blue-500 hover:text-blue-700 dark:text-blue-300 dark:hover:text-blue-100"
-                        >
-                          <X className="h-3 w-3" />
-                        </button>
-                      </div>
-                    )}
+                  )}
+                </h3>
+                <Select
+                  isMulti
+                  options={shopOptions}
+                  value={shopOptions.filter((option) => selectedShopName.includes(option.value))}
+                  onChange={handleShopChange}
+                  className="basic-multi-select w-full"
+                  classNamePrefix="select"
+                  placeholder="All shops"
+                  isClearable={false}
+                  components={{
+                    DropdownIndicator: () => null,
+                    IndicatorSeparator: () => null,
+                  }}
+                  styles={{
+                    control: (provided) => ({
+                      ...provided,
+                      minHeight: '38px',
+                      borderRadius: '0.375rem',
+                      borderColor: '#d1d5db',
+                      backgroundColor: 'transparent',
+                      '&:hover': {
+                        borderColor: '#9ca3af',
+                      },
+                    }),
+                    multiValue: (base) => ({
+                      ...base,
+                      backgroundColor: '#e5e7eb',
+                      borderRadius: '0.375rem',
+                    }),
+                    multiValueLabel: (base) => ({
+                      ...base,
+                      color: '#111827',
+                      padding: '0.25rem 0.5rem',
+                    }),
+                    multiValueRemove: (base) => ({
+                      ...base,
+                      borderRadius: '0 0.375rem 0.375rem 0',
+                      color: '#6b7280',
+                      ':hover': {
+                        backgroundColor: '#d1d5db',
+                        color: '#ef4444',
+                      },
+                    })
+                  }}
+                />
+              </div>
+  
+              {/* Price Range Filter */}
+              <div>
+                <h3 className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-3">
+                  Price Range
+                </h3>
+                <div className="space-y-4">
+                  <div className="flex items-center gap-3">
+                    <div className="relative w-full">
+                      <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500">$</span>
+                      <input
+                        type="number"
+                        value={selectedPriceRange[0]}
+                        onChange={(e) => handlePriceInputChange('min', e.target.value)}
+                        className="w-full pl-8 pr-3 py-1.5 border border-gray-300 rounded-md bg-transparent"
+                        min={PRICE_RANGE[0]}
+                        max={selectedPriceRange[1]}
+                      />
+                    </div>
+                    <span className="text-gray-500">to</span>
+                    <div className="relative w-full">
+                      <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500">$</span>
+                      <input
+                        type="number"
+                        value={selectedPriceRange[1]}
+                        onChange={(e) => handlePriceInputChange('max', e.target.value)}
+                        className="w-full pl-8 pr-3 py-1.5 border border-gray-300 rounded-md bg-transparent"
+                        min={selectedPriceRange[0]}
+                        max={PRICE_RANGE[1]}
+                      />
+                    </div>
                   </div>
-                  
-                  <button
-                    onClick={() => {
-                      setSelectedShopName([]);
-                      setInStockOnly(true);
-                      setOnSaleOnly(false);
-                      setSelectedPriceRange([...PRICE_RANGE]);
-                    }}
-                    className="text-sm font-medium text-blue-600 hover:text-blue-800 dark:text-blue-400 dark:hover:text-blue-300 whitespace-nowrap"
-                  >
-                    Clear all filters
-                  </button>
+                  <Range
+                    step={1}
+                    min={PRICE_RANGE[0]}
+                    max={PRICE_RANGE[1]}
+                    values={selectedPriceRange}
+                    onChange={handleSliderChange}
+                    renderTrack={({ props, children }) => (
+                      <div {...props} className="h-2 bg-gray-200 rounded-full">
+                        {children}
+                      </div>
+                    )}
+                    renderThumb={({ props }) => (
+                      <div {...props} className="h-4 w-4 bg-blue-600 rounded-full"/>
+                    )}
+                  />
                 </div>
               </div>
-            )}
-          </div>
-          </div>
-        </div>
-
-        {/* Products List */}
-        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-x-4 gap-y-6">
-          {databaseStatus.error ? (
-            <div className="col-span-full text-center py-8">
-              <p className="text-red-500 dark:text-red-400 mb-2">{databaseStatus.error}</p>
-              <p className="text-gray-600 dark:text-gray-400">
-                {databaseStatus.viewEmpty && "The products view appears to be empty."}
-              </p>
-            </div>
-          ) : initialLoad ? (
-            Array.from({ length: 8 }).map((_, i) => (
-              <ProductCardSkeleton key={i} />
-            ))
-          ) : products.length === 0 ? (
-            <div className="col-span-full flex flex-col items-center justify-center min-h-[200px] space-y-2">
-              <p className="text-gray-900 dark:text-gray-100">No products found.</p>
-              <button
-                onClick={() => {
-                  setPage(0);
-                  setProducts([]);
-                  setInitialLoad(true);
-                  setDatabaseStatus({ viewEmpty: false, fallbackActive: false, error: null });
-                }}
-                className="text-blue-600 dark:text-blue-400 hover:underline text-sm"
-              >
-                Retry
-              </button>
-            </div>
-          ) : (
-            <>
-              {products.map((product) => (
-                <div key={product.id} className="h-full">
-                  <ProductCard product={product} />
+              
+              {/* Availability */}
+              <div>
+                <h3 className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-3">Availability</h3>
+                <div className="space-y-2">
+                  <label className="flex items-center gap-2">
+                    <input
+                      type="checkbox"
+                      checked={inStockOnly}
+                      onChange={(e) => setInStockOnly(e.target.checked)}
+                      className="h-4 w-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500 dark:border-gray-600 dark:bg-gray-700 dark:checked:bg-blue-600"
+                    />
+                    <span className="text-sm text-gray-700 dark:text-gray-300">In Stock Only</span>
+                  </label>
                 </div>
-              ))}
-              {loading && page > 0 && (
-                <div className="col-span-full flex justify-center items-center py-4">
-                  <Loader2 className="w-8 h-8 animate-spin text-blue-600 dark:text-blue-500" />
+              </div>
+  
+              {/* Deals */}
+              <div>
+                <h3 className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-3">Deals</h3>
+                <div className="space-y-2">
+                  <label className="flex items-center gap-2">
+                    <input
+                      type="checkbox"
+                      checked={onSaleOnly}
+                      onChange={(e) => setOnSaleOnly(e.target.checked)}
+                      className="h-4 w-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500 dark:border-gray-600 dark:bg-gray-700 dark:checked:bg-blue-600"
+                    />
+                    <span className="text-sm text-gray-700 dark:text-gray-300">On Sale</span>
+                  </label>
+                </div>
+              </div>
+  
+              {/* Active Filters & Reset */}
+              {(selectedShopName.length > 0 || 
+                inStockOnly !== true || 
+                onSaleOnly !== false || 
+                !_.isEqual(selectedPriceRange, PRICE_RANGE)) && (
+                <div className="pt-4 border-t border-gray-200 dark:border-gray-700">
+                  <div className="space-y-3">
+                    <h3 className="text-sm font-medium text-gray-700 dark:text-gray-300">
+                      Active filters
+                    </h3>
+                    
+                    <div className="flex flex-wrap gap-2">
+                      {selectedShopName.length > 0 && (
+                        <>
+                          {selectedShopName.map(shop => (
+                            <div 
+                              key={shop}
+                              className="inline-flex items-center rounded-md bg-blue-50 dark:bg-blue-900/30 px-2 py-1 text-xs font-medium text-blue-700 dark:text-blue-200 ring-1 ring-inset ring-blue-700/10 dark:ring-blue-500/30"
+                            >
+                              {shop}
+                              <button 
+                                onClick={() => setSelectedShopName(prev => prev.filter(s => s !== shop))}
+                                className="ml-1.5 inline-flex text-blue-500 hover:text-blue-700 dark:text-blue-300 dark:hover:text-blue-100"
+                              >
+                                <X className="h-3 w-3" />
+                              </button>
+                            </div>
+                          ))}
+                        </>
+                      )}
+                      
+                      {!_.isEqual(selectedPriceRange, PRICE_RANGE) && (
+                        <div className="inline-flex items-center rounded-md bg-blue-50 dark:bg-blue-900/30 px-2 py-1 text-xs font-medium text-blue-700 dark:text-blue-200 ring-1 ring-inset ring-blue-700/10 dark:ring-blue-500/30">
+                          ${selectedPriceRange[0]} - ${selectedPriceRange[1]}
+                          <button 
+                            onClick={() => setSelectedPriceRange([...PRICE_RANGE])}
+                            className="ml-1.5 inline-flex text-blue-500 hover:text-blue-700 dark:text-blue-300 dark:hover:text-blue-100"
+                          >
+                            <X className="h-3 w-3" />
+                          </button>
+                        </div>
+                      )}
+                      
+                      {inStockOnly !== true && (
+                        <div className="inline-flex items-center rounded-md bg-blue-50 dark:bg-blue-900/30 px-2 py-1 text-xs font-medium text-blue-700 dark:text-blue-200 ring-1 ring-inset ring-blue-700/10 dark:ring-blue-500/30">
+                          Include Out of Stock
+                          <button 
+                            onClick={() => setInStockOnly(true)}
+                            className="ml-1.5 inline-flex text-blue-500 hover:text-blue-700 dark:text-blue-300 dark:hover:text-blue-100"
+                          >
+                            <X className="h-3 w-3" />
+                          </button>
+                        </div>
+                      )}
+                      
+                      {onSaleOnly !== false && (
+                        <div className="inline-flex items-center rounded-md bg-blue-50 dark:bg-blue-900/30 px-2 py-1 text-xs font-medium text-blue-700 dark:text-blue-200 ring-1 ring-inset ring-blue-700/10 dark:ring-blue-500/30">
+                          On Sale Only
+                          <button 
+                            onClick={() => setOnSaleOnly(false)}
+                            className="ml-1.5 inline-flex text-blue-500 hover:text-blue-700 dark:text-blue-300 dark:hover:text-blue-100"
+                          >
+                            <X className="h-3 w-3" />
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                    
+                    <button
+                      onClick={() => {
+                        setSelectedShopName([]);
+                        setInStockOnly(true);
+                        setOnSaleOnly(false);
+                        setSelectedPriceRange([...PRICE_RANGE]);
+                      }}
+                      className="text-sm font-medium text-blue-600 hover:text-blue-800 dark:text-blue-400 dark:hover:text-blue-300 w-full text-left"
+                    >
+                      Clear all filters
+                    </button>
+                  </div>
                 </div>
               )}
-            </>
-          )}
+            </div>
+          </div>
         </div>
-        <div ref={observerRef} className="h-1" />
+  
+        {/* Main Content Area */}
+        <div className="flex-1">
+          {/* Sort Dropdown - Now in main content area */}
+          <div className="mb-4 flex justify-end">
+            <div className="w-48">
+              <label className="sr-only">Sort By</label>
+              <Select
+                options={sortOptions}
+                value={sortOptions.find((option) => option.value === sortOrder)}
+                onChange={handleSortChange}
+                className="react-select-container w-full"
+                classNamePrefix="react-select"
+                placeholder="Featured"
+                isSearchable={false}
+                styles={{
+                  control: (provided) => ({
+                    ...provided,
+                    minHeight: '38px',
+                    borderRadius: '0.375rem',
+                    borderColor: '#d1d5db',
+                    backgroundColor: 'transparent',
+                    '&:hover': {
+                      borderColor: '#9ca3af',
+                    },
+                  }),
+                  singleValue: (base) => ({
+                    ...base,
+                    color: 'inherit',
+                  }),
+                  menu: (base) => ({
+                    ...base,
+                    backgroundColor: 'hsl(var(--background))',
+                    borderColor: 'hsl(var(--border))',
+                  }),
+                  option: (base, state) => ({
+                    ...base,
+                    backgroundColor: state.isFocused
+                      ? 'hsl(var(--accent))'
+                      : 'transparent',
+                    color: state.isFocused
+                      ? 'hsl(var(--accent-foreground))'
+                      : 'inherit',
+                  }),
+                }}
+              />
+            </div>
+          </div>
+  
+          {/* Products List */}
+          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-x-4 gap-y-6">
+            {databaseStatus.error ? (
+              <div className="col-span-full text-center py-8">
+                <p className="text-red-500 dark:text-red-400 mb-2">{databaseStatus.error}</p>
+                <p className="text-gray-600 dark:text-gray-400">
+                  {databaseStatus.viewEmpty && "The products view appears to be empty."}
+                </p>
+              </div>
+            ) : initialLoad ? (
+              Array.from({ length: 8 }).map((_, i) => (
+                <ProductCardSkeleton key={i} />
+              ))
+            ) : products.length === 0 ? (
+              <div className="col-span-full flex flex-col items-center justify-center min-h-[200px] space-y-2">
+                <p className="text-gray-900 dark:text-gray-100">No products found.</p>
+                <button
+                  onClick={() => {
+                    setPage(0);
+                    setProducts([]);
+                    setInitialLoad(true);
+                    setDatabaseStatus({ viewEmpty: false, fallbackActive: false, error: null });
+                  }}
+                  className="text-blue-600 dark:text-blue-400 hover:underline text-sm"
+                >
+                  Retry
+                </button>
+              </div>
+            ) : (
+              <>
+                {products.map((product) => (
+                  <div key={product.id} className="h-full">
+                    <ProductCard product={product} />
+                  </div>
+                ))}
+                {loading && page > 0 && (
+                  <div className="col-span-full flex justify-center items-center py-4">
+                    <Loader2 className="w-8 h-8 animate-spin text-blue-600 dark:text-blue-500" />
+                  </div>
+                )}
+              </>
+            )}
+          </div>
+          <div ref={observerRef} className="h-1" />
+        </div>
       </div>
+    </div>
+  </div>
   );
 }
