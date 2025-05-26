@@ -18,8 +18,12 @@ export function ProductCard({ product }: ProductCardProps) {
   const navigate = useNavigate();
   const { variantPrice, compareAtPrice, offerPrice } = useProductPricing(product.id);
 
+  // Determine product availability based on both product.in_stock and variants
+  const isAvailable = product.in_stock && !allVariantsUnavailable;
+
   useEffect(() => {
     const fetchVariantAndImage = async () => {
+      // Fetch image
       const { data: imageData, error: imageError } = await supabase
         .from('images')
         .select('src')
@@ -30,13 +34,8 @@ export function ProductCard({ product }: ProductCardProps) {
       if (!imageError && imageData) {
         setProductImage(imageData.src);
       }
-    };
 
-    fetchVariantAndImage();
-  }, [product.id]);
-
-  useEffect(() => {
-    const fetchVariants = async () => {
+      // Fetch variants
       const { data: variantsData, error: variantsError } = await supabase
         .from('variants')
         .select('title, inventory_quantity, available')
@@ -51,11 +50,11 @@ export function ProductCard({ product }: ProductCardProps) {
           }));
         
         setVariants(filteredVariants);
-        setAllVariantsUnavailable(filteredVariants.every(variant => !variant.available));
+        setAllVariantsUnavailable(filteredVariants.length > 0 && filteredVariants.every(variant => !variant.available));
       }
     };
 
-    fetchVariants();
+    fetchVariantAndImage();
   }, [product.id]);
 
   const handleCardClick = () => {
@@ -73,7 +72,7 @@ export function ProductCard({ product }: ProductCardProps) {
   return (
     <div
       className={`relative flex flex-col h-full bg-white dark:bg-gray-800 rounded-md shadow-sm hover:shadow-md transition-all cursor-pointer overflow-hidden ${
-        allVariantsUnavailable ? 'opacity-80' : ''
+        !isAvailable ? 'opacity-80' : ''
       }`}
       onClick={handleCardClick}
       style={{ margin: '0 10px' }}
@@ -86,9 +85,9 @@ export function ProductCard({ product }: ProductCardProps) {
       )}
 
       {/* Availability Badge */}
-      {allVariantsUnavailable && (
+      {!isAvailable && (
         <div className="absolute top-2 right-2 bg-gray-800 text-white text-xs font-bold px-1.5 py-0.5 rounded z-10">
-          UNAVAILABLE
+          {product.in_stock === false ? 'OUT OF STOCK' : 'UNAVAILABLE'}
         </div>
       )}
 
@@ -120,7 +119,7 @@ export function ProductCard({ product }: ProductCardProps) {
         <div className="flex items-start justify-between mb-2">
           <h3
             className={`text-sm font-medium text-gray-900 dark:text-gray-100 text-left line-clamp-2 ${
-              allVariantsUnavailable ? 'line-through' : ''
+              !isAvailable ? 'line-through' : ''
             }`}
           >
             {product.title}
