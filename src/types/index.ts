@@ -20,6 +20,7 @@ export interface Product {
   updated_at_external: string | null;
   min_price: number;
   in_stock: boolean;
+  max_discount_percentage: number | null;
   on_sale: boolean;
   variants?: ProductVariant[];
   offers?: ProductOffer[];
@@ -27,16 +28,17 @@ export interface Product {
 
 // Supabase view response type
 export interface ProductFromView {
-  id: number;
+  id: string;
   title: string;
-  description: string;
   shop_id: string;
-  shop_name: string | null;
+  shop_name: string;
   created_at: string;
   url: string;
-  updated_at_external: string | null;
-  min_price: number;
+  description: string;
+  updated_at_external: string;
   in_stock: boolean;
+  min_price: number;
+  max_discount_percentage: number | null;
   on_sale: boolean;
 }
 
@@ -44,6 +46,7 @@ export interface ProductFromView {
 export function toProduct(viewProduct: ProductFromView): Product {
   return {
     ...viewProduct,
+    id: parseInt(viewProduct.id),
     variants: [],
     offers: []
   };

@@ -57,47 +57,55 @@ export function HomePage() {
   }
 
   const fetchFilteredProducts = useCallback(
-    async (filters: FilterOptions, page: number, sortOrder: 'asc' | 'desc') => {
+    async (filters: FilterOptions, page: number, sortOrder: 'asc' | 'desc' | 'discount_desc') => {
       setLoading(true);
       try {
         let query = supabase
           .from('products_with_min_price')
           .select(
-            'id, title, shop_id, shop_name, created_at, url, description, updated_at_external, min_price, in_stock, on_sale',
+            'id, title, shop_id, shop_name, created_at, url, description, updated_at_external, min_price, in_stock, on_sale, max_discount_percentage',
             { count: 'exact' }
           );
-
+  
         if (filters.selectedShopName.length > 0) {
           query = query.in('shop_name', filters.selectedShopName);
         }
-
+  
         if (filters.inStockOnly) {
           query = query.eq('in_stock', true).not('in_stock', 'is', false);
         }
-
+  
         if (filters.onSaleOnly) {
           query = query.eq('on_sale', true);
         }
-
+  
         if (filters.searchQuery) {
           query = query.ilike('title', `%${filters.searchQuery}%`);
         }
-
+  
         if (filters.selectedPriceRange) {
           query = query
             .gte('min_price', filters.selectedPriceRange[0])
             .lte('min_price', filters.selectedPriceRange[1]);
         }
-
+  
+        // Handle different sort orders
+        if (sortOrder === 'discount_desc') {
+          query = query
+            .order('max_discount_percentage', { ascending: false, nullsFirst: false })
+            .order('created_at', { ascending: false });
+        } else {
+          query = query
+            .order('min_price', { ascending: sortOrder === 'asc' })
+            .order('created_at', { ascending: false });
+        }
+  
         const { data, error } = await query
-          .order('min_price', { ascending: sortOrder === 'asc' })
-          .order('created_at', { ascending: false })
           .range(page * ITEMS_PER_PAGE, (page + 1) * ITEMS_PER_PAGE - 1);
-
+  
         if (error) throw error;
-
+  
         const formattedData = (data as ProductFromView[]).map(toProduct).filter(product => {
-          // Double-check in_stock status if filter is enabled
           return !filters.inStockOnly || product.in_stock === true;
         });
         
@@ -211,6 +219,7 @@ export function HomePage() {
   const sortOptions = [
     { value: 'asc', label: 'Price: Low to High' },
     { value: 'desc', label: 'Price: High to Low' },
+    { value: 'discount_desc', label: 'Discount: High to Low' },
   ];
 
   const handleShopChange = (selectedOptions: MultiValue<{ value: string; label: string }>) => {
