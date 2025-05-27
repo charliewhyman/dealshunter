@@ -665,10 +665,14 @@ export function HomePage() {
                 </div>
               ) : (
                 <>
-                  {products.map((product) => (
-                    <div key={product.id} className="h-full">
-                      <ProductCard product={product} />
-                    </div>
+                  {products
+                    .filter((product, index, self) => 
+                      index === self.findIndex(p => p.id === product.id)
+                    )
+                    .map((product) => (
+                      <div key={`${product.id}-${product.shop_id}`} className="h-full">
+                        <ProductCard product={product} />
+                      </div>
                   ))}
                   {loading && page > 0 && (
                     <div className="col-span-full flex justify-center items-center py-4">
