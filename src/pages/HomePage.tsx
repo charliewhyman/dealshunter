@@ -548,44 +548,71 @@ export function HomePage() {
               <div className="w-48">
                 <label className="sr-only">Sort By</label>
                 <Select
-                  options={sortOptions}
-                  value={sortOptions.find((option) => option.value === sortOrder)}
-                  onChange={handleSortChange}
-                  className="react-select-container w-full"
-                  classNamePrefix="react-select"
-                  placeholder="Featured"
-                  isSearchable={false}
-                  styles={{
-                    control: (provided) => ({
-                      ...provided,
-                      minHeight: '38px',
-                      borderRadius: '0.375rem',
-                      borderColor: '#d1d5db',
-                      backgroundColor: 'transparent',
-                      '&:hover': {
-                        borderColor: '#9ca3af',
-                      },
-                    }),
-                    singleValue: (base) => ({
-                      ...base,
-                      color: 'inherit',
-                    }),
-                    menu: (base) => ({
-                      ...base,
-                      backgroundColor: 'hsl(var(--background))',
-                      borderColor: 'hsl(var(--border))',
-                    }),
-                    option: (base, state) => ({
-                      ...base,
-                      backgroundColor: state.isFocused
-                        ? 'hsl(var(--accent))'
-                        : 'transparent',
-                      color: state.isFocused
-                        ? 'hsl(var(--accent-foreground))'
-                        : 'inherit',
-                    }),
-                  }}
-                />
+                options={sortOptions}
+                value={sortOptions.find((option) => option.value === sortOrder)}
+                onChange={handleSortChange}
+                className="react-select-container w-full"
+                classNamePrefix="react-select"
+                placeholder="Featured"
+                isSearchable={false}
+                styles={{
+                  control: (provided) => ({
+                    ...provided,
+                    minHeight: '38px',
+                    borderRadius: '0.375rem',
+                    borderColor: '#d1d5db',
+                    backgroundColor: 'transparent',
+                    color: 'var(--text-color)',
+                    '&:hover': {
+                      borderColor: '#9ca3af',
+                    },
+                  }),
+                  singleValue: (provided) => ({
+                    ...provided,
+                    color: 'var(--text-color)',
+                  }),
+                  input: (provided) => ({
+                    ...provided,
+                    color: 'var(--text-color)',
+                  }),
+                  menu: (provided) => ({
+                    ...provided,
+                    backgroundColor: 'var(--bg-color)',
+                    borderColor: '#d1d5db',
+                    borderWidth: '1px',
+                    borderRadius: '0.375rem',
+                    boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1)',
+                    zIndex: 50,
+                  }),
+                  option: (provided, state) => ({
+                    ...provided,
+                    backgroundColor: state.isFocused
+                      ? state.isSelected 
+                        ? '#3b82f6' // blue-500 for selected
+                        : '#e2e8f0' // gray-200 for focused
+                      : 'transparent',
+                    color: state.isFocused
+                      ? state.isSelected
+                        ? 'white'
+                        : 'var(--text-color)'
+                      : 'var(--text-color)',
+                    ':active': {
+                      backgroundColor: state.isSelected ? '#3b82f6' : '#e2e8f0',
+                    },
+                  }),
+                  dropdownIndicator: (provided) => ({
+                    ...provided,
+                    color: '#64748b', // slate-500
+                    ':hover': {
+                      color: '#475569', // slate-600
+                    },
+                  }),
+                  indicatorSeparator: (provided) => ({
+                    ...provided,
+                    backgroundColor: '#d1d5db', // gray-300
+                  }),
+                }}
+              />
               </div>
             </div>
 
