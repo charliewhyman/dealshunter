@@ -48,6 +48,9 @@ export function HomePage() {
       : [...PRICE_RANGE];
   });
 
+  // Add a ref to track current request to prevent race conditions
+  const currentRequestRef = useRef<AbortController | null>(null);
+
   interface FilterOptions {
     selectedShopName: string[];
     inStockOnly: boolean;
@@ -58,38 +61,49 @@ export function HomePage() {
 
   const fetchFilteredProducts = useCallback(
     async (filters: FilterOptions, page: number, sortOrder: 'asc' | 'desc' | 'discount_desc') => {
+      // Cancel previous request if it exists
+      if (currentRequestRef.current) {
+        currentRequestRef.current.abort();
+      }
+      
+      // Create new AbortController for this request
+      currentRequestRef.current = new AbortController();
+      
       setLoading(true);
       try {
         let query = supabase
           .from('products_with_min_price')
-          .select(
-            'id, title, shop_id, shop_name, created_at, url, description, updated_at_external, min_price, in_stock, on_sale, max_discount_percentage',
-            { count: 'exact' }
-          );
-  
+          .select('id,title,shop_id,shop_name,created_at,url,description,updated_at_external,min_price,in_stock,on_sale,max_discount_percentage', 
+            { 
+              count: 'exact',
+              head: false
+            }
+          )
+          .limit(ITEMS_PER_PAGE)
+          .abortSignal(currentRequestRef.current.signal); // Add abort signal
+
         if (filters.selectedShopName.length > 0) {
           query = query.in('shop_name', filters.selectedShopName);
         }
-  
+
         if (filters.inStockOnly) {
           query = query.eq('in_stock', true).not('in_stock', 'is', false);
         }
-  
+
         if (filters.onSaleOnly) {
           query = query.eq('on_sale', true);
         }
-  
+
         if (filters.searchQuery) {
           query = query.ilike('title', `%${filters.searchQuery}%`);
         }
-  
+
         if (filters.selectedPriceRange) {
           query = query
             .gte('min_price', filters.selectedPriceRange[0])
             .lte('min_price', filters.selectedPriceRange[1]);
         }
-  
-        // Handle different sort orders
+
         if (sortOrder === 'discount_desc') {
           query = query
             .order('max_discount_percentage', { ascending: false, nullsFirst: false })
@@ -99,25 +113,33 @@ export function HomePage() {
             .order('min_price', { ascending: sortOrder === 'asc' })
             .order('created_at', { ascending: false });
         }
-  
-        const { data, error } = await query
-          .range(page * ITEMS_PER_PAGE, (page + 1) * ITEMS_PER_PAGE - 1);
-  
+
+        const { data, error, count } = await query
+        .range(page * ITEMS_PER_PAGE, (page + 1) * ITEMS_PER_PAGE - 1);
+
         if (error) throw error;
-  
+
         const formattedData = (data as ProductFromView[]).map(toProduct).filter(product => {
           return !filters.inStockOnly || product.in_stock === true;
         });
-        
+
+        // Properly calculate if there's more data
+        const totalItems = count || 0;
+        const loadedItems = page * ITEMS_PER_PAGE + formattedData.length;
+        const moreAvailable = loadedItems < totalItems;
+          
         setProducts(prev => page === 0 ? formattedData : [...prev, ...formattedData]);
-        setHasMore(formattedData.length === ITEMS_PER_PAGE);
+        setHasMore(moreAvailable);
         setInitialLoad(false);
         setError(null);
-      } catch (error) {
-        console.error('Error fetching products:', error);
-        setError(`Failed to load products: ${error instanceof Error ? error.message : 'Unknown error'}`);
-        setProducts([]);
-        setHasMore(false);
+      } catch (error: unknown) {
+        // Don't set error if request was aborted
+        if (error instanceof Error && error.name !== 'AbortError') {
+          console.error('Error fetching products:', error);
+          setError(`Failed to load products: ${error instanceof Error ? error.message : 'Unknown error'}`);
+          setProducts([]);
+          setHasMore(false);
+        }
       } finally {
         setLoading(false);
       }
@@ -125,15 +147,18 @@ export function HomePage() {
     []
   );
 
+  // Create a stable reference for the debounced function
   const debouncedFetchProducts = useRef(
     _.debounce(
       (filters: FilterOptions, page: number, sortOrder: 'asc' | 'desc') => {
         fetchFilteredProducts(filters, page, sortOrder);
       },
-      300
+      500,
+      { leading: false, trailing: true }
     )
   ).current;
 
+  // Main effect for fetching data - simplified dependencies
   useEffect(() => {
     const filters: FilterOptions = {
       selectedShopName,
@@ -142,25 +167,19 @@ export function HomePage() {
       searchQuery,
       selectedPriceRange,
     };
-    
-    if (page === 0 && products.length === 0) {
-      fetchFilteredProducts(filters, page, sortOrder);
+
+    // Reset everything when filters change (except page changes)
+    if (page === 0) {
+      setProducts([]);
+      setInitialLoad(true);
+      fetchFilteredProducts(filters, 0, sortOrder);
     } else {
+      // This is a pagination request
       debouncedFetchProducts(filters, page, sortOrder);
     }
-  }, [
-    selectedShopName, 
-    inStockOnly, 
-    onSaleOnly, 
-    searchQuery, 
-    selectedPriceRange, 
-    page, 
-    sortOrder, 
-    debouncedFetchProducts, 
-    products.length,
-    fetchFilteredProducts
-  ]);
+  }, [selectedShopName, inStockOnly, onSaleOnly, searchQuery, selectedPriceRange, sortOrder, page, fetchFilteredProducts, debouncedFetchProducts]);
 
+  // Separate effect for fetching shop names (only once)
   useEffect(() => {
     async function fetchShopNames() {
       const { data, error } = await supabase
@@ -174,47 +193,60 @@ export function HomePage() {
     fetchShopNames();
   }, []);
 
+  // Local storage effects
   useEffect(() => {
     localStorage.setItem('selectedShopName', JSON.stringify(selectedShopName));
   }, [selectedShopName]);
+  
   useEffect(() => {
     localStorage.setItem('inStockOnly', JSON.stringify(inStockOnly));
   }, [inStockOnly]);
+  
   useEffect(() => {
     localStorage.setItem('onSaleOnly', JSON.stringify(onSaleOnly));
   }, [onSaleOnly]);
+  
   useEffect(() => {
     localStorage.setItem('searchQuery', searchQuery);
   }, [searchQuery]);
+  
   useEffect(() => {
     localStorage.setItem('selectedPriceRange', JSON.stringify(selectedPriceRange));
   }, [selectedPriceRange]);
 
+  // Reset page when filters change
   useEffect(() => {
     setPage(0);
-    setProducts([]);
-    setInitialLoad(true);
   }, [selectedShopName, inStockOnly, onSaleOnly, searchQuery, selectedPriceRange, sortOrder]);
 
+  // Intersection observer for infinite scroll
   useEffect(() => {
     const observer = new IntersectionObserver(
       (entries) => {
-        if (entries[0].isIntersecting && hasMore && !loading && !initialLoad) {
+        if (entries[0]?.isIntersecting && !loading && hasMore && !initialLoad && products.length > 0) {
           setPage(prev => prev + 1);
         }
       },
-      { threshold: 1.0 }
+      { threshold: 0.1 }
     );
-    if (observerRef.current) {
-      observer.observe(observerRef.current);
-    }
+
     const currentRef = observerRef.current;
+    if (currentRef) observer.observe(currentRef);
+
     return () => {
-      if (currentRef) {
-        observer.unobserve(currentRef);
-      }
+      if (currentRef) observer.unobserve(currentRef);
     };
-  }, [hasMore, loading, initialLoad]);
+  }, [loading, hasMore, initialLoad, products.length]);
+
+  // Cleanup on unmount
+  useEffect(() => {
+    return () => {
+      if (currentRequestRef.current) {
+        currentRequestRef.current.abort();
+      }
+      debouncedFetchProducts.cancel();
+    };
+  }, [debouncedFetchProducts]);
 
   const sortOptions = [
     { value: 'asc', label: 'Price: Low to High' },
@@ -257,7 +289,7 @@ export function HomePage() {
   const handlePriceInputChange = (type: 'min' | 'max', value: string) => {
     const numericValue = parseFloat(value);
     if (isNaN(numericValue)) return;
-  
+
     if (type === 'min') {
       const newMin = Math.min(
         Math.max(numericValue, PRICE_RANGE[0]),
@@ -325,7 +357,7 @@ export function HomePage() {
             </div>
 
             {/* Filters Container */}
-            <div className={`${showFilters ? 'block' : 'hidden'} lg:block lg:sticky lg:top-24`}>
+            <div className={`${showFilters ? 'block' : 'hidden'} lg:block lg:sticky lg:top-24 lg:self-start`}>
               <div className="bg-white dark:bg-gray-800 rounded-lg shadow-sm p-4 space-y-6">
                 {/* Shop Filter */}
                 <div>
@@ -432,7 +464,7 @@ export function HomePage() {
                   </div>
                 </div>
                 
-                {/* Availability - Fixed In Stock Only toggle */}
+                {/* Availability */}
                 <div>
                   <h3 className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-3">Availability</h3>
                   <div className="space-y-2">
@@ -535,7 +567,7 @@ export function HomePage() {
                       <button
                         onClick={() => {
                           setSelectedShopName([]);
-                          setInStockOnly(true); // Reset to default true
+                          setInStockOnly(true);
                           setOnSaleOnly(false);
                           setSelectedPriceRange([...PRICE_RANGE]);
                         }}
@@ -551,82 +583,82 @@ export function HomePage() {
           </div>
 
           {/* Main Content Area */}
-          <div className="flex-1">
+          <div className="flex-1 will-change-transform">
             {/* Sort Dropdown */}
             <div className="mb-4 flex justify-end">
               <div className="w-48">
                 <label className="sr-only">Sort By</label>
                 <Select
-                options={sortOptions}
-                value={sortOptions.find((option) => option.value === sortOrder)}
-                onChange={handleSortChange}
-                className="react-select-container w-full"
-                classNamePrefix="react-select"
-                placeholder="Featured"
-                isSearchable={false}
-                styles={{
-                  control: (provided) => ({
-                    ...provided,
-                    minHeight: '38px',
-                    borderRadius: '0.375rem',
-                    borderColor: '#d1d5db',
-                    backgroundColor: 'transparent',
-                    color: 'var(--text-color)',
-                    '&:hover': {
-                      borderColor: '#9ca3af',
-                    },
-                  }),
-                  singleValue: (provided) => ({
-                    ...provided,
-                    color: 'var(--text-color)',
-                  }),
-                  input: (provided) => ({
-                    ...provided,
-                    color: 'var(--text-color)',
-                  }),
-                  menu: (provided) => ({
-                    ...provided,
-                    backgroundColor: 'var(--bg-color)',
-                    borderColor: '#d1d5db',
-                    borderWidth: '1px',
-                    borderRadius: '0.375rem',
-                    boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1)',
-                    zIndex: 50,
-                  }),
-                  option: (provided, state) => ({
-                    ...provided,
-                    backgroundColor: state.isFocused
-                      ? state.isSelected 
-                        ? '#3b82f6' // blue-500 for selected
-                        : '#e2e8f0' // gray-200 for focused
-                      : 'transparent',
-                    color: state.isFocused
-                      ? state.isSelected
-                        ? 'white'
-                        : 'var(--text-color)'
-                      : 'var(--text-color)',
-                    ':active': {
-                      backgroundColor: state.isSelected ? '#3b82f6' : '#e2e8f0',
-                    },
-                  }),
-                  dropdownIndicator: (provided) => ({
-                    ...provided,
-                    color: '#64748b', // slate-500
-                    ':hover': {
-                      color: '#475569', // slate-600
-                    },
-                  }),
-                  indicatorSeparator: (provided) => ({
-                    ...provided,
-                    backgroundColor: '#d1d5db', // gray-300
-                  }),
-                }}
-              />
+                  options={sortOptions}
+                  value={sortOptions.find((option) => option.value === sortOrder)}
+                  onChange={handleSortChange}
+                  className="react-select-container w-full"
+                  classNamePrefix="react-select"
+                  placeholder="Featured"
+                  isSearchable={false}
+                  styles={{
+                    control: (provided) => ({
+                      ...provided,
+                      minHeight: '38px',
+                      borderRadius: '0.375rem',
+                      borderColor: '#d1d5db',
+                      backgroundColor: 'transparent',
+                      color: 'var(--text-color)',
+                      '&:hover': {
+                        borderColor: '#9ca3af',
+                      },
+                    }),
+                    singleValue: (provided) => ({
+                      ...provided,
+                      color: 'var(--text-color)',
+                    }),
+                    input: (provided) => ({
+                      ...provided,
+                      color: 'var(--text-color)',
+                    }),
+                    menu: (provided) => ({
+                      ...provided,
+                      backgroundColor: 'var(--bg-color)',
+                      borderColor: '#d1d5db',
+                      borderWidth: '1px',
+                      borderRadius: '0.375rem',
+                      boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1)',
+                      zIndex: 50,
+                    }),
+                    option: (provided, state) => ({
+                      ...provided,
+                      backgroundColor: state.isFocused
+                        ? state.isSelected 
+                          ? '#3b82f6'
+                          : '#e2e8f0'
+                        : 'transparent',
+                      color: state.isFocused
+                        ? state.isSelected
+                          ? 'white'
+                          : 'var(--text-color)'
+                        : 'var(--text-color)',
+                      ':active': {
+                        backgroundColor: state.isSelected ? '#3b82f6' : '#e2e8f0',
+                      },
+                    }),
+                    dropdownIndicator: (provided) => ({
+                      ...provided,
+                      color: '#64748b',
+                      ':hover': {
+                        color: '#475569',
+                      },
+                    }),
+                    indicatorSeparator: (provided) => ({
+                      ...provided,
+                      backgroundColor: '#d1d5db',
+                    }),
+                  }}
+                />
               </div>
             </div>
 
             {/* Products List */}
-            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-x-4 gap-y-6">
+            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-x-4 gap-y-6 min-h-[500px]">
               {error ? (
                 <div className="col-span-full text-center py-8">
                   <p className="text-red-500 dark:text-red-400 mb-2">{error}</p>
