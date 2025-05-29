@@ -1,5 +1,5 @@
 import { ChangeEvent, FormEvent, useCallback, useEffect, useRef, useState } from 'react';
-import { Product, ProductFromView, toProduct } from '../types';
+import { ProductWithDetails } from '../types';
 import { supabase } from '../lib/supabase';
 import { Loader2, ChevronDown, ChevronUp, X } from 'lucide-react';
 import { ProductCard } from '../components/ProductCard';
@@ -13,7 +13,7 @@ import { Range } from 'react-range';
 const ITEMS_PER_PAGE = 10;
 
 export function HomePage() {
-  const [products, setProducts] = useState<Product[]>([]);
+  const [products, setProducts] = useState<ProductWithDetails[]>([]);
   const [loading, setLoading] = useState(true);
   const [initialLoad, setInitialLoad] = useState(true);
   const [hasMore, setHasMore] = useState(true);
@@ -61,33 +61,29 @@ export function HomePage() {
 
   const fetchFilteredProducts = useCallback(
     async (filters: FilterOptions, page: number, sortOrder: 'asc' | 'desc' | 'discount_desc') => {
-      // Cancel previous request if it exists
       if (currentRequestRef.current) {
         currentRequestRef.current.abort();
       }
       
-      // Create new AbortController for this request
       currentRequestRef.current = new AbortController();
       
       setLoading(true);
       try {
         let query = supabase
-          .from('products_with_min_price')
-          .select('id,title,shop_id,shop_name,created_at,url,description,updated_at_external,min_price,in_stock,on_sale,max_discount_percentage', 
-            { 
-              count: 'exact',
-              head: false
-            }
-          )
+          .from('products_with_details')
+          .select('*', { 
+            count: 'exact',
+            head: false
+          })
           .limit(ITEMS_PER_PAGE)
-          .abortSignal(currentRequestRef.current.signal); // Add abort signal
+          .abortSignal(currentRequestRef.current.signal);
 
         if (filters.selectedShopName.length > 0) {
           query = query.in('shop_name', filters.selectedShopName);
         }
 
         if (filters.inStockOnly) {
-          query = query.eq('in_stock', true).not('in_stock', 'is', false);
+          query = query.eq('in_stock', true);
         }
 
         if (filters.onSaleOnly) {
@@ -95,7 +91,11 @@ export function HomePage() {
         }
 
         if (filters.searchQuery) {
-          query = query.ilike('title', `%${filters.searchQuery}%`);
+          // Use the full-text search index
+          query = query.textSearch('fts', filters.searchQuery, {
+            type: 'plain',
+            config: 'english'
+          });
         }
 
         if (filters.selectedPriceRange) {
@@ -104,36 +104,31 @@ export function HomePage() {
             .lte('min_price', filters.selectedPriceRange[1]);
         }
 
+        // Updated sorting logic
         if (sortOrder === 'discount_desc') {
           query = query
             .order('max_discount_percentage', { ascending: false, nullsFirst: false })
             .order('created_at', { ascending: false });
-        } else {
+        } else if (sortOrder === 'asc' || sortOrder === 'desc') {
           query = query
             .order('min_price', { ascending: sortOrder === 'asc' })
             .order('created_at', { ascending: false });
         }
 
         const { data, error, count } = await query
-        .range(page * ITEMS_PER_PAGE, (page + 1) * ITEMS_PER_PAGE - 1);
+          .range(page * ITEMS_PER_PAGE, (page + 1) * ITEMS_PER_PAGE - 1);
 
         if (error) throw error;
 
-        const formattedData = (data as ProductFromView[]).map(toProduct).filter(product => {
-          return !filters.inStockOnly || product.in_stock === true;
-        });
-
-        // Properly calculate if there's more data
         const totalItems = count || 0;
-        const loadedItems = page * ITEMS_PER_PAGE + formattedData.length;
+        const loadedItems = page * ITEMS_PER_PAGE + (data?.length || 0);
         const moreAvailable = loadedItems < totalItems;
           
-        setProducts(prev => page === 0 ? formattedData : [...prev, ...formattedData]);
+        setProducts(prev => page === 0 ? (data as ProductWithDetails[]) || [] : [...prev, ...(data as ProductWithDetails[] || [])]);
         setHasMore(moreAvailable);
         setInitialLoad(false);
         setError(null);
       } catch (error: unknown) {
-        // Don't set error if request was aborted
         if (error instanceof Error && error.name !== 'AbortError') {
           console.error('Error fetching products:', error);
           setError(`Failed to load products: ${error instanceof Error ? error.message : 'Unknown error'}`);
@@ -146,6 +141,23 @@ export function HomePage() {
     },
     []
   );
+
+  // Update shop names fetching to use the materialized view
+  useEffect(() => {
+    async function fetchShopNames() {
+      const { data, error } = await supabase
+        .from('products_with_details')
+        .select('shop_name')
+        .order('shop_name', { ascending: true });
+      
+      if (data && !error) {
+        // Get unique shop names
+        const uniqueShopNames = [...new Set(data.map(item => item.shop_name).filter(Boolean))];
+        setShopNames(uniqueShopNames);
+      }
+    }
+    fetchShopNames();
+  }, []);
 
   // Create a stable reference for the debounced function
   const debouncedFetchProducts = useRef(
@@ -702,9 +714,9 @@ export function HomePage() {
                       index === self.findIndex(p => p.id === product.id)
                     )
                     .map((product) => (
-                      <div key={`${product.id}-${product.shop_id}`} className="h-full">
-                        <ProductCard product={product} />
-                      </div>
+                    <div key={`${product.id}-${product.shop_id}`} className="h-full">
+                      <ProductCard product={product} />
+                    </div>
                   ))}
                   {loading && page > 0 && (
                     <div className="col-span-full flex justify-center items-center py-4">

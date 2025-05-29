@@ -1,3 +1,35 @@
+interface VariantDetail {
+  id: number;
+  title: string;
+  price: number;
+  discount_percentage: number;
+  available: boolean;
+}
+
+interface ImageDetail {
+  id: number;
+  src: string;
+  alt?: string;
+  position?: number;
+}
+
+export interface ProductWithDetails {
+  id: number;
+  title: string;
+  shop_id: string;
+  shop_name: string;
+  created_at: string;
+  url: string;
+  description?: string;
+  updated_at_external?: string;
+  in_stock: boolean;
+  min_price?: number;
+  max_discount_percentage?: number;
+  on_sale: boolean;
+  variants?: VariantDetail[];
+  images?: ImageDetail[];
+}
+
 export interface ProductVariant {
   id: number;
   is_price_lower: boolean;

@@ -1,61 +1,43 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useMemo, useState } from 'react';
 import { ExternalLink } from 'lucide-react';
-import { Product } from '../types';
+import { ProductWithDetails } from '../types';
 import { useNavigate } from 'react-router-dom';
-import { supabase } from '../lib/supabase';
 import { useProductPricing } from '../hooks/useProductPricing';
 import '../index.css';
 
 interface ProductCardProps {
-  product: Product;
+  product: ProductWithDetails;
 }
 
 export function ProductCard({ product }: ProductCardProps) {
-  const [productImage, setProductImage] = useState<string | null>(null);
-  const [variants, setVariants] = useState<Array<{ title: string; available: boolean }>>([]);
-  const [allVariantsUnavailable, setAllVariantsUnavailable] = useState(false);
   const [showAllVariants, setShowAllVariants] = useState(false);
   const navigate = useNavigate();
   const { variantPrice, compareAtPrice, offerPrice } = useProductPricing(product.id);
 
-  // Determine product availability based on both product.in_stock and variants
+  // Get the first image as the product image
+  const [productImage, setProductImage] = useState(() => 
+    product.images?.[0]?.src || null
+  );
+
+  // Process variants from the product data
+  const variants = useMemo(() => 
+    (product.variants || [])
+      .filter(variant => variant.title !== 'Default Title')
+      .map(variant => ({
+        title: variant.title,
+        available: variant.available,
+      })),
+    [product.variants]
+  );
+
+  // Determine if all variants are unavailable
+  const allVariantsUnavailable = useMemo(() => 
+    variants.length > 0 && variants.every(variant => !variant.available),
+    [variants]
+  );
+
+  // Determine product availability
   const isAvailable = product.in_stock && !allVariantsUnavailable;
-
-  useEffect(() => {
-    const fetchVariantAndImage = async () => {
-      // Fetch image
-      const { data: imageData, error: imageError } = await supabase
-        .from('images')
-        .select('src')
-        .eq('product_id', product.id)
-        .limit(1)
-        .maybeSingle();
-
-      if (!imageError && imageData) {
-        setProductImage(imageData.src);
-      }
-
-      // Fetch variants
-      const { data: variantsData, error: variantsError } = await supabase
-        .from('variants')
-        .select('title, inventory_quantity, available')
-        .eq('product_id', product.id);
-
-      if (!variantsError && variantsData) {
-        const filteredVariants = variantsData
-          .filter(variant => variant.title !== 'Default Title')
-          .map(variant => ({
-            title: variant.title,
-            available: variant.available,
-          }));
-        
-        setVariants(filteredVariants);
-        setAllVariantsUnavailable(filteredVariants.length > 0 && filteredVariants.every(variant => !variant.available));
-      }
-    };
-
-    fetchVariantAndImage();
-  }, [product.id]);
 
   const handleCardClick = () => {
     navigate(`/products/${product.id}`);
@@ -63,7 +45,7 @@ export function ProductCard({ product }: ProductCardProps) {
 
   const discountPercentage = useMemo(() => 
     compareAtPrice && variantPrice 
-    ? Math.round(((compareAtPrice - (offerPrice ?? variantPrice)) / compareAtPrice) * 100)
+    ? Math.round(((compareAtPrice - (offerPrice ?? variantPrice)) / compareAtPrice * 100))
     : 0,
     [compareAtPrice, variantPrice, offerPrice]
   );
@@ -97,7 +79,7 @@ export function ProductCard({ product }: ProductCardProps) {
       {/* Availability Badge */}
       {!isAvailable && (
         <div className="absolute top-2 right-2 bg-gray-800 text-white text-xs font-bold px-1.5 py-0.5 rounded z-10">
-          {product.in_stock === false ? 'OUT OF STOCK' : 'UNAVAILABLE'}
+          {!product.in_stock ? 'OUT OF STOCK' : 'UNAVAILABLE'}
         </div>
       )}
 
@@ -150,7 +132,7 @@ export function ProductCard({ product }: ProductCardProps) {
         <div className="mt-auto">
           <div className="flex items-baseline gap-1">
             <span className="text-lg font-bold text-gray-900 dark:text-gray-100">
-              ${offerPrice?.toFixed(2) ?? variantPrice?.toFixed(2) ?? '0.00'}
+              ${offerPrice?.toFixed(2) ?? variantPrice?.toFixed(2) ?? product.min_price?.toFixed(2) ?? '0.00'}
             </span>
             {compareAtPrice && compareAtPrice > ((offerPrice ?? variantPrice) ?? 0) && (
               <span className="text-xs text-gray-500 dark:text-gray-400 line-through">
