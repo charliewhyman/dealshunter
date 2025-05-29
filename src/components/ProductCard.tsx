@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { ExternalLink } from 'lucide-react';
 import { Product } from '../types';
 import { useNavigate } from 'react-router-dom';
@@ -61,13 +61,23 @@ export function ProductCard({ product }: ProductCardProps) {
     navigate(`/products/${product.id}`);
   };
 
-  const discountPercentage = compareAtPrice && variantPrice 
+  const discountPercentage = useMemo(() => 
+    compareAtPrice && variantPrice 
     ? Math.round(((compareAtPrice - (offerPrice ?? variantPrice)) / compareAtPrice) * 100)
-    : 0;
+    : 0,
+    [compareAtPrice, variantPrice, offerPrice]
+  );
 
   // Limit displayed variants to 3 unless showAllVariants is true
-  const displayedVariants = showAllVariants ? variants : variants.slice(0, 3);
-  const hasHiddenVariants = variants.length > 3 && !showAllVariants;
+  const displayedVariants = useMemo(() => 
+    showAllVariants ? variants : variants.slice(0, 3),
+    [variants, showAllVariants]
+  );
+
+  const hasHiddenVariants = useMemo(() =>
+    variants.length > 3 && !showAllVariants,
+    [variants, showAllVariants]
+  );
 
   return (
     <div
