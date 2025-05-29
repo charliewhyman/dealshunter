@@ -319,16 +319,16 @@ export function HomePage() {
 
   function ProductCardSkeleton() {
     return (
-      <div className="max-w-4xl mx-auto w-full bg-gray-100 dark:bg-gray-800 rounded-lg p-4 animate-pulse">
-        <div className="h-6 bg-gray-300 dark:bg-gray-700 rounded w-3/4 mb-2"></div>
-        <div className="h-4 bg-gray-300 dark:bg-gray-700 rounded w-1/2 mb-4"></div>
-        <div className="h-4 bg-gray-300 dark:bg-gray-700 rounded w-full mb-1"></div>
-        <div className="h-4 bg-gray-300 dark:bg-gray-700 rounded w-5/6 mb-1"></div>
-        <div className="h-4 bg-gray-300 dark:bg-gray-700 rounded w-2/3"></div>
+      <div className="w-full bg-gray-100 dark:bg-gray-800 rounded-lg p-3 animate-pulse sm:p-4">
+        <div className="h-5 sm:h-6 bg-gray-300 dark:bg-gray-700 rounded w-3/4 mb-2"></div>
+        <div className="h-3 sm:h-4 bg-gray-300 dark:bg-gray-700 rounded w-1/2 mb-3 sm:mb-4"></div>
+        <div className="h-3 sm:h-4 bg-gray-300 dark:bg-gray-700 rounded w-full mb-1"></div>
+        <div className="h-3 sm:h-4 bg-gray-300 dark:bg-gray-700 rounded w-5/6 mb-1"></div>
+        <div className="h-3 sm:h-4 bg-gray-300 dark:bg-gray-700 rounded w-2/3"></div>
       </div>
     );
   }
-
+  
   return (
     <div className="min-h-screen bg-white dark:bg-gray-900">
       <Header
@@ -337,43 +337,42 @@ export function HomePage() {
         handleSearchSubmit={handleSearchSubmit}
       />
       
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4 mt-6">
-        <div className="flex flex-col lg:flex-row gap-6">
-          {/* Vertical Filters Sidebar */}
+      <div className="mx-auto px-4 py-4 mt-4 sm:px-6 sm:py-6 lg:px-8 max-w-7xl">
+        <div className="flex flex-col lg:flex-row gap-4 sm:gap-6">
+          {/* Vertical Filters Sidebar - Mobile Toggle */}
           <div className="lg:w-64 xl:w-72">
-            {/* Mobile Filters Toggle */}
-            <div className="lg:hidden mb-4">
+            <div className="lg:hidden mb-3">
               <button
                 onClick={() => setShowFilters(!showFilters)}
-                className="flex items-center justify-between w-full px-4 py-3 bg-gray-100 dark:bg-gray-800 rounded-lg shadow-sm"
+                className="flex items-center justify-between w-full px-3 py-2 bg-gray-100 dark:bg-gray-800 rounded-lg shadow-sm sm:px-4 sm:py-3"
               >
                 <div className="flex items-center space-x-2">
-                  <span className="font-medium text-gray-900 dark:text-gray-100">
+                  <span className="text-sm font-medium text-gray-900 dark:text-gray-100 sm:text-base">
                     Filters
                   </span>
                   {selectedShopName.length > 0 || 
                    inStockOnly !== false || 
                    onSaleOnly !== false || 
                    !_.isEqual(selectedPriceRange, PRICE_RANGE) ? (
-                    <span className="inline-flex items-center justify-center px-2 py-1 text-xs font-bold leading-none text-white bg-blue-600 rounded-full">
+                    <span className="inline-flex items-center justify-center px-1.5 py-0.5 text-xs font-bold leading-none text-white bg-blue-600 rounded-full sm:px-2 sm:py-1">
                       Active
                     </span>
                   ) : null}
                 </div>
                 {showFilters ? (
-                  <ChevronUp className="h-5 w-5 text-gray-600 dark:text-gray-400" />
+                  <ChevronUp className="h-4 w-4 text-gray-600 dark:text-gray-400 sm:h-5 sm:w-5" />
                 ) : (
-                  <ChevronDown className="h-5 w-5 text-gray-600 dark:text-gray-400" />
+                  <ChevronDown className="h-4 w-4 text-gray-600 dark:text-gray-400 sm:h-5 sm:w-5" />
                 )}
               </button>
             </div>
-
+  
             {/* Filters Container */}
             <div className={`${showFilters ? 'block' : 'hidden'} lg:block lg:sticky lg:top-24 lg:self-start`}>
-              <div className="bg-white dark:bg-gray-800 rounded-lg shadow-sm p-4 space-y-6">
+              <div className="bg-white dark:bg-gray-800 rounded-lg shadow-sm p-3 space-y-4 sm:p-4 sm:space-y-6">
                 {/* Shop Filter */}
                 <div>
-                  <h3 className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-3">
+                  <h3 className="text-xs font-medium text-gray-700 dark:text-gray-300 mb-2 sm:text-sm sm:mb-3">
                     Shops {selectedShopName.length > 0 && (
                       <span className="ml-1 text-xs text-gray-500 dark:text-gray-400">
                         ({selectedShopName.length} selected)
@@ -396,7 +395,7 @@ export function HomePage() {
                     styles={{
                       control: (provided) => ({
                         ...provided,
-                        minHeight: '38px',
+                        minHeight: '36px',
                         borderRadius: '0.375rem',
                         borderColor: '#d1d5db',
                         backgroundColor: 'transparent',
@@ -413,6 +412,7 @@ export function HomePage() {
                         ...base,
                         color: '#111827',
                         padding: '0.25rem 0.5rem',
+                        fontSize: '0.875rem',
                       }),
                       multiValueRemove: (base) => ({
                         ...base,
@@ -426,33 +426,33 @@ export function HomePage() {
                     }}
                   />
                 </div>
-
+  
                 {/* Price Range Filter */}
                 <div>
-                  <h3 className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-3">
+                  <h3 className="text-xs font-medium text-gray-700 dark:text-gray-300 mb-2 sm:text-sm sm:mb-3">
                     Price Range
                   </h3>
-                  <div className="space-y-4">
-                    <div className="flex items-center gap-3">
+                  <div className="space-y-3 sm:space-y-4">
+                    <div className="flex items-center gap-2 sm:gap-3">
                       <div className="relative w-full">
-                        <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500">$</span>
+                        <span className="absolute left-2 top-1/2 -translate-y-1/2 text-gray-500 text-sm sm:text-base">$</span>
                         <input
                           type="number"
                           value={selectedPriceRange[0]}
                           onChange={(e) => handlePriceInputChange('min', e.target.value)}
-                          className="w-full pl-8 pr-3 py-1.5 border border-gray-300 rounded-md bg-transparent"
+                          className="w-full pl-6 pr-2 py-1 border border-gray-300 rounded-md bg-transparent text-sm sm:pl-8 sm:pr-3 sm:py-1.5 sm:text-base"
                           min={PRICE_RANGE[0]}
                           max={selectedPriceRange[1]}
                         />
                       </div>
-                      <span className="text-gray-500">to</span>
+                      <span className="text-gray-500 text-sm sm:text-base">to</span>
                       <div className="relative w-full">
-                        <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500">$</span>
+                        <span className="absolute left-2 top-1/2 -translate-y-1/2 text-gray-500 text-sm sm:text-base">$</span>
                         <input
                           type="number"
                           value={selectedPriceRange[1]}
                           onChange={(e) => handlePriceInputChange('max', e.target.value)}
-                          className="w-full pl-8 pr-3 py-1.5 border border-gray-300 rounded-md bg-transparent"
+                          className="w-full pl-6 pr-2 py-1 border border-gray-300 rounded-md bg-transparent text-sm sm:pl-8 sm:pr-3 sm:py-1.5 sm:text-base"
                           min={selectedPriceRange[0]}
                           max={PRICE_RANGE[1]}
                         />
@@ -465,12 +465,12 @@ export function HomePage() {
                       values={selectedPriceRange}
                       onChange={handleSliderChange}
                       renderTrack={({ props, children }) => (
-                        <div {...props} className="h-2 bg-gray-200 rounded-full">
+                        <div {...props} className="h-1.5 sm:h-2 bg-gray-200 rounded-full">
                           {children}
                         </div>
                       )}
                       renderThumb={({ props }) => (
-                        <div {...props} className="h-4 w-4 bg-blue-600 rounded-full"/>
+                        <div {...props} className="h-3 w-3 sm:h-4 sm:w-4 bg-blue-600 rounded-full"/>
                       )}
                     />
                   </div>
@@ -478,61 +478,61 @@ export function HomePage() {
                 
                 {/* Availability */}
                 <div>
-                  <h3 className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-3">Availability</h3>
+                  <h3 className="text-xs font-medium text-gray-700 dark:text-gray-300 mb-2 sm:text-sm sm:mb-3">Availability</h3>
                   <div className="space-y-2">
                     <label className="flex items-center gap-2">
                       <input
                         type="checkbox"
                         checked={inStockOnly}
                         onChange={(e) => setInStockOnly(e.target.checked)}
-                        className="h-4 w-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500 dark:border-gray-600 dark:bg-gray-700 dark:checked:bg-blue-600"
+                        className="h-3.5 w-3.5 text-blue-600 border-gray-300 rounded focus:ring-blue-500 dark:border-gray-600 dark:bg-gray-700 dark:checked:bg-blue-600 sm:h-4 sm:w-4"
                       />
-                      <span className="text-sm text-gray-700 dark:text-gray-300">In Stock Only</span>
+                      <span className="text-xs text-gray-700 dark:text-gray-300 sm:text-sm">In Stock Only</span>
                     </label>
                   </div>
                 </div>
-
+  
                 {/* Deals */}
                 <div>
-                  <h3 className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-3">Deals</h3>
+                  <h3 className="text-xs font-medium text-gray-700 dark:text-gray-300 mb-2 sm:text-sm sm:mb-3">Deals</h3>
                   <div className="space-y-2">
                     <label className="flex items-center gap-2">
                       <input
                         type="checkbox"
                         checked={onSaleOnly}
                         onChange={(e) => setOnSaleOnly(e.target.checked)}
-                        className="h-4 w-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500 dark:border-gray-600 dark:bg-gray-700 dark:checked:bg-blue-600"
+                        className="h-3.5 w-3.5 text-blue-600 border-gray-300 rounded focus:ring-blue-500 dark:border-gray-600 dark:bg-gray-700 dark:checked:bg-blue-600 sm:h-4 sm:w-4"
                       />
-                      <span className="text-sm text-gray-700 dark:text-gray-300">On Sale</span>
+                      <span className="text-xs text-gray-700 dark:text-gray-300 sm:text-sm">On Sale</span>
                     </label>
                   </div>
                 </div>
-
+  
                 {/* Active Filters & Reset */}
                 {(selectedShopName.length > 0 || 
                   inStockOnly !== false || 
                   onSaleOnly !== false || 
                   !_.isEqual(selectedPriceRange, PRICE_RANGE)) && (
-                  <div className="pt-4 border-t border-gray-200 dark:border-gray-700">
-                    <div className="space-y-3">
-                      <h3 className="text-sm font-medium text-gray-700 dark:text-gray-300">
+                  <div className="pt-3 border-t border-gray-200 dark:border-gray-700 sm:pt-4">
+                    <div className="space-y-2 sm:space-y-3">
+                      <h3 className="text-xs font-medium text-gray-700 dark:text-gray-300 sm:text-sm">
                         Active filters
                       </h3>
                       
-                      <div className="flex flex-wrap gap-2">
+                      <div className="flex flex-wrap gap-1.5 sm:gap-2">
                         {selectedShopName.length > 0 && (
                           <>
                             {selectedShopName.map(shop => (
                               <div 
                                 key={shop}
-                                className="inline-flex items-center rounded-md bg-blue-50 dark:bg-blue-900/30 px-2 py-1 text-xs font-medium text-blue-700 dark:text-blue-200 ring-1 ring-inset ring-blue-700/10 dark:ring-blue-500/30"
+                                className="inline-flex items-center rounded-md bg-blue-50 dark:bg-blue-900/30 px-1.5 py-0.5 text-xs font-medium text-blue-700 dark:text-blue-200 ring-1 ring-inset ring-blue-700/10 dark:ring-blue-500/30 sm:px-2 sm:py-1"
                               >
                                 {shop}
                                 <button 
                                   onClick={() => setSelectedShopName(prev => prev.filter(s => s !== shop))}
-                                  className="ml-1.5 inline-flex text-blue-500 hover:text-blue-700 dark:text-blue-300 dark:hover:text-blue-100"
+                                  className="ml-1 inline-flex text-blue-500 hover:text-blue-700 dark:text-blue-300 dark:hover:text-blue-100"
                                 >
-                                  <X className="h-3 w-3" />
+                                  <X className="h-2.5 w-2.5 sm:h-3 sm:w-3" />
                                 </button>
                               </div>
                             ))}
@@ -540,37 +540,37 @@ export function HomePage() {
                         )}
                         
                         {!_.isEqual(selectedPriceRange, PRICE_RANGE) && (
-                          <div className="inline-flex items-center rounded-md bg-blue-50 dark:bg-blue-900/30 px-2 py-1 text-xs font-medium text-blue-700 dark:text-blue-200 ring-1 ring-inset ring-blue-700/10 dark:ring-blue-500/30">
+                          <div className="inline-flex items-center rounded-md bg-blue-50 dark:bg-blue-900/30 px-1.5 py-0.5 text-xs font-medium text-blue-700 dark:text-blue-200 ring-1 ring-inset ring-blue-700/10 dark:ring-blue-500/30 sm:px-2 sm:py-1">
                             ${selectedPriceRange[0]} - ${selectedPriceRange[1]}
                             <button 
                               onClick={() => setSelectedPriceRange([...PRICE_RANGE])}
-                              className="ml-1.5 inline-flex text-blue-500 hover:text-blue-700 dark:text-blue-300 dark:hover:text-blue-100"
+                              className="ml-1 inline-flex text-blue-500 hover:text-blue-700 dark:text-blue-300 dark:hover:text-blue-100"
                             >
-                              <X className="h-3 w-3" />
+                              <X className="h-2.5 w-2.5 sm:h-3 sm:w-3" />
                             </button>
                           </div>
                         )}
                         
                         {inStockOnly !== false && (
-                          <div className="inline-flex items-center rounded-md bg-blue-50 dark:bg-blue-900/30 px-2 py-1 text-xs font-medium text-blue-700 dark:text-blue-200 ring-1 ring-inset ring-blue-700/10 dark:ring-blue-500/30">
+                          <div className="inline-flex items-center rounded-md bg-blue-50 dark:bg-blue-900/30 px-1.5 py-0.5 text-xs font-medium text-blue-700 dark:text-blue-200 ring-1 ring-inset ring-blue-700/10 dark:ring-blue-500/30 sm:px-2 sm:py-1">
                             In Stock Only
                             <button 
                               onClick={() => setInStockOnly(false)}
-                              className="ml-1.5 inline-flex text-blue-500 hover:text-blue-700 dark:text-blue-300 dark:hover:text-blue-100"
+                              className="ml-1 inline-flex text-blue-500 hover:text-blue-700 dark:text-blue-300 dark:hover:text-blue-100"
                             >
-                              <X className="h-3 w-3" />
+                              <X className="h-2.5 w-2.5 sm:h-3 sm:w-3" />
                             </button>
                           </div>
                         )}
                         
                         {onSaleOnly !== false && (
-                          <div className="inline-flex items-center rounded-md bg-blue-50 dark:bg-blue-900/30 px-2 py-1 text-xs font-medium text-blue-700 dark:text-blue-200 ring-1 ring-inset ring-blue-700/10 dark:ring-blue-500/30">
+                          <div className="inline-flex items-center rounded-md bg-blue-50 dark:bg-blue-900/30 px-1.5 py-0.5 text-xs font-medium text-blue-700 dark:text-blue-200 ring-1 ring-inset ring-blue-700/10 dark:ring-blue-500/30 sm:px-2 sm:py-1">
                             On Sale Only
                             <button 
                               onClick={() => setOnSaleOnly(false)}
-                              className="ml-1.5 inline-flex text-blue-500 hover:text-blue-700 dark:text-blue-300 dark:hover:text-blue-100"
+                              className="ml-1 inline-flex text-blue-500 hover:text-blue-700 dark:text-blue-300 dark:hover:text-blue-100"
                             >
-                              <X className="h-3 w-3" />
+                              <X className="h-2.5 w-2.5 sm:h-3 sm:w-3" />
                             </button>
                           </div>
                         )}
@@ -583,7 +583,7 @@ export function HomePage() {
                           setOnSaleOnly(false);
                           setSelectedPriceRange([...PRICE_RANGE]);
                         }}
-                        className="text-sm font-medium text-blue-600 hover:text-blue-800 dark:text-blue-400 dark:hover:text-blue-300 w-full text-left"
+                        className="text-xs font-medium text-blue-600 hover:text-blue-800 dark:text-blue-400 dark:hover:text-blue-300 w-full text-left sm:text-sm"
                       >
                         Clear all filters
                       </button>
@@ -593,12 +593,12 @@ export function HomePage() {
               </div>
             </div>
           </div>
-
+  
           {/* Main Content Area */}
           <div className="flex-1 will-change-transform">
             {/* Sort Dropdown */}
-            <div className="mb-4 flex justify-end">
-              <div className="w-48">
+            <div className="mb-3 flex justify-end sm:mb-4">
+              <div className="w-40 sm:w-48">
                 <label className="sr-only">Sort By</label>
                 <Select
                   options={sortOptions}
@@ -611,7 +611,7 @@ export function HomePage() {
                   styles={{
                     control: (provided) => ({
                       ...provided,
-                      minHeight: '38px',
+                      minHeight: '34px',
                       borderRadius: '0.375rem',
                       borderColor: '#d1d5db',
                       backgroundColor: 'transparent',
@@ -623,10 +623,12 @@ export function HomePage() {
                     singleValue: (provided) => ({
                       ...provided,
                       color: 'var(--text-color)',
+                      fontSize: '0.875rem',
                     }),
                     input: (provided) => ({
                       ...provided,
                       color: 'var(--text-color)',
+                      fontSize: '0.875rem',
                     }),
                     menu: (provided) => ({
                       ...provided,
@@ -639,6 +641,7 @@ export function HomePage() {
                     }),
                     option: (provided, state) => ({
                       ...provided,
+                      fontSize: '0.875rem',
                       backgroundColor: state.isFocused
                         ? state.isSelected 
                           ? '#3b82f6'
@@ -656,6 +659,7 @@ export function HomePage() {
                     dropdownIndicator: (provided) => ({
                       ...provided,
                       color: '#64748b',
+                      padding: '4px',
                       ':hover': {
                         color: '#475569',
                       },
@@ -668,19 +672,19 @@ export function HomePage() {
                 />
               </div>
             </div>
-
+  
             {/* Products List */}
-            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-x-4 gap-y-6 min-h-[500px]">
+            <div className="grid grid-cols-2 gap-x-3 gap-y-4 min-h-[400px] sm:grid-cols-3 sm:gap-x-4 sm:gap-y-6 lg:grid-cols-4 xl:grid-cols-5">
               {error ? (
-                <div className="col-span-full text-center py-8">
-                  <p className="text-red-500 dark:text-red-400 mb-2">{error}</p>
+                <div className="col-span-full text-center py-6">
+                  <p className="text-red-500 dark:text-red-400 mb-2 text-sm sm:text-base">{error}</p>
                   <button
                     onClick={() => {
                       setPage(0);
                       setProducts([]);
                       setInitialLoad(true);
                     }}
-                    className="text-blue-600 dark:text-blue-400 hover:underline text-sm"
+                    className="text-blue-600 dark:text-blue-400 hover:underline text-xs sm:text-sm"
                   >
                     Retry
                   </button>
@@ -690,8 +694,8 @@ export function HomePage() {
                   <ProductCardSkeleton key={i} />
                 ))
               ) : products.length === 0 ? (
-                <div className="col-span-full flex flex-col items-center justify-center min-h-[200px] space-y-2">
-                  <p className="text-gray-900 dark:text-gray-100">
+                <div className="col-span-full flex flex-col items-center justify-center min-h-[150px] space-y-1 sm:min-h-[200px] sm:space-y-2">
+                  <p className="text-gray-900 dark:text-gray-100 text-sm sm:text-base">
                     {searchQuery || selectedShopName.length > 0
                       ? "No products match your filters."
                       : "No products available at the moment."}
@@ -702,7 +706,7 @@ export function HomePage() {
                       setProducts([]);
                       setInitialLoad(true);
                     }}
-                    className="text-blue-600 dark:text-blue-400 hover:underline text-sm"
+                    className="text-blue-600 dark:text-blue-400 hover:underline text-xs sm:text-sm"
                   >
                     Retry
                   </button>
@@ -719,8 +723,8 @@ export function HomePage() {
                     </div>
                   ))}
                   {loading && page > 0 && (
-                    <div className="col-span-full flex justify-center items-center py-4">
-                      <Loader2 className="w-8 h-8 animate-spin text-blue-600 dark:text-blue-500" />
+                    <div className="col-span-full flex justify-center items-center py-3 sm:py-4">
+                      <Loader2 className="w-6 h-6 animate-spin text-blue-600 dark:text-blue-500 sm:w-8 sm:h-8" />
                     </div>
                   )}
                 </>
