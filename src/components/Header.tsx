@@ -1,6 +1,7 @@
 import { Link } from 'react-router-dom';
 import { Tag, Search } from 'lucide-react';
 import { ChangeEvent, FormEvent } from 'react';
+import React from 'react';
 
 interface HeaderProps {
   searchQuery: string;
@@ -8,7 +9,7 @@ interface HeaderProps {
   handleSearchSubmit: (e: FormEvent<HTMLFormElement>) => void;
 }
 
-export function Header({ searchQuery, handleSearchChange, handleSearchSubmit }: HeaderProps) {
+export const Header = React.memo(({ searchQuery, handleSearchChange, handleSearchSubmit }: HeaderProps) => {
   return (
     <header className="bg-white dark:bg-gray-800 shadow-sm w-full h-16">
       <div className="max-w-3xl mx-auto px-4 sm:px-6 lg:px-8 h-full">
@@ -24,7 +25,9 @@ export function Header({ searchQuery, handleSearchChange, handleSearchSubmit }: 
           {/* Search */}
           <form
             onSubmit={handleSearchSubmit}
-            className="relative flex-grow max-w-md ml-4"
+            className="relative flex-1 max-w-xs sm:max-w-md ml-2 sm:ml-4"
+            role = "search"
+            aria-label="Search"
           >
             <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
               <Search className="h-4 w-4 text-gray-400 dark:text-gray-500" />
@@ -42,3 +45,4 @@ export function Header({ searchQuery, handleSearchChange, handleSearchSubmit }: 
     </header>
   );
 }
+)
