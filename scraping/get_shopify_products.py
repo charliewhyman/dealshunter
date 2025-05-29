@@ -4,7 +4,6 @@ import csv
 import json
 import os
 import time
-from urllib.parse import urlparse
 
 import requests
 from bs4 import BeautifulSoup
@@ -45,7 +44,17 @@ def fetch_shopify_products(base_url, shop_id, limit=250, max_pages=None):
             response = requests.get(url, timeout=10)
             response.raise_for_status()
             try:
-                data = response.json()
+                try:
+                    data = response.json()
+                except json.JSONDecodeError as e:
+                    print(f"Error decoding JSON for page {page} from {base_url}: {e}")
+                    content_type = response.headers.get("Content-Type", "N/A")
+                    with open(f"output/{shop_id}_error_page_{page}.txt", "wb") as f:
+                        f.write(response.content)
+                    print(f"Saved raw response content to output/{shop_id}_error_page_{page}.txt (Content-Type: {content_type})")
+                    page += 1
+                    continue
+
             except json.JSONDecodeError as e:
                 print(f"Error decoding JSON for page {page} from {base_url}: {e}")
                 page += 1
