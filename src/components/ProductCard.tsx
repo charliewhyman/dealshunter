@@ -50,14 +50,14 @@ export function ProductCard({ product }: ProductCardProps) {
     [compareAtPrice, variantPrice, offerPrice]
   );
 
-  // Limit displayed variants to 3 unless showAllVariants is true
+  // Limit displayed variants to 2 on mobile, 3 on desktop unless showAllVariants is true
   const displayedVariants = useMemo(() => 
-    showAllVariants ? variants : variants.slice(0, 3),
+    showAllVariants ? variants : variants.slice(0, window.innerWidth < 768 ? 2 : 3),
     [variants, showAllVariants]
   );
 
   const hasHiddenVariants = useMemo(() =>
-    variants.length > 3 && !showAllVariants,
+    variants.length > (window.innerWidth < 768 ? 2 : 3) && !showAllVariants,
     [variants, showAllVariants]
   );
 
@@ -67,7 +67,7 @@ export function ProductCard({ product }: ProductCardProps) {
         !isAvailable ? 'opacity-80' : ''
       }`}
       onClick={handleCardClick}
-      style={{ margin: '0 10px' }}
+      style={{ margin: '0 5px' }}
     >
       {/* Discount Badge */}
       {compareAtPrice && compareAtPrice > ((offerPrice ?? variantPrice) ?? 0) && (
@@ -84,7 +84,7 @@ export function ProductCard({ product }: ProductCardProps) {
       )}
 
       {/* Image Container */}
-      <div className="relative w-full pt-[70%] overflow-hidden">
+      <div className="relative w-full pt-[100%] sm:pt-[70%] overflow-hidden">
         {productImage ? (
           <img
             src={productImage}
@@ -101,14 +101,14 @@ export function ProductCard({ product }: ProductCardProps) {
       </div>
 
       {/* Product Info */}
-      <div className="p-3 flex flex-col flex-grow">
+      <div className="p-2 sm:p-3 flex flex-col flex-grow">
         {/* Shop Name */}
         <p className="text-xs text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-1">
           {product.shop_name}
         </p>
 
         {/* Title and External Link */}
-        <div className="flex items-start justify-between mb-2">
+        <div className="flex items-start justify-between mb-1 sm:mb-2">
           <h3
             className={`text-sm font-medium text-gray-900 dark:text-gray-100 text-left line-clamp-2 ${
               !isAvailable ? 'line-through' : ''
@@ -124,14 +124,14 @@ export function ProductCard({ product }: ProductCardProps) {
             onClick={(e) => e.stopPropagation()}
             title="View on original site"
           >
-            <ExternalLink className="w-4 h-4" />
+            <ExternalLink className="w-3 h-3 sm:w-4 sm:h-4" />
           </a>
         </div>
 
         {/* Price Information */}
         <div className="mt-auto">
           <div className="flex items-baseline gap-1">
-            <span className="text-lg font-bold text-gray-900 dark:text-gray-100">
+            <span className="text-base sm:text-lg font-bold text-gray-900 dark:text-gray-100">
               ${offerPrice?.toFixed(2) ?? variantPrice?.toFixed(2) ?? product.min_price?.toFixed(2) ?? '0.00'}
             </span>
             {compareAtPrice && compareAtPrice > ((offerPrice ?? variantPrice) ?? 0) && (
@@ -143,12 +143,12 @@ export function ProductCard({ product }: ProductCardProps) {
 
           {/* Variants */}
           {variants.length > 0 && (
-            <div className="mt-2">
+            <div className="mt-1 sm:mt-2">
               <div className="flex flex-wrap gap-1">
                 {displayedVariants.map((variant, index) => (
                   <span
                     key={index}
-                    className={`text-xs px-2 py-1 rounded-full border ${
+                    className={`text-xs px-1.5 py-0.5 sm:px-2 sm:py-1 rounded-full border ${
                       variant.available
                         ? 'border-gray-300 dark:border-gray-600 bg-gray-100 dark:bg-gray-700 text-gray-900 dark:text-gray-100'
                         : 'border-gray-200 dark:border-gray-600 bg-gray-100 dark:bg-gray-700 text-gray-500 dark:text-gray-400'
@@ -163,7 +163,7 @@ export function ProductCard({ product }: ProductCardProps) {
                       e.stopPropagation();
                       setShowAllVariants(true);
                     }}
-                    className="text-xs px-2 py-1 rounded-full border border-gray-300 dark:border-gray-600 bg-gray-100 dark:bg-gray-700 text-gray-900 dark:text-gray-100 hover:bg-gray-200 dark:hover:bg-gray-600"
+                    className="text-xs px-1.5 py-0.5 sm:px-2 sm:py-1 rounded-full border border-gray-300 dark:border-gray-600 bg-gray-100 dark:bg-gray-700 text-gray-900 dark:text-gray-100 hover:bg-gray-200 dark:hover:bg-gray-600"
                   >
                     +{variants.length - 3} more
                   </button>
@@ -174,7 +174,7 @@ export function ProductCard({ product }: ProductCardProps) {
                       e.stopPropagation();
                       setShowAllVariants(false);
                     }}
-                    className="text-xs px-2 py-1 rounded-full border border-gray-300 dark:border-gray-600 bg-gray-100 dark:bg-gray-700 text-gray-900 dark:text-gray-100 hover:bg-gray-200 dark:hover:bg-gray-600"
+                    className="text-xs px-1.5 py-0.5 sm:px-2 sm:py-1 rounded-full border border-gray-300 dark:border-gray-600 bg-gray-100 dark:bg-gray-700 text-gray-900 dark:text-gray-100 hover:bg-gray-200 dark:hover:bg-gray-600"
                   >
                     Show less
                   </button>
