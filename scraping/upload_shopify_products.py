@@ -313,6 +313,15 @@ def process_products_file(filepath, user_id):
                 print(f"Upserting {len(data)} {table_name}...")
                 bulk_upsert_data(table_name, data)
 
+        # 🧹 Remove stale products no longer in the JSON
+        product_ids = [p["id"] for p in processor.collections["products"]]
+        shop_ids = {p["shop_id"] for p in processor.collections["products"]}
+        if len(shop_ids) == 1:
+            shop_id = shop_ids.pop()
+            remove_deleted_products(product_ids, shop_id)
+        else:
+            print("Warning: Multiple shop_ids found in file. Skipping stale product deletion.")
+            
     except requests.exceptions.RequestException as e:
         print(f"Error communicating with Supabase: {e}")
     except (json.JSONDecodeError, OSError) as e:
@@ -321,6 +330,30 @@ def process_products_file(filepath, user_id):
 def get_json_files(output_folder):
     """Get all JSON files from the output folder."""
     return [os.path.join(output_folder, f) for f in os.listdir(output_folder) if f.endswith("_products.json")]
+
+def remove_deleted_products(current_product_ids, shop_id):
+    """Remove products from Supabase that are no longer in the latest scrape."""
+    try:
+        response = supabase.table("products").select("id").eq("shop_id", shop_id).execute()
+        if not response.data:
+            print(f"No existing products found in Supabase for shop_id: {shop_id}")
+            return
+
+        existing_ids = {item["id"] for item in response.data}
+        to_delete = list(existing_ids - set(current_product_ids))
+
+        if not to_delete:
+            print("No products to delete.")
+            return
+
+        print(f"Removing {len(to_delete)} products deleted from shop...")
+
+        for i in range(0, len(to_delete), 100):
+            batch = to_delete[i:i+100]
+            supabase.table("products").delete().in_("id", batch).execute()
+    except Exception as e:
+        print(f"Error deleting stale products: {e}")
+
 
 if __name__ == "__main__":
     USER_UUID = "691aedc4-1055-4b57-adb7-7480febba4c8"

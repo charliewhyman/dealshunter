@@ -72,7 +72,7 @@ def process_collection_product_pairs(filepath):
                     "collection_id": collection_id
                 })
 
-        # Bulk upsert all collection-product pairs
+                # Bulk upsert all collection-product pairs
         if data_to_upsert:
             print(f"Upserting {len(data_to_upsert)} collection-product pairs...")
             bulk_upsert_data("product_collections", data_to_upsert)
@@ -86,8 +86,43 @@ def get_collection_product_json_files(output_folder):
     """Get all JSON files from the output folder ending with _collections_to_products.json."""
     return [os.path.join(output_folder, f) for f in os.listdir(output_folder) if f.endswith("_collections_to_products.json")]
 
+def remove_deleted_collection_product_links(current_links):
+    """Remove stale product-collection links that are no longer present in the latest scrape."""
+    try:
+        response = supabase.table("product_collections").select("product_id, collection_id").execute()
+        if not response.data:
+            print("No existing product-collection links found.")
+            return
+
+        existing_links = {(row["product_id"], row["collection_id"]) for row in response.data}
+        current_links_set = set(current_links)
+
+        to_delete = list(existing_links - current_links_set)
+
+        if not to_delete:
+            print("No stale product-collection links to delete.")
+            return
+
+        print(f"Removing {len(to_delete)} stale product-collection links...")
+
+        # Supabase requires conditions for deletion
+        for i in range(0, len(to_delete), 100):
+            batch = to_delete[i:i+100]
+            for product_id, collection_id in batch:
+                supabase.table("product_collections").delete().eq("product_id", product_id).eq("collection_id", collection_id).execute()
+
+    except Exception as e:
+        print(f"Error deleting stale product-collection links: {e}")
+
 if __name__ == "__main__":
-    output_folder = 'c:/Users/cwhym/Documents/GitHub/dealshunter/scraping/output'
+    output_folder = './scraping/output'
+    all_current_links = []
+
     for json_file in get_collection_product_json_files(output_folder):
         print(f"Processing file: {json_file}")
-        process_collection_product_pairs(json_file)
+        current_links = process_collection_product_pairs(json_file)
+        all_current_links.extend(current_links) 
+
+    # 🧹 Run cleanup once after processing all files
+    if all_current_links:
+        remove_deleted_collection_product_links(all_current_links)

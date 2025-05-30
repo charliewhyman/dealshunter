@@ -93,6 +93,11 @@ def process_collections_file(filepath, user_id, shop_id):
         if processor.images:
             print(f"Upserting {len(processor.images)} images...")
             bulk_upsert_data("images", processor.images)
+
+        # 🧹 Remove stale collections (and images) no longer in the file
+        current_ids = [c["id"] for c in processor.collections if "id" in c]
+        remove_deleted_collections(current_ids, shop_id)
+
     except requests.exceptions.RequestException as e:
         print(f"Error communicating with Supabase: {e}")
     except (json.JSONDecodeError, OSError) as e:
@@ -101,6 +106,32 @@ def process_collections_file(filepath, user_id, shop_id):
 def get_collection_json_files(output_folder):
     """Get all JSON files from the output folder."""
     return [os.path.join(output_folder, f) for f in os.listdir(output_folder) if f.endswith("_collections.json")]
+
+def remove_deleted_collections(current_collection_ids, shop_id):
+    """Remove collections (and their images) from Supabase that are no longer in the latest scrape for a shop."""
+    try:
+        response = supabase.table("collections").select("id").eq("shop_id", shop_id).execute()
+        if not response.data:
+            print(f"No existing collections found for shop {shop_id}.")
+            return
+
+        existing_ids = {item["id"] for item in response.data}
+        to_delete = list(existing_ids - set(current_collection_ids))
+
+        if not to_delete:
+            print(f"No collections to delete for shop {shop_id}.")
+            return
+
+        print(f"Removing {len(to_delete)} stale collections for shop {shop_id}...")
+
+        # Delete from images first to avoid FK constraint errors
+        for i in range(0, len(to_delete), 100):
+            batch = to_delete[i:i+100]
+            supabase.table("images").delete().in_("collection_id", batch).execute()
+            supabase.table("collections").delete().in_("id", batch).execute()
+
+    except Exception as e:
+        print(f"Error deleting stale collections for shop {shop_id}: {e}")
 
 if __name__ == "__main__":
     USER_UUID = "691aedc4-1055-4b57-adb7-7480febba4c8"

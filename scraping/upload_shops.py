@@ -43,10 +43,38 @@ def process_shops_file(filepath):
             raise ValueError("JSON file must contain a list of shop objects.")
         
         bulk_upsert_data("shops", shops)
+
+        # 🧹 Remove stale shops no longer in the file
+        shop_ids = [shop["id"] for shop in shops if "id" in shop]
+        remove_deleted_shops(shop_ids)
+
         print("Upload completed.")
     
     except (json.JSONDecodeError, OSError) as e:
         print(f"Error processing file {filepath}: {e}")
+
+def remove_deleted_shops(current_shop_ids):
+    """Remove shops from Supabase that are no longer in the latest scrape."""
+    try:
+        response = supabase.table("shops").select("id").execute()
+        if not response.data:
+            print("No existing shops found in Supabase.")
+            return
+
+        existing_ids = {item["id"] for item in response.data}
+        to_delete = list(existing_ids - set(current_shop_ids))
+
+        if not to_delete:
+            print("No shops to delete.")
+            return
+
+        print(f"Removing {len(to_delete)} shops deleted from scrape...")
+
+        for i in range(0, len(to_delete), 100):
+            batch = to_delete[i:i+100]
+            supabase.table("shops").delete().in_("id", batch).execute()
+    except Exception as e:
+        print(f"Error deleting stale shops: {e}")
 
 if __name__ == "__main__":
     json_file = "shop_urls.json"
