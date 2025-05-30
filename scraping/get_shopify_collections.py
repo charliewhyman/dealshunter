@@ -10,17 +10,22 @@ import requests
 from bs4 import BeautifulSoup
 import concurrent.futures
 
+HEADERS = {
+    "User-Agent": "Mozilla/5.0 (compatible; ShopifyCollectionsScraper/1.0; +https://yourdomain.com)"
+}
+
 def is_shopify_store(base_url):
     """Check if the given URL belongs to a Shopify store."""
     try:
-        response = requests.get(f"{base_url}/products.json", timeout=10)
+        response = requests.get(f"{base_url}/products.json", timeout=10, headers=HEADERS)
+        if response.status_code != 200:
+            return False
         has_token = 'X-Shopify-Storefront-Access-Token' in response.headers
-        has_products = 'products' in response.json()
-        if response.status_code == 200 and (has_token or has_products):
-            return True
+        data = response.json()
+        has_products = 'products' in data
+        return has_token or has_products
     except (requests.exceptions.RequestException, ValueError):
-        pass
-    return False
+        return False
 
 def fetch_shopify_collections(base_url, shop_id, limit=250, max_pages=None):
     """Fetch collections from a Shopify store's API.
@@ -42,7 +47,7 @@ def fetch_shopify_collections(base_url, shop_id, limit=250, max_pages=None):
         print(f"Fetching page {page} from {base_url}...")
         start_time = time.time()
         try:
-            response = requests.get(url, timeout=10)
+            response = requests.get(url, timeout=10, headers=HEADERS)
             response.raise_for_status()
             try:
                 data = response.json()
@@ -51,7 +56,7 @@ def fetch_shopify_collections(base_url, shop_id, limit=250, max_pages=None):
                 page += 1
                 continue
             fetch_time = time.time() - start_time
-            
+
             if 'collections' not in data or not data['collections']:
                 print("No more collections found.")
                 break
@@ -60,13 +65,12 @@ def fetch_shopify_collections(base_url, shop_id, limit=250, max_pages=None):
             for collection in data['collections']:
                 handle = collection.get('handle')
                 if handle:
-                    collection_url = f"{base_url}/collections/{handle}"
-                    collection['collection_url'] = collection_url
+                    collection['collection_url'] = f"{base_url}/collections/{handle}"
                     collection['shop_id'] = shop_id
 
             collections.extend(data['collections'])
             print(f"Page {page} fetched in {fetch_time:.2f}s: {len(data['collections'])} collections.")
-            
+
             if max_pages and page >= max_pages:
                 print(f"Reached the maximum page limit: {max_pages}")
                 break
@@ -98,16 +102,15 @@ def get_shop_id(shop_data):
         shop_data (dict): Dictionary containing shop data including shop_id
 
     Returns:
-        str: Shop id from the shop_data, or formatted URL if shop_id not found
+        str: Shop id from the shop_data, or None if missing
     """
-    # Return shop_id
     return shop_data.get("id")
 
 def scrape_collections_from_html(base_url, shop_id):
     """Fallback to scrape collections from the HTML of the /collections page."""
     url = f"{base_url}/collections"
     try:
-        response = requests.get(url, timeout=10)
+        response = requests.get(url, timeout=10, headers=HEADERS)
         response.raise_for_status()
     except requests.exceptions.RequestException as e:
         print(f"Failed to fetch collections HTML for {base_url}: {e}")
@@ -134,46 +137,48 @@ def scrape_collections_from_html(base_url, shop_id):
     print(f"Scraped {len(collections)} collections from HTML at {url}")
     return collections
 
+def process_shop(shop_data):
+    shopify_base_url = shop_data["url"]
+    category = shop_data.get("category", "Unknown")
+    shop_id = get_shop_id(shop_data)
+    output_file = f"output/{shop_id}_collections.json"
+
+    print(f"Processing shop: {shop_id} (Category: {category})")
+    if not is_shopify_store(shopify_base_url):
+        print(f"Skipping {shopify_base_url}: Not a Shopify store.")
+        return [shop_id, shopify_base_url, category, "Failure: Not a Shopify store"]
+
+    try:
+        shop_collections = fetch_shopify_collections(
+            shopify_base_url,
+            shop_id,
+            limit=250,
+            max_pages=10
+        )
+        if shop_collections:
+            save_collections_to_file(shop_collections, output_file)
+            success_msg = f"Success: {len(shop_collections)} collections fetched via API"
+            return [shop_id, shopify_base_url, category, success_msg]
+
+        print(f"No collections found via API for {shopify_base_url}. Trying HTML fallback...")
+        html_collections = scrape_collections_from_html(shopify_base_url, shop_id)
+        if html_collections:
+            save_collections_to_file(html_collections, output_file)
+            success_msg = f"Success: {len(html_collections)} collections scraped from HTML"
+            return [shop_id, shopify_base_url, category, success_msg]
+        else:
+            return [shop_id, shopify_base_url, category, "Failure: No collections found from API or HTML"]
+
+    except (requests.exceptions.RequestException, json.JSONDecodeError, OSError) as e:
+        print(f"Error processing {shopify_base_url}: {e}")
+        return [shop_id, shopify_base_url, category, f"Failure: {e}"]
+
 if __name__ == "__main__":
     # Load shop URLs from JSON file
     with open("shop_urls.json", "r", encoding="utf-8") as json_file:
         shop_urls_data = json.load(json_file)
 
     summary_log = []
-
-    def process_shop(shop_data):
-        shopify_base_url = shop_data["url"]
-        category = shop_data.get("category", "Unknown")
-        shop_id = get_shop_id(shop_data)
-        output_file = f"output/{shop_id}_collections.json"
-
-        print(f"Processing shop: {shop_id} (Category: {category})")
-        if not is_shopify_store(shopify_base_url):
-            print(f"Skipping {shopify_base_url}: Not a Shopify store.")
-            return [shop_id, shopify_base_url, category, "Failure: Not a Shopify store"]
-
-        try:
-            shop_collections = fetch_shopify_collections(
-                shopify_base_url,
-                shop_id,
-                limit=250,
-                max_pages=10
-            )
-            if shop_collections:
-                save_collections_to_file(shop_collections, output_file)
-                success_msg = f"Success: {len(shop_collections)} collections fetched via API"
-                return [shop_id, shopify_base_url, category, success_msg]
-            else:
-                print(f"No collections found via API for {shopify_base_url}. Trying HTML fallback...")
-                html_collections = scrape_collections_from_html(shopify_base_url, shop_id)
-            if html_collections:
-                save_collections_to_file(html_collections, output_file)
-                success_msg = f"Success: {len(html_collections)} collections scraped from HTML"
-                return [shop_id, shopify_base_url, category, success_msg]
-            
-        except (requests.exceptions.RequestException, json.JSONDecodeError, OSError) as e:
-            print(f"Error processing {shopify_base_url}: {e}")
-            return [shop_id, shopify_base_url, category, "Failure: No collections found from API or HTML"]
 
     with concurrent.futures.ThreadPoolExecutor(max_workers=5) as executor:
         future_to_shop = {executor.submit(process_shop, shop_data): shop_data for shop_data in shop_urls_data}
@@ -183,14 +188,18 @@ if __name__ == "__main__":
                 result = future.result()
                 summary_log.append(result)
             except Exception as e:
-                print(f"Error processing {shop_data['url']}: {e}")
-                summary_log.append([shop_data["shop_id"], shop_data["url"], shop_data.get("category", "Unknown"), f"Failure: {e}"])
+                shop_id = shop_data.get("id", "Unknown")
+                url = shop_data.get("url", "Unknown")
+                category = shop_data.get("category", "Unknown")
+                print(f"Error processing {url}: {e}")
+                summary_log.append([shop_id, url, category, f"Failure: {e}"])
 
     # Write summary to CSV
     os.makedirs("output", exist_ok=True)
-    with open("output/shopify_collections_summary.csv", "w", newline="", encoding="utf-8") as csv_file:
+    summary_file = "output/shopify_collections_summary.csv"
+    with open(summary_file, "w", newline="", encoding="utf-8") as csv_file:
         csvwriter = csv.writer(csv_file)
         csvwriter.writerow(["Shop ID", "URL", "Category", "Summary"])
         csvwriter.writerows(summary_log)
 
-    print("Summary written to output/shopify_collections_summary.csv.")
+    print(f"Summary written to {summary_file}.")
