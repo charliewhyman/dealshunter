@@ -39,18 +39,27 @@ class SupabaseMaterializedViewRefresher:
             print(f"Failed to connect to Supabase: {e}")
             return False
 
-    async def execute_script(self, script_path: str) -> bool:
-        """Execute a single Python script."""
+    async def execute_script(self, script_path: str, timeout: int = 900) -> bool:
+        """Execute a single Python script with a timeout (default 15 minutes)."""
         try:
             proc = await asyncio.create_subprocess_exec(
                 'python', script_path,
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE
             )
-            stdout, stderr = await proc.communicate()
+            try:
+                stdout, stderr = await asyncio.wait_for(proc.communicate(), timeout=timeout)
+            except asyncio.TimeoutError:
+                proc.kill()
+                await proc.wait()
+                print(f'Timeout while executing {script_path}')
+                return False
 
             if proc.returncode != 0:
                 print(f'Error executing {script_path}:\n{stderr.decode()}')
+                error_output = stderr.decode()
+                with open("output/failures.log", "a", encoding="utf-8") as f:
+                    f.write(f"{script_path} failed with error:\n{error_output}\n\n")
                 return False
 
             print(f'Script {script_path} stdout:\n{stdout.decode()}')
@@ -126,8 +135,8 @@ class SupabaseMaterializedViewRefresher:
         """Execute all scripts and trigger view refresh."""
         supabase_reachable = await self.is_supabase_reachable()
         base_path = os.path.dirname(__file__)
+        all_success = True
 
-        # Execute all scripts
         for script in self.scripts:
             if script.startswith('upload_') and not supabase_reachable:
                 print(f"Skipping {script} because Supabase is unreachable.")
@@ -138,17 +147,17 @@ class SupabaseMaterializedViewRefresher:
             
             success = await self.execute_script(script_path)
             if not success:
-                return False
+                print(f"WARNING: {script} failed. Continuing with pipeline.")
+                all_success = False  # Flag for later
 
-        # Trigger refresh after all scripts complete
         if supabase_reachable:
             refresh_success = await self.refresh_materialized_view(method=refresh_method)
             if refresh_success:
                 refresh_time = await self.verify_refresh()
                 print(f"Refresh completed. Last refresh time: {refresh_time}")
-            return refresh_success
+            all_success = all_success and refresh_success
 
-        return True
+        return all_success
 
 async def main():
     refresher = SupabaseMaterializedViewRefresher()
