@@ -115,7 +115,7 @@ def remove_deleted_collection_product_links(current_links):
         print(f"Error deleting stale product-collection links: {e}")
 
 if __name__ == "__main__":
-    output_folder = './scraping/output'
+    output_folder = 'output'
     all_current_links = []
 
     for json_file in get_collection_product_json_files(output_folder):

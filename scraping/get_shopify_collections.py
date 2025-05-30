@@ -103,6 +103,37 @@ def get_shop_id(shop_data):
     # Return shop_id
     return shop_data.get("id")
 
+def scrape_collections_from_html(base_url, shop_id):
+    """Fallback to scrape collections from the HTML of the /collections page."""
+    url = f"{base_url}/collections"
+    try:
+        response = requests.get(url, timeout=10)
+        response.raise_for_status()
+    except requests.exceptions.RequestException as e:
+        print(f"Failed to fetch collections HTML for {base_url}: {e}")
+        return []
+
+    soup = BeautifulSoup(response.text, "html.parser")
+    collection_links = soup.select("a[href^='/collections/']")
+    seen = set()
+    collections = []
+
+    for link in collection_links:
+        href = link.get("href")
+        if not href or href in seen:
+            continue
+        seen.add(href)
+        handle = href.split("/collections/")[-1].split("?")[0].strip("/")
+        if handle:
+            collections.append({
+                "handle": handle,
+                "collection_url": f"{base_url}/collections/{handle}",
+                "shop_id": shop_id
+            })
+
+    print(f"Scraped {len(collections)} collections from HTML at {url}")
+    return collections
+
 if __name__ == "__main__":
     # Load shop URLs from JSON file
     with open("shop_urls.json", "r", encoding="utf-8") as json_file:
@@ -130,14 +161,19 @@ if __name__ == "__main__":
             )
             if shop_collections:
                 save_collections_to_file(shop_collections, output_file)
-                success_msg = f"Success: {len(shop_collections)} collections fetched"
+                success_msg = f"Success: {len(shop_collections)} collections fetched via API"
                 return [shop_id, shopify_base_url, category, success_msg]
             else:
-                print(f"No collections found for {shopify_base_url}.")
-                return [shop_id, shopify_base_url, category, "Failure: No collections found"]
+                print(f"No collections found via API for {shopify_base_url}. Trying HTML fallback...")
+                html_collections = scrape_collections_from_html(shopify_base_url, shop_id)
+            if html_collections:
+                save_collections_to_file(html_collections, output_file)
+                success_msg = f"Success: {len(html_collections)} collections scraped from HTML"
+                return [shop_id, shopify_base_url, category, success_msg]
+            
         except (requests.exceptions.RequestException, json.JSONDecodeError, OSError) as e:
             print(f"Error processing {shopify_base_url}: {e}")
-            return [shop_id, shopify_base_url, category, f"Failure: {e}"]
+            return [shop_id, shopify_base_url, category, "Failure: No collections found from API or HTML"]
 
     with concurrent.futures.ThreadPoolExecutor(max_workers=5) as executor:
         future_to_shop = {executor.submit(process_shop, shop_data): shop_data for shop_data in shop_urls_data}

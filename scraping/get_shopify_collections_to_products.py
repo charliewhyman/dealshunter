@@ -6,25 +6,59 @@ import time
 import requests
 import re
 
+def extract_handle(collection_url):
+    match = re.search(r"/collections/([^/?#]+)", collection_url)
+    return match.group(1) if match else None
+
 def get_products_from_collection(collection_url):
-    response = requests.get(collection_url)
-    
-    # Check if the request was successful
-    if response.status_code != 200:
-        print(f"Failed to fetch {collection_url}")
-        return None
-    
-    html = response.text
-    match = re.search(r'var meta = (\{.*?\});', html, re.DOTALL)
-    
-    # Extract product data from the HTML if available
-    if match:
-        meta_json = match.group(1)
-        meta_data = json.loads(meta_json) 
-        return meta_data.get("products", []) 
-    else:
-        print(f"Could not find product data in {collection_url}")
-        return None
+    handle = extract_handle(collection_url)
+    if not handle:
+        print(f"Could not extract handle from {collection_url}")
+        return []
+
+    base_url = collection_url.split("/collections/")[0]
+    products_api_url = f"{base_url}/collections/{handle}/products.json"
+
+    try:
+        response = requests.get(products_api_url)
+        if response.status_code == 200:
+            data = response.json()
+            products = data.get("products", [])
+            if isinstance(products, list):
+                return products
+            else:
+                print(f"Error processing product: Expected a list of dicts but got {type(products).__name__}")
+                return []
+        else:
+            print(f"products.json not available ({response.status_code}), falling back to HTML: {collection_url}")
+    except Exception as e:
+        print(f"Exception while fetching {products_api_url}: {e}")
+        print(f"Falling back to HTML: {collection_url}")
+
+    # Fallback: Parse from HTML
+    try:
+        response = requests.get(collection_url)
+        if response.status_code != 200:
+            print(f"Failed to fetch {collection_url}")
+            return []
+        
+        html = response.text
+        match = re.search(r'var meta = (\{.*?\});', html, re.DOTALL)
+        if match:
+            meta_json = match.group(1)
+            meta_data = json.loads(meta_json)
+            products = meta_data.get("products")
+            if isinstance(products, list):
+                return products
+            else:
+                print(f"Error processing product: Expected a list of dicts but got {type(products).__name__}")
+                return []
+        else:
+            print(f"Could not find product data in {collection_url}")
+            return []
+    except Exception as e:
+        print(f"HTML fallback failed for {collection_url}: {e}")
+        return []
 
 def get_shop_id(url):
     # Load shop URLs from a JSON file to map the URL to the shop id
