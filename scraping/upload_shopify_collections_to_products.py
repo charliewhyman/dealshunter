@@ -58,10 +58,14 @@ def process_collection_product_pairs(filepath):
         with open(filepath, "r", encoding="utf-8") as file:
             collection_product_pairs = json.load(file)
 
+        valid_product_ids, valid_collection_ids = get_valid_product_and_collection_ids()
         data_to_upsert = []
-        valid_product_ids = get_valid_product_ids()
 
         for collection_id, product_ids in collection_product_pairs.items():
+            if collection_id not in valid_collection_ids:
+                print(f"Skipping collection_id {collection_id} as it does not exist in collections table.")
+                continue
+
             for product_id in product_ids:
                 if product_id not in valid_product_ids:
                     print(f"Skipping product_id {product_id} as it does not exist in products table.")
@@ -116,23 +120,19 @@ def remove_deleted_collection_product_links(current_links):
     except Exception as e:
         print(f"Error deleting stale product-collection links: {e}")
 
-def get_valid_product_ids():
-    """Fetch all valid product IDs from Supabase."""
+def get_valid_product_and_collection_ids():
+    """Fetch all valid product and collection IDs from Supabase."""
     try:
-        response = supabase.table("products").select("id").execute()
-        return set(item["id"] for item in response.data)
-    except Exception as e:
-        print(f"Error fetching valid product IDs: {e}")
-        return set()
+        product_res = supabase.table("products").select("id").execute()
+        collection_res = supabase.table("collections").select("id").execute()
 
-# Fetch all valid collection_ids from Supabase
-def get_valid_collection_ids():
-    try:
-        response = supabase.table("collections").select("id").execute()
-        return set(item["id"] for item in response.data)
+        product_ids = set(item["id"] for item in product_res.data)
+        collection_ids = set(item["id"] for item in collection_res.data)
+
+        return product_ids, collection_ids
     except Exception as e:
-        print(f"Error fetching valid collection IDs: {e}")
-        return set()
+        print(f"Error fetching valid IDs: {e}")
+        return set(), set()
 
 if __name__ == "__main__":
     output_folder = 'output'
