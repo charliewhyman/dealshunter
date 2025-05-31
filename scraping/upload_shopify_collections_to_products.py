@@ -7,7 +7,8 @@ import logging
 import argparse
 from supabase import create_client
 import requests
-from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import ThreadPoolExecutor, as_completed
+from multiprocessing import cpu_count
 
 # ---------------- Logging Setup ---------------- #
 
@@ -49,7 +50,7 @@ def bulk_upsert_data(table_name, data, batch_size=100, retries=3):
             duplicate_logs.append(unique_key)
 
     if duplicate_logs:
-        logger.debug(f"Duplicate entries skipped in {table_name}: {duplicate_logs}")
+        logger.debug(f"Duplicate entries skipped in {table_name}: {len(duplicate_logs)} records")
 
     for i in range(0, len(deduplicated_data), batch_size):
         batch = deduplicated_data[i:i + batch_size]
@@ -88,7 +89,7 @@ def process_collection_product_pairs(filepath, valid_product_ids):
         for collection_id, product_ids in collection_product_pairs.items():
             for product_id in product_ids:
                 if product_id not in valid_product_ids:
-                    logger.warning(f"Skipping product_id {product_id} – not found in products table.")
+                    logger.debug(f"Skipping product_id {product_id} – not found in products table.")
                     continue
 
                 record = {
@@ -100,7 +101,7 @@ def process_collection_product_pairs(filepath, valid_product_ids):
                 current_links.append((product_id, collection_id))
 
         if data_to_upsert:
-            logger.info(f"Upserting {len(data_to_upsert)} collection-product pairs from {filepath}...")
+            logger.info(f"Processing {len(data_to_upsert)} collection-product pairs from {filepath}")
             bulk_upsert_data("product_collections", data_to_upsert)
         else:
             logger.info(f"No valid data to upsert from {filepath}.")
@@ -141,33 +142,65 @@ def remove_deleted_collection_product_links(current_links):
 
         logger.info(f"Removing {len(to_delete)} stale product-collection links...")
 
-        for i in range(0, len(to_delete), 100):
-            batch = to_delete[i:i + 100]
+        # Process deletions in parallel batches
+        def delete_batch(batch):
             for product_id, collection_id in batch:
                 supabase.table("product_collections").delete().eq("product_id", product_id).eq("collection_id", collection_id).execute()
+
+        batch_size = 100
+        with ThreadPoolExecutor(max_workers=4) as executor:
+            futures = []
+            for i in range(0, len(to_delete), batch_size):
+                batch = to_delete[i:i + batch_size]
+                futures.append(executor.submit(delete_batch, batch))
+            
+            for future in as_completed(futures):
+                try:
+                    future.result()
+                except Exception as e:
+                    logger.error(f"Error deleting batch: {e}")
 
     except Exception as e:
         logger.error(f"Error deleting stale product-collection links: {e}")
 
 # ---------------- Main Execution ---------------- #
 
-if __name__ == "__main__":
+def main():
     output_folder = "output"
     json_files = get_collection_product_json_files(output_folder)
     valid_product_ids = get_existing_product_ids()
 
+    if not json_files:
+        logger.warning(f"No collection-product JSON files found in {output_folder}")
+        return
+
+    logger.info(f"Found {len(json_files)} files to process")
     all_current_links = []
 
-    def process_file(file_path):
-        logger.info(f"Processing file: {file_path}")
-        return process_collection_product_pairs(file_path, valid_product_ids)
+    # Process files in parallel with dynamic worker count
+    num_workers = min(cpu_count() * 2, len(json_files))
+    logger.debug(f"Using {num_workers} workers for parallel processing")
 
-    with ThreadPoolExecutor(max_workers=4) as executor:
-        results = list(executor.map(process_file, json_files))
-
-    for result in results:
-        if result:
-            all_current_links.extend(result)
+    with ThreadPoolExecutor(max_workers=num_workers) as executor:
+        futures = {executor.submit(process_collection_product_pairs, file, valid_product_ids): file for file in json_files}
+        
+        for future in as_completed(futures):
+            file = futures[future]
+            try:
+                result = future.result()
+                if result:
+                    all_current_links.extend(result)
+                    logger.info(f"Completed processing {file}")
+                else:
+                    logger.warning(f"File {file} returned no results")
+            except Exception as e:
+                logger.error(f"Error processing file {file}: {e}")
 
     if all_current_links:
+        logger.info(f"Total {len(all_current_links)} current links collected")
         remove_deleted_collection_product_links(all_current_links)
+    else:
+        logger.warning("No valid collection-product links were processed")
+
+if __name__ == "__main__":
+    main()
