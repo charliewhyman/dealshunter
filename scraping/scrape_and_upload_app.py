@@ -1,24 +1,65 @@
+import json
+import logging
+from logging.handlers import RotatingFileHandler
 import subprocess
 import os
 import sys
 import httpx
 import asyncio
 from urllib.parse import urlparse
-from typing import List, Optional
+from typing import Dict,  Optional
 
 class SupabaseMaterializedViewRefresher:
-    def __init__(self):
+    def __init__(self, config_path: str = "config/pipeline.json"):
         self.supabase_url = os.getenv("SUPABASE_URL")
-        self.supabase_key = os.getenv("SUPABASE_KEY")
-        self.scripts = [
-            'upload_shops.py',
-            'get_shopify_collections.py',
-            'get_shopify_products.py',
-            'get_shopify_collections_to_products.py',
-            'upload_shopify_collections.py',
-            'upload_shopify_products.py',
-            'upload_shopify_collections_to_products.py',
-        ]
+        self.supabase_key = os.getenv("SUPABASE_SERVICE_ROLE_KEY")
+        self.config = self._load_config(config_path)
+        self._setup_logging()
+
+    def _load_config(self, path: str) -> Dict:
+        default_config = {
+            "scripts": [
+                'upload_shops.py',
+                'get_shopify_collections.py',
+                'get_shopify_products.py',
+                'get_shopify_collections_to_products.py',
+                'upload_shopify_collections.py',
+                'upload_shopify_products.py',
+                'upload_shopify_collections_to_products.py',
+            ],
+            "critical_scripts": [
+                "upload_shops.py",
+                "get_shopify_products.py",
+                "upload_shopify_products.py"
+            ]
+        }
+        try:
+            with open(path) as f:
+                return {**default_config, **json.load(f)}
+        except (FileNotFoundError, json.JSONDecodeError) as e:
+            self.logger.warning(f"Using default config: {str(e)}")
+            return default_config
+
+    def _setup_logging(self):
+        self.logger = logging.getLogger("SupabaseRefresher")
+        self.logger.setLevel(logging.INFO)
+        
+        file_handler = RotatingFileHandler(
+            'output/pipeline.log',
+            maxBytes=5*1024*1024,
+            backupCount=3
+        )
+        file_formatter = logging.Formatter(
+            '%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+        )
+        file_handler.setFormatter(file_formatter)
+        
+        console_handler = logging.StreamHandler()
+        console_formatter = logging.Formatter('%(levelname)s - %(message)s')
+        console_handler.setFormatter(console_formatter)
+
+        self.logger.addHandler(file_handler)
+        self.logger.addHandler(console_handler)
 
     async def is_supabase_reachable(self) -> bool:
         """Check if Supabase is available."""
