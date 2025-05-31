@@ -29,8 +29,12 @@ logger = logging.getLogger(__name__)
 def bulk_upsert_data(table_name, data, batch_size=100, retries=3):
     """Bulk upsert data to Supabase with deduplication and error handling."""
     seen_ids = set()
-    deduplicated_data = [item for item in data if item["id"] not in seen_ids and not seen_ids.add(item["id"])]
-    
+    deduplicated_data = []
+    for item in data:
+        if item["id"] not in seen_ids:
+            seen_ids.add(item["id"])
+            deduplicated_data.append(item)
+
     # Process batches
     for i in range(0, len(deduplicated_data), batch_size):
         batch = deduplicated_data[i:i + batch_size]
