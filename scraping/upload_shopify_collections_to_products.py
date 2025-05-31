@@ -1,5 +1,6 @@
 """Module for uploading scraped Shopify collection-to-product relationships to Supabase database."""
 
+from concurrent.futures import ThreadPoolExecutor, as_completed
 import os
 import json
 import time
@@ -136,13 +137,22 @@ def get_valid_product_and_collection_ids():
 
 if __name__ == "__main__":
     output_folder = 'output'
+    json_files = get_collection_product_json_files(output_folder)
     all_current_links = []
 
-    for json_file in get_collection_product_json_files(output_folder):
+    def process_and_return_links(json_file):
         print(f"Processing file: {json_file}")
-        current_links = process_collection_product_pairs(json_file)
-        all_current_links.extend(current_links) 
+        return process_collection_product_pairs(json_file)
 
-    # 🧹 Run cleanup once after processing all files
+    with ThreadPoolExecutor(max_workers=5) as executor:
+        futures = {executor.submit(process_and_return_links, f): f for f in json_files}
+        for future in as_completed(futures):
+            try:
+                result = future.result()
+                if result:
+                    all_current_links.extend(result)
+            except Exception as e:
+                print(f"Error processing {futures[future]}: {e}")
+
     if all_current_links:
         remove_deleted_collection_product_links(all_current_links)
