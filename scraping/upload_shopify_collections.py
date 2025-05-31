@@ -5,6 +5,8 @@ import sys
 import time
 from supabase import create_client
 import requests
+from concurrent.futures import ThreadPoolExecutor, as_completed
+from multiprocessing import cpu_count
 
 # Initialize Supabase client
 SUPABASE_URL = os.environ.get("SUPABASE_URL")
@@ -34,7 +36,7 @@ def bulk_upsert_data(table_name, data, batch_size=100, retries=3):
         if item["id"] not in seen_ids:
             seen_ids.add(item["id"])
             deduplicated_data.append(item)
-
+    
     # Process batches
     for i in range(0, len(deduplicated_data), batch_size):
         batch = deduplicated_data[i:i + batch_size]
@@ -150,13 +152,31 @@ def remove_deleted_collections(current_collection_ids, shop_id):
     except Exception as e:
         logger.error(f"Error deleting stale collections for shop {shop_id}: {e}")
 
+def process_shop_data(shop_data, user_id):
+    """Process collections for a single shop."""
+    shop_id = shop_data.get("id")
+    logger.info(f"Processing collections for shop: {shop_id}")
+    for json_file in get_collection_json_files("output"):
+        process_collections_file(json_file, user_id, shop_id)
+
 if __name__ == "__main__":
     USER_UUID = "691aedc4-1055-4b57-adb7-7480febba4c8"
+    
     with open("shop_urls.json", "r", encoding="utf-8") as json_file:
         shop_data_list = json.load(json_file)
     
-    for shop_data in shop_data_list:
-        shop_id = shop_data.get("id")
-        logger.info(f"Processing collections for shop: {shop_id}")
-        for json_file in get_collection_json_files("output"):
-            process_collections_file(json_file, USER_UUID, shop_id)
+    # Determine the number of workers (use 2x CPU cores as a starting point)
+    num_workers = min(cpu_count() * 2, len(shop_data_list))
+    
+    # Process shops in parallel
+    with ThreadPoolExecutor(max_workers=num_workers) as executor:
+        futures = []
+        for shop_data in shop_data_list:
+            futures.append(executor.submit(process_shop_data, shop_data, USER_UUID))
+        
+        # Wait for all tasks to complete and handle any exceptions
+        for future in as_completed(futures):
+            try:
+                future.result()
+            except Exception as e:
+                logger.error(f"Error processing shop data: {e}")
