@@ -59,51 +59,31 @@ def process_collection_product_pairs(filepath):
             collection_product_pairs = json.load(file)
 
         data_to_upsert = []
-        skipped = []
-        current_links = []
-
-        valid_collection_ids = get_valid_collection_ids()
+        valid_product_ids = get_valid_product_ids()
 
         for collection_id, product_ids in collection_product_pairs.items():
-            if collection_id not in valid_collection_ids:
-                skipped.append({"reason": "missing_collection", "collection_id": collection_id})
-                continue
-
             for product_id in product_ids:
-                # Validate product_id exists in products table
-                response = supabase.table("products").select("id").eq("id", product_id).execute()
-                if not response.data:
-                    skipped.append({
-                        "reason": "missing_product",
-                        "product_id": product_id,
-                        "collection_id": collection_id
-                    })
+                if product_id not in valid_product_ids:
+                    print(f"Skipping product_id {product_id} as it does not exist in products table.")
                     continue
 
-                record = {
+                data_to_upsert.append({
                     "product_id": product_id,
                     "collection_id": collection_id
-                }
-                data_to_upsert.append(record)
-                current_links.append((product_id, collection_id))
+                })
 
         if data_to_upsert:
             print(f"Upserting {len(data_to_upsert)} collection-product pairs...")
             bulk_upsert_data("product_collections", data_to_upsert)
 
-        if skipped:
-            skipped_path = os.path.join("output", "skipped_product_collections.json")
-            with open(skipped_path, "w", encoding="utf-8") as f:
-                json.dump(skipped, f, indent=2)
-            print(f"Skipped {len(skipped)} invalid entries. See {skipped_path}")
-
-        return current_links
+        return [(item["product_id"], item["collection_id"]) for item in data_to_upsert]
 
     except requests.exceptions.RequestException as e:
         print(f"Error communicating with Supabase: {e}")
+        return []
     except (json.JSONDecodeError, OSError) as e:
         print(f"Error processing file {filepath}: {e}")
-    return []
+        return []
 
 def get_collection_product_json_files(output_folder):
     """Get all JSON files from the output folder ending with _collections_to_products.json."""
@@ -135,6 +115,15 @@ def remove_deleted_collection_product_links(current_links):
 
     except Exception as e:
         print(f"Error deleting stale product-collection links: {e}")
+
+def get_valid_product_ids():
+    """Fetch all valid product IDs from Supabase."""
+    try:
+        response = supabase.table("products").select("id").execute()
+        return set(item["id"] for item in response.data)
+    except Exception as e:
+        print(f"Error fetching valid product IDs: {e}")
+        return set()
 
 # Fetch all valid collection_ids from Supabase
 def get_valid_collection_ids():
