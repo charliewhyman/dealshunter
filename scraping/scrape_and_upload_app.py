@@ -15,6 +15,29 @@ class SupabaseMaterializedViewRefresher:
         self.supabase_key = os.getenv("SUPABASE_SERVICE_ROLE_KEY")
         self.config = self._load_config(config_path)
         self._setup_logging()
+        self.config["timeouts"] = {
+            "default": 900,
+            "get_shopify_products.py": 1800,
+            "upload_shopify_products.py": 1200
+        }
+    
+    async def __aenter__(self):
+        self.client = httpx.AsyncClient(
+            timeout=httpx.Timeout(30.0),
+            limits=httpx.Limits(max_connections=5),
+            base_url=self.supabase_url,
+            headers={
+                "apikey": self.supabase_key,
+                "Authorization": f"Bearer {self.supabase_key}",
+                "Content-Type": "application/json"
+            }
+        )
+        await self.client.__aenter__()
+        return self
+
+    async def __aexit__(self, exc_type, exc_val, exc_tb):
+        if self.client:
+            await self.client.__aexit__(exc_type, exc_val, exc_tb)
 
     def _load_config(self, path: str) -> Dict:
         default_config = {
@@ -80,33 +103,33 @@ class SupabaseMaterializedViewRefresher:
             print(f"Failed to connect to Supabase: {e}")
             return False
 
-    async def execute_script(self, script_path: str, timeout: int = 900) -> bool:
-        """Execute a single Python script with a timeout (default 15 minutes)."""
+    async def execute_script(self, script_path: str) -> bool:
+        script_name = os.path.basename(script_path)
+        timeout = self.config["timeouts"].get(script_name, self.config["timeouts"]["default"])
+
         try:
             proc = await asyncio.create_subprocess_exec(
-                'python', script_path,
+                sys.executable, script_path,
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE
             )
             try:
                 stdout, stderr = await asyncio.wait_for(proc.communicate(), timeout=timeout)
+                if proc.returncode != 0:
+                    raise subprocess.CalledProcessError(
+                        proc.returncode, script_path, stderr.decode()
+                    )
+                return True
             except asyncio.TimeoutError:
                 proc.kill()
                 await proc.wait()
-                print(f'Timeout while executing {script_path}')
-                return False
-
-            if proc.returncode != 0:
-                print(f'Error executing {script_path}:\n{stderr.decode()}')
-                error_output = stderr.decode()
-                with open("output/failures.log", "a", encoding="utf-8") as f:
-                    f.write(f"{script_path} failed with error:\n{error_output}\n\n")
-                return False
-
-            print(f'Script {script_path} stdout:\n{stdout.decode()}')
-            return True
+                raise
+            finally:
+                if proc.returncode is None:
+                    proc.kill()
+                    await proc.wait()
         except Exception as e:
-            print(f'Exception executing {script_path}: {str(e)}')
+            self.logger.error(f"Error executing {script_name}: {str(e)}")
             return False
 
     async def refresh_materialized_view(self, method: str = 'direct') -> bool:
