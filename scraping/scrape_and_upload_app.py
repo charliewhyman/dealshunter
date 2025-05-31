@@ -20,6 +20,7 @@ class SupabaseMaterializedViewRefresher:
             "get_shopify_products.py": 1800,
             "upload_shopify_products.py": 1200
         }
+        self.config["max_concurrent_scripts"] = 2
     
     async def __aenter__(self):
         self.client = httpx.AsyncClient(
@@ -196,32 +197,35 @@ class SupabaseMaterializedViewRefresher:
             return None
 
     async def run_all_scripts(self, refresh_method: str = 'direct') -> bool:
-        """Execute all scripts and trigger view refresh."""
         supabase_reachable = await self.is_supabase_reachable()
         base_path = os.path.dirname(__file__)
-        all_success = True
+        critical_failure = False
+        semaphore = asyncio.Semaphore(self.config["max_concurrent_scripts"])
 
-        for script in self.scripts:
-            if script.startswith('upload_') and not supabase_reachable:
-                print(f"Skipping {script} because Supabase is unreachable.")
-                continue
+        async def run_script(script: str) -> bool:
+            nonlocal critical_failure
+            async with semaphore:
+                script_path = os.path.join(base_path, script)
+                
+                if script.startswith('upload_') and not supabase_reachable:
+                    if script in self.config["critical_scripts"]:
+                        critical_failure = True
+                    return False
 
-            script_path = os.path.join(base_path, script)
-            print(f'Running script: {script_path}')
-            
-            success = await self.execute_script(script_path)
-            if not success:
-                print(f"WARNING: {script} failed. Continuing with pipeline.")
-                all_success = False  # Flag for later
+                success = await self.execute_script(script_path)
+                if not success and script in self.config["critical_scripts"]:
+                    critical_failure = True
+                return success
+
+        tasks = [run_script(script) for script in self.config["scripts"]]
+        results = await asyncio.gather(*tasks, return_exceptions=True)
+
+        if critical_failure:
+            return False
 
         if supabase_reachable:
-            refresh_success = await self.refresh_materialized_view(method=refresh_method)
-            if refresh_success:
-                refresh_time = await self.verify_refresh()
-                print(f"Refresh completed. Last refresh time: {refresh_time}")
-            all_success = all_success and refresh_success
-
-        return all_success
+            return await self.refresh_materialized_view(method=refresh_method)
+        return True
 
 async def main():
     refresher = SupabaseMaterializedViewRefresher()
