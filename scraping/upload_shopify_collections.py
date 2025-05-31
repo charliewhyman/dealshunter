@@ -1,5 +1,7 @@
+import logging
 import os
 import json
+import sys
 import time
 from supabase import create_client
 import requests
@@ -13,6 +15,17 @@ if not SUPABASE_URL or not SUPABASE_KEY:
 
 supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
 
+# Configure logging
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s [%(levelname)s] %(message)s",
+    handlers=[
+        logging.StreamHandler(sys.stdout)
+    ]
+)
+
+logger = logging.getLogger(__name__)
+
 def bulk_upsert_data(table_name, data, batch_size=100, retries=3):
     """Bulk upsert data to Supabase with deduplication and error handling."""
     seen_ids = set()
@@ -25,12 +38,12 @@ def bulk_upsert_data(table_name, data, batch_size=100, retries=3):
             try:
                 response = supabase.table(table_name).upsert(batch, on_conflict="id").execute()
                 if response.data:
-                    print(f"Upserted batch {i // batch_size}: {len(batch)} records.")
+                    logger.info(f"Upserted batch {i // batch_size}: {len(batch)} records.")
                     break
                 else:
-                    print(f"Unexpected response in batch {i // batch_size}: {response}")
+                    logger.warning(f"Unexpected response in batch {i // batch_size}: {response}")
             except (requests.exceptions.RequestException, json.JSONDecodeError) as e:
-                print(f"Error in batch {i // batch_size}, attempt {attempt + 1}: {e}")
+                logger.error(f"Error in batch {i // batch_size}, attempt {attempt + 1}: {e}")
                 if attempt == retries - 1:
                     raise
                 time.sleep(5)
@@ -45,7 +58,7 @@ class CollectionProcessor:
     def process_collection(self, collection, shop_id):
         """Process a single collection and its related data."""
         if not isinstance(collection, dict):
-            print(f"Error processing collection: Expected a dictionary but got {type(collection).__name__}")
+            logger.error(f"Error processing collection: Expected a dictionary but got {type(collection).__name__}")
             return
 
         try:
@@ -74,7 +87,7 @@ class CollectionProcessor:
                     "created_at_external": image.get("created_at")
                 })
         except Exception as e:
-            print(f"Error processing collection {collection.get('id', 'unknown')}: {e}")
+            logger.error(f"Error processing collection {collection.get('id', 'unknown')}: {e}")
 
 def process_collections_file(filepath, user_id, shop_id):
     """Process a JSON file containing collection data and upload to Supabase."""
@@ -87,11 +100,11 @@ def process_collections_file(filepath, user_id, shop_id):
             processor.process_collection(collection, shop_id)
 
         if processor.collections:
-            print(f"Upserting {len(processor.collections)} collections...")
+            logger.info(f"Upserting {len(processor.collections)} collections...")
             bulk_upsert_data("collections", processor.collections)
 
         if processor.images:
-            print(f"Upserting {len(processor.images)} images...")
+            logger.info(f"Upserting {len(processor.images)} images...")
             bulk_upsert_data("images", processor.images)
 
         # 🧹 Remove stale collections (and images) no longer in the file
@@ -99,9 +112,9 @@ def process_collections_file(filepath, user_id, shop_id):
         remove_deleted_collections(current_ids, shop_id)
 
     except requests.exceptions.RequestException as e:
-        print(f"Error communicating with Supabase: {e}")
+        logger.error(f"Error communicating with Supabase: {e}")
     except (json.JSONDecodeError, OSError) as e:
-        print(f"Error processing file {filepath}: {e}")
+        logger.error(f"Error processing file {filepath}: {e}")
 
 def get_collection_json_files(output_folder):
     """Get all JSON files from the output folder."""
@@ -112,17 +125,17 @@ def remove_deleted_collections(current_collection_ids, shop_id):
     try:
         response = supabase.table("collections").select("id").eq("shop_id", shop_id).execute()
         if not response.data:
-            print(f"No existing collections found for shop {shop_id}.")
+            logger.info(f"No existing collections found for shop {shop_id}.")
             return
 
         existing_ids = {item["id"] for item in response.data}
         to_delete = list(existing_ids - set(current_collection_ids))
 
         if not to_delete:
-            print(f"No collections to delete for shop {shop_id}.")
+            logger.info(f"No stale collections to delete for shop {shop_id}.")
             return
 
-        print(f"Removing {len(to_delete)} stale collections for shop {shop_id}...")
+        logger.info(f"Removing {len(to_delete)} stale collections for shop {shop_id}...")
 
         # Delete from images first to avoid FK constraint errors
         for i in range(0, len(to_delete), 100):
@@ -131,7 +144,7 @@ def remove_deleted_collections(current_collection_ids, shop_id):
             supabase.table("collections").delete().in_("id", batch).execute()
 
     except Exception as e:
-        print(f"Error deleting stale collections for shop {shop_id}: {e}")
+        logger.error(f"Error deleting stale collections for shop {shop_id}: {e}")
 
 if __name__ == "__main__":
     USER_UUID = "691aedc4-1055-4b57-adb7-7480febba4c8"
@@ -140,6 +153,6 @@ if __name__ == "__main__":
     
     for shop_data in shop_data_list:
         shop_id = shop_data.get("id")
-        print(f"Processing collections for shop: {shop_id}")
+        logger.info(f"Processing collections for shop: {shop_id}")
         for json_file in get_collection_json_files("output"):
             process_collections_file(json_file, USER_UUID, shop_id)
