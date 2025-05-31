@@ -5,11 +5,22 @@ import json
 import re
 import time
 import uuid
+import logging
 from html import unescape
+from concurrent.futures import ThreadPoolExecutor, as_completed
+from multiprocessing import cpu_count
 from supabase import create_client
 import requests
 
-# Initialize Supabase client
+# ---------------- Logging Setup ---------------- #
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s [%(levelname)s] - %(message)s",
+    handlers=[logging.StreamHandler()]
+)
+logger = logging.getLogger(__name__)
+
+# ---------------- Supabase Setup ---------------- #
 SUPABASE_URL = os.environ.get("SUPABASE_URL")
 SUPABASE_KEY = os.environ.get("SUPABASE_SERVICE_ROLE_KEY")
 
@@ -19,7 +30,7 @@ if not SUPABASE_URL or not SUPABASE_KEY:
 
 supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
 
-# Helper functions
+# ---------------- Helper Functions ---------------- #
 def strip_html_tags(html_text):
     """Remove HTML tags from text and decode HTML entities."""
     return re.sub(r"<[^>]*>", "", unescape(html_text or ""))
@@ -43,7 +54,7 @@ def generate_deterministic_id(namespace_string, *components):
     components_str = '|'.join(str(c or '') for c in components)
     return str(uuid.uuid5(namespace, f"{namespace_string}:{components_str}"))
 
-# Processing functions
+# ---------------- Processing Functions ---------------- #
 def process_options(product):
     """Process product options into a standardized format."""
     options = product.get("options", [])
@@ -61,9 +72,8 @@ def process_options(product):
 def process_variants(product):
     """Process product variants into a standardized format."""
     variants = product.get("variants", [])
-    processed_variants = []
-    for variant in variants:
-        variant_data = {
+    return [
+        {
             "id": variant["id"],
             "product_id": product["id"],
             "title": variant["title"],
@@ -77,8 +87,8 @@ def process_variants(product):
             "created_at_external": variant.get("created_at"),
             "updated_at": variant.get("updated_at"),
         }
-        processed_variants.append(variant_data)
-    return processed_variants
+        for variant in variants
+    ]
 
 def process_images(product):
     """Process product images into a standardized format."""
@@ -127,38 +137,35 @@ def process_offers(product):
         for offer in offers
     ]
 
-# Database operations
+# ---------------- Database Operations ---------------- #
 def bulk_upsert_data(table_name, data, batch_size=100, retries=3):
     """Bulk upsert data to Supabase with deduplication and error handling."""
     seen_ids = set()
     deduplicated_data = []
-    duplicate_logs = []
+    duplicate_count = 0
 
-    # Deduplicate data
     for item in data:
         if item["id"] not in seen_ids:
             seen_ids.add(item["id"])
             deduplicated_data.append(item)
         else:
-            duplicate_logs.append(item["id"])
+            duplicate_count += 1
 
-    # Log duplicates
-    if duplicate_logs:
-        print(f"Duplicate IDs found in {table_name}: {duplicate_logs}")
+    if duplicate_count:
+        logger.debug(f"Skipped {duplicate_count} duplicate IDs in {table_name}")
 
-    # Process batches
     for i in range(0, len(deduplicated_data), batch_size):
         batch = deduplicated_data[i:i + batch_size]
         for attempt in range(retries):
             try:
                 response = supabase.table(table_name).upsert(batch, on_conflict="id").execute()
                 if response.data:
-                    print(f"Upserted batch {i // batch_size}: {len(batch)} records.")
+                    logger.info(f"Upserted batch {i // batch_size + 1} to {table_name}: {len(batch)} records")
                     break
                 else:
-                    print(f"Unexpected response in batch {i // batch_size}: {response}")
+                    logger.warning(f"Unexpected response for batch {i // batch_size + 1} in {table_name}")
             except (requests.exceptions.RequestException, json.JSONDecodeError) as e:
-                print(f"Error in batch {i // batch_size}, attempt {attempt + 1}: {e}")
+                logger.error(f"Error in batch {i // batch_size + 1}, attempt {attempt + 1}: {e}")
                 if attempt == retries - 1:
                     raise
                 time.sleep(5)
@@ -178,125 +185,44 @@ class ProductProcessor:
     def process_product(self, product):
         """Process a single product and its related data."""
         if not isinstance(product, dict):
-            print(f"Error processing product: Expected a dictionary but got {type(product).__name__}")
-            return
+            logger.error(f"Expected dictionary but got {type(product).__name__}")
+            return None
 
         try:
-            fields = {}
-            try:
-                fields["id"] = product["id"]
-            except Exception as e:
-                print(f"Error accessing 'id' for product: {e}")
-                raise
+            # Process main product fields
+            product_data = {
+                "id": product["id"],
+                "title": product["title"],
+                "handle": product["handle"],
+                "vendor": product["vendor"],
+                "submitted_by": self.submitted_by,
+                "description": strip_html_tags(product.get("body_html", "")),
+                "created_at_external": product.get("created_at"),
+                "updated_at_external": product.get("updated_at"),
+                "published_at_external": product.get("published_at"),
+                "product_type": product.get("product_type", ""),
+                "tags": product.get("tags", []),
+                "url": product.get("product_url", ""),
+                "shop_id": product.get("shop_id", ""),
+            }
+            self.collections['products'].append(product_data)
 
-            try:
-                fields["title"] = product["title"]
-            except Exception as e:
-                print(f"Error accessing 'title' for product {fields.get('id', 'unknown')}: {e}")
-                raise
+            # Process related data
+            self.collections['options'].extend(process_options(product))
+            self.collections['variants'].extend(process_variants(product))
+            self.collections['images'].extend(process_images(product))
+            self.collections['offers'].extend(process_offers(product))
 
-            try:
-                fields["handle"] = product["handle"]
-            except Exception as e:
-                print(f"Error accessing 'handle' for product {fields.get('id', 'unknown')}: {e}")
-                raise
-
-            try:
-                fields["vendor"] = product["vendor"]
-            except Exception as e:
-                print(f"Error accessing 'vendor' for product {fields.get('id', 'unknown')}: {e}")
-                raise
-
-            try:
-                fields["submitted_by"] = self.submitted_by
-            except Exception as e:
-                print(f"Error accessing 'submitted_by' for product {fields.get('id', 'unknown')}: {e}")
-                raise
-
-            try:
-                fields["description"] = strip_html_tags(product.get("body_html", ""))
-            except Exception as e:
-                print(f"Error accessing 'body_html' for product {fields.get('id', 'unknown')}: {e}")
-                raise
-
-            try:
-                fields["created_at_external"] = product.get("created_at")
-            except Exception as e:
-                print(f"Error accessing 'created_at' for product {fields.get('id', 'unknown')}: {e}")
-                raise
-
-            try:
-                fields["updated_at_external"] = product.get("updated_at")
-            except Exception as e:
-                print(f"Error accessing 'updated_at' for product {fields.get('id', 'unknown')}: {e}")
-                raise
-
-            try:
-                fields["published_at_external"] = product.get("published_at")
-            except Exception as e:
-                print(f"Error accessing 'published_at' for product {fields.get('id', 'unknown')}: {e}")
-                raise
-
-            try:
-                fields["product_type"] = product.get("product_type", "")
-            except Exception as e:
-                print(f"Error accessing 'product_type' for product {fields.get('id', 'unknown')}: {e}")
-                raise
-
-            try:
-                fields["tags"] = product.get("tags", [])
-            except Exception as e:
-                print(f"Error accessing 'tags' for product {fields.get('id', 'unknown')}: {e}")
-                raise
-
-            try:
-                fields["url"] = product.get("product_url", "")
-            except Exception as e:
-                print(f"Error accessing 'product_url' for product {fields.get('id', 'unknown')}: {e}")
-                raise
-            
-            try:
-                fields["shop_id"] = product.get("shop_id", "")
-            except Exception as e:
-                print(f"Error accessing 'shop_id' for product {fields.get('id', 'unknown')}: {e}")
-                raise
-            
-            try:
-                self.collections['products'].append(fields)
-            except Exception as e:
-                print(f"Error adding product {fields.get('id', 'unknown')} to products collection: {e}")
-                return fields.get('id', 'unknown')
-
-            try:
-                self.collections['options'].extend(process_options(product))
-            except Exception as e:
-                print(f"Error processing options for product {fields.get('id', 'unknown')}: {e}")
-                return fields.get('id', 'unknown')
-
-            try:
-                self.collections['variants'].extend(process_variants(product))
-            except Exception as e:
-                print(f"Error processing variants for product {fields.get('id', 'unknown')}: {e}")
-                return fields.get('id', 'unknown')
-
-            try:
-                self.collections['images'].extend(process_images(product))
-            except Exception as e:
-                print(f"Error processing images for product {fields.get('id', 'unknown')}: {e}")
-                return fields.get('id', 'unknown')
-
-            try:
-                self.collections['offers'].extend(process_offers(product))
-            except Exception as e:
-                print(f"Error processing offers for product {fields.get('id', 'unknown')}: {e}")
-                return fields.get('id', 'unknown')
+            return product["id"]
         except Exception as e:
-            print(f"Error processing product {fields.get('id', 'unknown')}: {e}")
+            logger.error(f"Error processing product {product.get('id', 'unknown')}: {e}")
+            return None
 
     def get_stats(self):
         """Get statistics about processed products."""
         return {name: len(items) for name, items in self.collections.items()}
 
+# ---------------- File Processing ---------------- #
 def process_products_file(filepath, user_id):
     """Process a JSON file containing product data and upload to Supabase."""
     try:
@@ -304,59 +230,117 @@ def process_products_file(filepath, user_id):
             products = json.load(file)
 
         processor = ProductProcessor(user_id)
+        product_ids = []
+        
         for product in products:
-            processor.process_product(product)
+            product_id = processor.process_product(product)
+            if product_id:
+                product_ids.append(product_id)
 
-        # Bulk upsert all collections
-        for table_name, data in processor.collections.items():
-            if data:
-                print(f"Upserting {len(data)} {table_name}...")
-                bulk_upsert_data(table_name, data)
+        # Upload all data in parallel
+        with ThreadPoolExecutor(max_workers=5) as executor:
+            futures = []
+            for table_name, data in processor.collections.items():
+                if data:
+                    futures.append(executor.submit(
+                        bulk_upsert_data, 
+                        table_name, 
+                        data
+                    ))
+            
+            for future in as_completed(futures):
+                try:
+                    future.result()
+                except Exception as e:
+                    logger.error(f"Error in parallel upload: {e}")
 
-        # 🧹 Remove stale products no longer in the JSON
-        product_ids = [p["id"] for p in processor.collections["products"]]
+        # Clean up stale products if single shop
         shop_ids = {p["shop_id"] for p in processor.collections["products"]}
         if len(shop_ids) == 1:
-            shop_id = shop_ids.pop()
-            remove_deleted_products(product_ids, shop_id)
-        else:
-            print("Warning: Multiple shop_ids found in file. Skipping stale product deletion.")
-            
-    except requests.exceptions.RequestException as e:
-        print(f"Error communicating with Supabase: {e}")
-    except (json.JSONDecodeError, OSError) as e:
-        print(f"Error processing file {filepath}: {e}")
+            remove_deleted_products(product_ids, shop_ids.pop())
+        elif shop_ids:
+            logger.warning(f"Multiple shop_ids found in {filepath}. Skipping stale product deletion.")
+
+        return processor.get_stats()
+    except Exception as e:
+        logger.error(f"Error processing {filepath}: {e}")
+        return None
 
 def get_json_files(output_folder):
     """Get all JSON files from the output folder."""
-    return [os.path.join(output_folder, f) for f in os.listdir(output_folder) if f.endswith("_products.json")]
+    return [
+        os.path.join(output_folder, f) 
+        for f in os.listdir(output_folder) 
+        if f.endswith("_products.json")
+    ]
 
 def remove_deleted_products(current_product_ids, shop_id):
     """Remove products from Supabase that are no longer in the latest scrape."""
     try:
         response = supabase.table("products").select("id").eq("shop_id", shop_id).execute()
-        if not response.data:
-            print(f"No existing products found in Supabase for shop_id: {shop_id}")
-            return
-
-        existing_ids = {item["id"] for item in response.data}
+        existing_ids = {item["id"] for item in response.data} if response.data else set()
         to_delete = list(existing_ids - set(current_product_ids))
 
         if not to_delete:
-            print("No products to delete.")
+            logger.info(f"No stale products to delete for shop {shop_id}")
             return
 
-        print(f"Removing {len(to_delete)} products deleted from shop...")
+        logger.info(f"Removing {len(to_delete)} stale products for shop {shop_id}")
 
-        for i in range(0, len(to_delete), 100):
-            batch = to_delete[i:i+100]
+        # Delete in parallel batches
+        def delete_batch(batch):
             supabase.table("products").delete().in_("id", batch).execute()
-    except Exception as e:
-        print(f"Error deleting stale products: {e}")
 
+        batch_size = 100
+        with ThreadPoolExecutor(max_workers=4) as executor:
+            futures = []
+            for i in range(0, len(to_delete), batch_size):
+                batch = to_delete[i:i + batch_size]
+                futures.append(executor.submit(delete_batch, batch))
+            
+            for future in as_completed(futures):
+                try:
+                    future.result()
+                except Exception as e:
+                    logger.error(f"Error deleting batch: {e}")
+
+    except Exception as e:
+        logger.error(f"Error deleting stale products: {e}")
+
+# ---------------- Main Execution ---------------- #
+def main():
+    USER_UUID = "691aedc4-1055-4b57-adb7-7480febba4c8"
+    json_files = get_json_files("output")
+    
+    if not json_files:
+        logger.warning("No product JSON files found in output folder")
+        return
+
+    logger.info(f"Found {len(json_files)} product files to process")
+
+    # Process files in parallel with dynamic worker count
+    num_workers = min(cpu_count() * 2, len(json_files))
+    total_stats = {}
+
+    with ThreadPoolExecutor(max_workers=num_workers) as executor:
+        futures = {executor.submit(process_products_file, file, USER_UUID): file for file in json_files}
+        
+        for future in as_completed(futures):
+            file = futures[future]
+            try:
+                stats = future.result()
+                if stats:
+                    logger.info(f"Completed {file}: {stats}")
+                    for k, v in stats.items():
+                        total_stats[k] = total_stats.get(k, 0) + v
+                else:
+                    logger.warning(f"File {file} returned no stats")
+            except Exception as e:
+                logger.error(f"Error processing {file}: {e}")
+
+    logger.info("Processing complete. Total records processed:")
+    for table, count in total_stats.items():
+        logger.info(f"{table}: {count}")
 
 if __name__ == "__main__":
-    USER_UUID = "691aedc4-1055-4b57-adb7-7480febba4c8"
-    for json_file in get_json_files("output"):
-        print(f"Processing file: {json_file}")
-        process_products_file(json_file, USER_UUID)
+    main()
