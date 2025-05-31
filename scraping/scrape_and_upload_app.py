@@ -134,48 +134,37 @@ class SupabaseMaterializedViewRefresher:
             return False
 
     async def refresh_materialized_view(self, method: str = 'direct') -> bool:
-        """
-        Refresh the materialized view using either:
-        - 'direct': Calls refresh_products_view() function immediately
-        - 'pending': Inserts into pending_view_refreshes for cron-based refresh
-        """
-        if not self.supabase_url or not self.supabase_key:
-            print("WARNING: Supabase credentials not set - cannot refresh view")
-            return False
-
-        try:
-            async with httpx.AsyncClient() as client:
+        for attempt in range(3):
+            try:
                 if method == 'direct':
-                    # Directly call the refresh function
-                    response = await client.post(
-                        f"{self.supabase_url}/rest/v1/rpc/refresh_products_view",
-                        headers={
-                            "apikey": self.supabase_key,
-                            "Authorization": f"Bearer {self.supabase_key}",
-                            "Content-Type": "application/json"
-                        },
+                    response = await self.client.post(
+                        "/rest/v1/rpc/refresh_products_view",
                         json={}
                     )
                 else:
-                    # Use the pending refreshes table
-                    response = await client.post(
-                        f"{self.supabase_url}/rest/v1/pending_view_refreshes",
-                        headers={
-                            "apikey": self.supabase_key,
-                            "Authorization": f"Bearer {self.supabase_key}",
-                            "Content-Type": "application/json"
-                        },
-                        json={}  # Using DEFAULT VALUES
+                    response = await self.client.post(
+                        "/rest/v1/pending_view_refreshes",
+                        json={}
                     )
-
                 response.raise_for_status()
-                print(f"Materialized view refresh triggered via {method} method")
                 return True
-        except httpx.HTTPStatusError as e:
-            print(f"HTTP error refreshing view: {e.response.status_code} - {e.response.text}")
-        except Exception as e:
-            print(f"Failed to refresh materialized view: {e}")
-        return False
+            except httpx.HTTPStatusError as e:
+                if attempt == 2:
+                    return False
+                await asyncio.sleep(2 ** attempt)
+            except Exception as e:
+                return False
+
+    async def verify_refresh(self) -> Optional[str]:
+        try:
+            response = await self.client.post(
+                "/rest/v1/rpc/get_last_refresh_time",
+                json={}
+            )
+            response.raise_for_status()
+            return response.json()
+        except Exception:
+            return None
 
     async def verify_refresh(self) -> Optional[str]:
         """Check when the view was last refreshed."""
