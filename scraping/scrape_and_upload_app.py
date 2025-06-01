@@ -13,34 +13,43 @@ class SupabaseMaterializedViewRefresher:
     def __init__(self, config_path: str = "config/pipeline.json"):
         self.supabase_url = os.getenv("SUPABASE_URL")
         self.supabase_key = os.getenv("SUPABASE_SERVICE_ROLE_KEY")
+        self._setup_logging()  # Initialize logger first
         self.config = self._load_config(config_path)
-        self._setup_logging()
-        self.config["timeouts"] = {
+        # Ensure required config values exist
+        self.config.setdefault("timeouts", {
             "default": 900,
             "get_shopify_products.py": 1800,
             "upload_shopify_products.py": 1200
-        }
-        self.config["max_concurrent_scripts"] = 2
+        })
+        self.config.setdefault("max_concurrent_scripts", 2)
     
-    async def __aenter__(self):
-        self.client = httpx.AsyncClient(
-            timeout=httpx.Timeout(30.0),
-            limits=httpx.Limits(max_connections=5),
-            base_url=self.supabase_url,
-            headers={
-                "apikey": self.supabase_key,
-                "Authorization": f"Bearer {self.supabase_key}",
-                "Content-Type": "application/json"
-            }
+    def _setup_logging(self):
+        """Initialize logging configuration."""
+        self.logger = logging.getLogger("SupabaseRefresher")
+        self.logger.setLevel(logging.INFO)
+        
+        # Create output directory if it doesn't exist
+        os.makedirs('output', exist_ok=True)
+        
+        file_handler = RotatingFileHandler(
+            'output/pipeline.log',
+            maxBytes=5*1024*1024,
+            backupCount=3
         )
-        await self.client.__aenter__()
-        return self
+        file_formatter = logging.Formatter(
+            '%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+        )
+        file_handler.setFormatter(file_formatter)
+        
+        console_handler = logging.StreamHandler()
+        console_formatter = logging.Formatter('%(levelname)s - %(message)s')
+        console_handler.setFormatter(console_formatter)
 
-    async def __aexit__(self, exc_type, exc_val, exc_tb):
-        if self.client:
-            await self.client.__aexit__(exc_type, exc_val, exc_tb)
+        self.logger.addHandler(file_handler)
+        self.logger.addHandler(console_handler)
 
     def _load_config(self, path: str) -> Dict:
+        """Load pipeline configuration with defaults."""
         default_config = {
             "scripts": [
                 'upload_shops.py',
@@ -57,13 +66,35 @@ class SupabaseMaterializedViewRefresher:
                 "upload_shopify_products.py"
             ]
         }
-        try:
-            with open(path) as f:
-                return {**default_config, **json.load(f)}
-        except (FileNotFoundError, json.JSONDecodeError) as e:
-            self.logger.warning(f"Using default config: {str(e)}")
-            return default_config
 
+        try:
+            # First try to load the config file
+            with open(path, 'r') as f:
+                user_config = json.load(f)
+                # Merge user config with defaults (user values take precedence)
+                merged_config = default_config.copy()
+                merged_config.update(user_config)
+                return merged_config
+                
+        except FileNotFoundError:
+            # If file doesn't exist, create it with defaults
+            try:
+                os.makedirs(os.path.dirname(path), exist_ok=True)
+                with open(path, 'w') as f:
+                    json.dump(default_config, f, indent=2)
+                self.logger.info(f"Created default config file at {path}")
+                return default_config
+            except Exception as e:
+                self.logger.warning(f"Could not create config file: {e}")
+                return default_config
+                
+        except json.JSONDecodeError as e:
+            self.logger.warning(f"Invalid JSON in config file: {e}")
+            return default_config
+        except Exception as e:
+            self.logger.warning(f"Error loading config: {e}")
+            return default_config
+    
     def _setup_logging(self):
         self.logger = logging.getLogger("SupabaseRefresher")
         self.logger.setLevel(logging.INFO)

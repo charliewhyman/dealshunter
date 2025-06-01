@@ -1,0 +1,22 @@
+{
+  "scripts": [
+    "upload_shops.py",
+    "get_shopify_collections.py",
+    "get_shopify_products.py",
+    "get_shopify_collections_to_products.py",
+    "upload_shopify_collections.py",
+    "upload_shopify_products.py",
+    "upload_shopify_collections_to_products.py"
+  ],
+  "timeouts": {
+    "default": 900,
+    "get_shopify_products.py": 1800,
+    "upload_shopify_products.py": 1200
+  },
+  "critical_scripts": [
+    "upload_shops.py",
+    "get_shopify_products.py",
+    "upload_shopify_products.py"
+  ],
+  "max_concurrent_scripts": 2
+}
