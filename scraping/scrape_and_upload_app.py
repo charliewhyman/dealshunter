@@ -172,17 +172,64 @@ class SupabaseMaterializedViewRefresher:
         except Exception as e:
             self.logger.error(f"Error executing {script_name}: {str(e)}")
             return False
+    
+    async def log_refresh_start(self, method: str = 'direct') -> Optional[int]:
+        """Log the start of a refresh operation and return the refresh_id."""
+        try:
+            response = await self.client.post(
+                "/rest/v1/view_refresh_history",
+                json={
+                    "start_time": datetime.datetime.now(datetime.timezone.utc).isoformat(),
+                    "refresh_method": method
+                }
+            )
+            response.raise_for_status()
+            result = response.json()
+            if result and len(result) > 0:
+                refresh_id = result[0].get('refresh_id')
+                self.logger.info(f"Started refresh tracking with ID: {refresh_id}")
+                return refresh_id
+            return None
+        except Exception as e:
+            self.logger.warning(f"Failed to log refresh start: {e}")
+            return None
+    
+    async def log_refresh_end(self, refresh_id: int, rows_affected: Optional[int] = None, success: bool = True):
+        """Log the end of a refresh operation."""
+        try:
+            update_data = {
+                "end_time": datetime.datetime.now(datetime.timezone.utc).isoformat()
+            }
+            if rows_affected is not None:
+                update_data["rows_affected"] = rows_affected
+            
+            response = await self.client.patch(
+                f"/rest/v1/view_refresh_history?refresh_id=eq.{refresh_id}",
+                json=update_data
+            )
+            response.raise_for_status()
+            status = "completed" if success else "failed"
+            self.logger.info(f"Refresh {refresh_id} {status}")
+        except Exception as e:
+            self.logger.warning(f"Failed to log refresh end: {e}")
         
     async def should_refresh_view(self, threshold_minutes: int = 30) -> bool:
         """Check if view needs refresh based on last refresh time."""
         try:
-            last_refresh = await self.verify_refresh()
-            if not last_refresh:
-                self.logger.info("No last refresh time found - refresh needed")
+            # Get the most recent successful refresh
+            response = await self.client.get(
+                "/rest/v1/view_refresh_history?end_time=not.is.null&order=end_time.desc&limit=1"
+            )
+            response.raise_for_status()
+            result = response.json()
+            
+            if not result:
+                self.logger.info("No previous refresh found - refresh needed")
                 return True
                 
-            last_refresh_time = datetime.fromisoformat(last_refresh)
-            time_since_refresh = datetime.now(datetime.timezone.utc) - last_refresh_time
+            last_refresh_str = result[0]['end_time']
+            last_refresh_time = datetime.datetime.fromisoformat(last_refresh_str.replace('Z', '+00:00'))
+            time_since_refresh = datetime.datetime.now(datetime.timezone.utc) - last_refresh_time
             minutes_since = time_since_refresh.total_seconds() / 60
             
             if minutes_since < threshold_minutes:
@@ -202,42 +249,57 @@ class SupabaseMaterializedViewRefresher:
             return True
 
     async def refresh_materialized_view(self, method: str = 'direct') -> bool:
+        """Refresh the materialized view with proper logging."""
+        refresh_id = await self.log_refresh_start(method)
+        
         for attempt in range(3):
             try:
                 if method == 'direct':
+                    # Direct refresh via RPC function
                     response = await self.client.post(
-                        "/rest/v1/rpc/refresh_products_view",
+                        "/rest/v1/rpc/refresh_products_with_details",
                         json={}
                     )
                 else:
-                    response = await self.client.post(
-                        "/rest/v1/pending_view_refreshes",
-                        json={}
-                    )
+                    # Alternative method - you might need to implement this differently
+                    # based on your specific refresh mechanism
+                    self.logger.warning("Non-direct refresh method not implemented")
+                    return False
+                    
                 response.raise_for_status()
                 self.logger.info("Materialized view refresh successful")
+                
+                # Log successful completion
+                if refresh_id:
+                    await self.log_refresh_end(refresh_id, success=True)
+                
                 return True
+                
             except httpx.HTTPStatusError as e:
                 if attempt == 2:
                     self.logger.error(f"Failed to refresh view after 3 attempts: {e}")
+                    if refresh_id:
+                        await self.log_refresh_end(refresh_id, success=False)
                     return False
                 wait_time = 2 ** attempt
                 self.logger.warning(f"View refresh failed (attempt {attempt + 1}), retrying in {wait_time} seconds...")
                 await asyncio.sleep(wait_time)
             except Exception as e:
                 self.logger.error(f"Error refreshing view: {e}")
+                if refresh_id:
+                    await self.log_refresh_end(refresh_id, success=False)
                 return False
 
-    async def verify_refresh(self) -> Optional[str]:
+    async def get_refresh_history(self, limit: int = 10) -> Optional[list]:
+        """Get recent refresh history for monitoring."""
         try:
-            response = await self.client.post(
-                "/rest/v1/rpc/get_last_refresh_time",
-                json={}
+            response = await self.client.get(
+                f"/rest/v1/view_refresh_history?order=start_time.desc&limit={limit}"
             )
             response.raise_for_status()
             return response.json()
         except Exception as e:
-            self.logger.warning(f"Couldn't verify refresh time: {e}")
+            self.logger.warning(f"Couldn't fetch refresh history: {e}")
             return None
 
     async def run_all_scripts(self, refresh_method: str = 'direct') -> bool:
@@ -274,9 +336,11 @@ class SupabaseMaterializedViewRefresher:
             if await self.should_refresh_view(threshold_minutes=30):
                 refresh_success = await self.refresh_materialized_view(method=refresh_method)
                 if refresh_success:
-                    refresh_time = await self.verify_refresh()
-                    if refresh_time:
-                        self.logger.info(f"View refreshed at: {refresh_time}")
+                    # Get recent refresh history for logging
+                    history = await self.get_refresh_history(limit=1)
+                    if history and len(history) > 0:
+                        last_refresh = history[0]
+                        self.logger.info(f"View refreshed at: {last_refresh['end_time']}")
                 return refresh_success
             return True
         return True
