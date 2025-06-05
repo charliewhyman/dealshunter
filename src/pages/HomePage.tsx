@@ -48,11 +48,17 @@ export function HomePage() {
       : [...PRICE_RANGE];
   });
 
+  const [sizeGroups, setSizeGroups] = useState<string[]>([]);
+  const [selectedSizeGroups, setSelectedSizeGroups] = useState<string[]>(
+    JSON.parse(localStorage.getItem('selectedSizeGroups') || '[]')
+  );
+
   // Add a ref to track current request to prevent race conditions
   const currentRequestRef = useRef<AbortController | null>(null);
 
   interface FilterOptions {
     selectedShopName: string[];
+    selectedSizeGroups: string[];
     inStockOnly: boolean;
     onSaleOnly: boolean;
     searchQuery: string;
@@ -102,6 +108,10 @@ export function HomePage() {
           query = query
             .gte('min_price', filters.selectedPriceRange[0])
             .lte('min_price', filters.selectedPriceRange[1]);
+        }
+
+        if (filters.selectedSizeGroups.length > 0) {
+          query = query.in('size_group', filters.selectedSizeGroups);
         }
 
         // Updated sorting logic
@@ -157,6 +167,19 @@ export function HomePage() {
       }
     }
     fetchShopNames();
+
+    async function fetchSizeGroups() {
+      const { data } = await supabase
+        .from('products_with_details')
+        .select('size_groups');
+        
+      if (data) {
+        const allSizes = data.flatMap(p => p.size_groups || []);
+        const uniqueSizes = [...new Set(allSizes)].sort();
+        setSizeGroups(uniqueSizes);
+      }
+    }
+    fetchSizeGroups();
   }, []);
 
   // Create a stable reference for the debounced function
@@ -174,6 +197,7 @@ export function HomePage() {
   useEffect(() => {
     const filters: FilterOptions = {
       selectedShopName,
+      selectedSizeGroups,
       inStockOnly,
       onSaleOnly,
       searchQuery,
@@ -189,7 +213,7 @@ export function HomePage() {
       // This is a pagination request
       debouncedFetchProducts(filters, page, sortOrder);
     }
-  }, [selectedShopName, inStockOnly, onSaleOnly, searchQuery, selectedPriceRange, sortOrder, page, fetchFilteredProducts, debouncedFetchProducts]);
+  }, [selectedShopName, inStockOnly, onSaleOnly, searchQuery, selectedPriceRange, sortOrder, page, fetchFilteredProducts, debouncedFetchProducts, selectedSizeGroups]);
 
   // Separate effect for fetching shop names (only once)
   useEffect(() => {
@@ -225,6 +249,10 @@ export function HomePage() {
   useEffect(() => {
     localStorage.setItem('selectedPriceRange', JSON.stringify(selectedPriceRange));
   }, [selectedPriceRange]);
+
+  useEffect(() => {
+    localStorage.setItem('selectedSizeGroups', JSON.stringify(selectedSizeGroups));
+  }, [selectedSizeGroups]);
 
   // Reset page when filters change
   useEffect(() => {
@@ -475,6 +503,62 @@ export function HomePage() {
                     />
                   </div>
                 </div>
+
+                <div>
+                  <h3 className="text-xs font-medium text-gray-700 dark:text-gray-300 mb-2 sm:text-sm sm:mb-3">
+                    Sizes {selectedSizeGroups.length > 0 && (
+                      <span className="ml-1 text-xs text-gray-500 dark:text-gray-400">
+                        ({selectedSizeGroups.length} selected)
+                      </span>
+                    )}
+                  </h3>
+                  <Select
+                    isMulti
+                    options={sizeGroups.map(group => ({ value: group, label: group }))}
+                    value={selectedSizeGroups.map(group => ({ value: group, label: group }))}
+                    onChange={(selected) => setSelectedSizeGroups(selected ? selected.map(option => option.value) : [])}
+                    className="basic-multi-select w-full"
+                    classNamePrefix="select"
+                    placeholder="All sizes"
+                    isClearable={false}
+                    components={{
+                      DropdownIndicator: () => null,
+                      IndicatorSeparator: () => null,
+                    }}
+                    styles={{
+                      control: (provided) => ({
+                        ...provided,
+                        minHeight: '36px',
+                        borderRadius: '0.375rem',
+                        borderColor: '#d1d5db',
+                        backgroundColor: 'transparent',
+                        '&:hover': {
+                          borderColor: '#9ca3af',
+                        },
+                      }),
+                      multiValue: (base) => ({
+                        ...base,
+                        backgroundColor: '#e5e7eb',
+                        borderRadius: '0.375rem',
+                      }),
+                      multiValueLabel: (base) => ({
+                        ...base,
+                        color: '#111827',
+                        padding: '0.25rem 0.5rem',
+                        fontSize: '0.875rem',
+                      }),
+                      multiValueRemove: (base) => ({
+                        ...base,
+                        borderRadius: '0 0.375rem 0.375rem 0',
+                        color: '#6b7280',
+                        ':hover': {
+                          backgroundColor: '#d1d5db',
+                          color: '#ef4444',
+                        },
+                      })
+                    }}
+                  />
+                </div>
                 
                 {/* Availability */}
                 <div>
@@ -550,6 +634,25 @@ export function HomePage() {
                             </button>
                           </div>
                         )}
+
+                        {selectedSizeGroups.length > 0 && (
+                          <>
+                            {selectedSizeGroups.map(size => (
+                              <div 
+                                key={size}
+                                className="inline-flex items-center rounded-md bg-blue-50 dark:bg-blue-900/30 px-1.5 py-0.5 text-xs font-medium text-blue-700 dark:text-blue-200 ring-1 ring-inset ring-blue-700/10 dark:ring-blue-500/30 sm:px-2 sm:py-1"
+                              >
+                                {size}
+                                <button 
+                                  onClick={() => setSelectedSizeGroups(prev => prev.filter(s => s !== size))}
+                                  className="ml-1 inline-flex text-blue-500 hover:text-blue-700 dark:text-blue-300 dark:hover:text-blue-100"
+                                >
+                                  <X className="h-2.5 w-2.5 sm:h-3 sm:w-3" />
+                                </button>
+                              </div>
+                            ))}
+                          </>
+                        )}
                         
                         {inStockOnly !== false && (
                           <div className="inline-flex items-center rounded-md bg-blue-50 dark:bg-blue-900/30 px-1.5 py-0.5 text-xs font-medium text-blue-700 dark:text-blue-200 ring-1 ring-inset ring-blue-700/10 dark:ring-blue-500/30 sm:px-2 sm:py-1">
@@ -581,6 +684,7 @@ export function HomePage() {
                           setSelectedShopName([]);
                           setInStockOnly(true);
                           setOnSaleOnly(false);
+                          setSelectedSizeGroups([]);
                           setSelectedPriceRange([...PRICE_RANGE]);
                         }}
                         className="text-xs font-medium text-blue-600 hover:text-blue-800 dark:text-blue-400 dark:hover:text-blue-300 w-full text-left sm:text-sm"
