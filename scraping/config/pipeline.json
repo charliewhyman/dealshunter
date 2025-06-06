@@ -6,7 +6,9 @@
       "get_shopify_collections_to_products.py",
       "upload_shopify_collections.py",
       "upload_shopify_products.py",
-      "upload_shopify_collections_to_products.py",
+      "upload_shopify_collections_to_products.py"
+  ],
+  "post_refresh_scripts": [
       "add_size_groups_to_variants.py"
   ],
   "critical_scripts": [

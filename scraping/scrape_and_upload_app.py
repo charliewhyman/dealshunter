@@ -172,6 +172,28 @@ class SupabaseMaterializedViewRefresher:
         except Exception as e:
             self.logger.error(f"Error executing {script_name}: {str(e)}")
             return False
+        
+    async def run_post_refresh_scripts(self) -> bool:
+        """Run scripts that should execute after the view refresh."""
+        if "post_refresh_scripts" not in self.config:
+            return True
+            
+        base_path = os.path.dirname(__file__)
+        critical_failure = False
+        semaphore = asyncio.Semaphore(self.config["max_concurrent_scripts"])
+
+        async def run_script(script: str) -> bool:
+            nonlocal critical_failure
+            async with semaphore:
+                script_path = os.path.join(base_path, script)
+                success = await self.execute_script(script_path)
+                if not success and script in self.config.get("critical_scripts", []):
+                    critical_failure = True
+                return success
+
+        tasks = [run_script(script) for script in self.config["post_refresh_scripts"]]
+        results = await asyncio.gather(*tasks, return_exceptions=True)
+        return not critical_failure
     
     async def log_refresh_start(self, method: str = 'direct') -> Optional[int]:
         """Log the start of a refresh operation and return the refresh_id."""
@@ -324,6 +346,7 @@ class SupabaseMaterializedViewRefresher:
                     critical_failure = True
                 return success
 
+        # Run main scripts
         tasks = [run_script(script) for script in self.config["scripts"]]
         results = await asyncio.gather(*tasks, return_exceptions=True)
 
@@ -331,6 +354,7 @@ class SupabaseMaterializedViewRefresher:
             self.logger.error("Critical script failed - aborting pipeline")
             return False
 
+        refresh_success = True
         if supabase_reachable:
             # Only refresh if needed
             if await self.should_refresh_view(threshold_minutes=30):
@@ -341,9 +365,13 @@ class SupabaseMaterializedViewRefresher:
                     if history and len(history) > 0:
                         last_refresh = history[0]
                         self.logger.info(f"View refreshed at: {last_refresh['end_time']}")
-                return refresh_success
-            return True
-        return True
+
+        # Run post-refresh scripts only if everything succeeded so far
+        if refresh_success and not critical_failure:
+            post_refresh_success = await self.run_post_refresh_scripts()
+            return post_refresh_success
+        
+        return refresh_success and not critical_failure
 
 async def main():
     try:
