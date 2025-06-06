@@ -158,14 +158,12 @@ export function HomePage() {
   useEffect(() => {
     async function fetchShopNames() {
       const { data, error } = await supabase
-        .from('products_with_details')
+        .from('distinct_shop_names')
         .select('shop_name')
         .order('shop_name', { ascending: true });
       
       if (data && !error) {
-        // Get unique shop names
-        const uniqueShopNames = [...new Set(data.map(item => item.shop_name).filter(Boolean))];
-        setShopNames(uniqueShopNames);
+        setShopNames(data.map(item => item.shop_name).filter(Boolean));
       }
     }
     fetchShopNames();
