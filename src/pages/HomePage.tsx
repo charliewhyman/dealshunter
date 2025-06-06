@@ -560,35 +560,35 @@ export function HomePage() {
                   />
                 </div>
                 
-                {/* Availability */}
+                {/* Combined Filters Section */}
                 <div>
-                  <h3 className="text-xs font-medium text-gray-700 dark:text-gray-300 mb-2 sm:text-sm sm:mb-3">Availability</h3>
-                  <div className="space-y-2">
-                    <label className="flex items-center gap-2">
-                      <input
-                        type="checkbox"
-                        checked={inStockOnly}
-                        onChange={(e) => setInStockOnly(e.target.checked)}
-                        className="h-3.5 w-3.5 text-blue-600 border-gray-300 rounded focus:ring-blue-500 dark:border-gray-600 dark:bg-gray-700 dark:checked:bg-blue-600 sm:h-4 sm:w-4"
-                      />
-                      <span className="text-xs text-gray-700 dark:text-gray-300 sm:text-sm">In Stock Only</span>
-                    </label>
-                  </div>
-                </div>
-  
-                {/* Deals */}
-                <div>
-                  <h3 className="text-xs font-medium text-gray-700 dark:text-gray-300 mb-2 sm:text-sm sm:mb-3">Deals</h3>
-                  <div className="space-y-2">
-                    <label className="flex items-center gap-2">
-                      <input
-                        type="checkbox"
-                        checked={onSaleOnly}
-                        onChange={(e) => setOnSaleOnly(e.target.checked)}
-                        className="h-3.5 w-3.5 text-blue-600 border-gray-300 rounded focus:ring-blue-500 dark:border-gray-600 dark:bg-gray-700 dark:checked:bg-blue-600 sm:h-4 sm:w-4"
-                      />
-                      <span className="text-xs text-gray-700 dark:text-gray-300 sm:text-sm">On Sale</span>
-                    </label>
+                  <h3 className="text-xs font-medium text-gray-700 dark:text-gray-300 mb-2 sm:text-sm sm:mb-3">Filters</h3>
+                  <div className="flex gap-4 sm:gap-6">
+                    {/* Availability */}
+                    <div className="space-y-2">
+                      <label className="flex items-center gap-2">
+                        <input
+                          type="checkbox"
+                          checked={inStockOnly}
+                          onChange={(e) => setInStockOnly(e.target.checked)}
+                          className="h-3.5 w-3.5 text-blue-600 border-gray-300 rounded focus:ring-blue-500 dark:border-gray-600 dark:bg-gray-700 dark:checked:bg-blue-600 sm:h-4 sm:w-4"
+                        />
+                        <span className="text-xs text-gray-700 dark:text-gray-300 sm:text-sm">In Stock</span>
+                      </label>
+                    </div>
+
+                    {/* Deals */}
+                    <div className="space-y-2">
+                      <label className="flex items-center gap-2">
+                        <input
+                          type="checkbox"
+                          checked={onSaleOnly}
+                          onChange={(e) => setOnSaleOnly(e.target.checked)}
+                          className="h-3.5 w-3.5 text-blue-600 border-gray-300 rounded focus:ring-blue-500 dark:border-gray-600 dark:bg-gray-700 dark:checked:bg-blue-600 sm:h-4 sm:w-4"
+                        />
+                        <span className="text-xs text-gray-700 dark:text-gray-300 sm:text-sm">On Sale</span>
+                      </label>
+                    </div>
                   </div>
                 </div>
   
@@ -656,7 +656,7 @@ export function HomePage() {
                         
                         {inStockOnly !== false && (
                           <div className="inline-flex items-center rounded-md bg-blue-50 dark:bg-blue-900/30 px-1.5 py-0.5 text-xs font-medium text-blue-700 dark:text-blue-200 ring-1 ring-inset ring-blue-700/10 dark:ring-blue-500/30 sm:px-2 sm:py-1">
-                            In Stock Only
+                            In Stock
                             <button 
                               onClick={() => setInStockOnly(false)}
                               className="ml-1 inline-flex text-blue-500 hover:text-blue-700 dark:text-blue-300 dark:hover:text-blue-100"
@@ -668,7 +668,7 @@ export function HomePage() {
                         
                         {onSaleOnly !== false && (
                           <div className="inline-flex items-center rounded-md bg-blue-50 dark:bg-blue-900/30 px-1.5 py-0.5 text-xs font-medium text-blue-700 dark:text-blue-200 ring-1 ring-inset ring-blue-700/10 dark:ring-blue-500/30 sm:px-2 sm:py-1">
-                            On Sale Only
+                            On Sale
                             <button 
                               onClick={() => setOnSaleOnly(false)}
                               className="ml-1 inline-flex text-blue-500 hover:text-blue-700 dark:text-blue-300 dark:hover:text-blue-100"
