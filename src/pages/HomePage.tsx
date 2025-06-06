@@ -3,12 +3,12 @@ import { ProductWithDetails } from '../types';
 import { supabase } from '../lib/supabase';
 import { Loader2, ChevronDown, ChevronUp, X } from 'lucide-react';
 import { ProductCard } from '../components/ProductCard';
-import Select, { SingleValue } from 'react-select';
-import { MultiValue } from 'react-select';
+import { SingleValue } from 'react-select';
 import { Header } from '../components/Header';
 import { useLocation, useNavigate } from 'react-router-dom';
 import _ from 'lodash';
 import { Range } from 'react-range';
+import { MultiSelectDropdown, SingleSelectDropdown } from '../components/Dropdowns';
 
 const ITEMS_PER_PAGE = 10;
 
@@ -55,6 +55,8 @@ export function HomePage() {
 
   // Add a ref to track current request to prevent race conditions
   const currentRequestRef = useRef<AbortController | null>(null);
+  
+
 
   interface FilterOptions {
     selectedShopName: string[];
@@ -294,10 +296,6 @@ export function HomePage() {
     { value: 'discount_desc', label: 'Discount: High to Low' },
   ];
 
-  const handleShopChange = (selectedOptions: MultiValue<{ value: string; label: string }>) => {
-    const selectedValues = selectedOptions ? selectedOptions.map((option) => option.value) : [];
-    setSelectedShopName(selectedValues);
-  };
 
   const shopOptions = shopNames.map((shopName) => ({
     value: shopName,
@@ -407,51 +405,11 @@ export function HomePage() {
                       </span>
                     )}
                   </h3>
-                  <Select
-                    isMulti
+                  <MultiSelectDropdown
                     options={shopOptions}
-                    value={shopOptions.filter((option) => selectedShopName.includes(option.value))}
-                    onChange={handleShopChange}
-                    className="basic-multi-select w-full"
-                    classNamePrefix="select"
+                    selected={selectedShopName}
+                    onChange={setSelectedShopName}
                     placeholder="All shops"
-                    isClearable={false}
-                    components={{
-                      DropdownIndicator: () => null,
-                      IndicatorSeparator: () => null,
-                    }}
-                    styles={{
-                      control: (provided) => ({
-                        ...provided,
-                        minHeight: '36px',
-                        borderRadius: '0.375rem',
-                        borderColor: '#d1d5db',
-                        backgroundColor: 'transparent',
-                        '&:hover': {
-                          borderColor: '#9ca3af',
-                        },
-                      }),
-                      multiValue: (base) => ({
-                        ...base,
-                        backgroundColor: '#e5e7eb',
-                        borderRadius: '0.375rem',
-                      }),
-                      multiValueLabel: (base) => ({
-                        ...base,
-                        color: '#111827',
-                        padding: '0.25rem 0.5rem',
-                        fontSize: '0.875rem',
-                      }),
-                      multiValueRemove: (base) => ({
-                        ...base,
-                        borderRadius: '0 0.375rem 0.375rem 0',
-                        color: '#6b7280',
-                        ':hover': {
-                          backgroundColor: '#d1d5db',
-                          color: '#ef4444',
-                        },
-                      })
-                    }}
                   />
                 </div>
   
@@ -504,6 +462,7 @@ export function HomePage() {
                   </div>
                 </div>
 
+                {/* Size Groups Filter */} 
                 <div>
                   <h3 className="text-xs font-medium text-gray-700 dark:text-gray-300 mb-2 sm:text-sm sm:mb-3">
                     Sizes {selectedSizeGroups.length > 0 && (
@@ -512,51 +471,11 @@ export function HomePage() {
                       </span>
                     )}
                   </h3>
-                  <Select
-                    isMulti
+                  <MultiSelectDropdown
                     options={sizeGroups.map(group => ({ value: group, label: group }))}
-                    value={selectedSizeGroups.map(group => ({ value: group, label: group }))}
-                    onChange={(selected) => setSelectedSizeGroups(selected ? selected.map(option => option.value) : [])}
-                    className="basic-multi-select w-full"
-                    classNamePrefix="select"
+                    selected={selectedSizeGroups}
+                    onChange={setSelectedSizeGroups}
                     placeholder="All sizes"
-                    isClearable={false}
-                    components={{
-                      DropdownIndicator: () => null,
-                      IndicatorSeparator: () => null,
-                    }}
-                    styles={{
-                      control: (provided) => ({
-                        ...provided,
-                        minHeight: '36px',
-                        borderRadius: '0.375rem',
-                        borderColor: '#d1d5db',
-                        backgroundColor: 'transparent',
-                        '&:hover': {
-                          borderColor: '#9ca3af',
-                        },
-                      }),
-                      multiValue: (base) => ({
-                        ...base,
-                        backgroundColor: '#e5e7eb',
-                        borderRadius: '0.375rem',
-                      }),
-                      multiValueLabel: (base) => ({
-                        ...base,
-                        color: '#111827',
-                        padding: '0.25rem 0.5rem',
-                        fontSize: '0.875rem',
-                      }),
-                      multiValueRemove: (base) => ({
-                        ...base,
-                        borderRadius: '0 0.375rem 0.375rem 0',
-                        color: '#6b7280',
-                        ':hover': {
-                          backgroundColor: '#d1d5db',
-                          color: '#ef4444',
-                        },
-                      })
-                    }}
                   />
                 </div>
                 
@@ -704,78 +623,18 @@ export function HomePage() {
             <div className="mb-3 flex justify-end sm:mb-4">
               <div className="w-40 sm:w-48">
                 <label className="sr-only">Sort By</label>
-                <Select
+                <SingleSelectDropdown
                   options={sortOptions}
-                  value={sortOptions.find((option) => option.value === sortOrder)}
-                  onChange={handleSortChange}
-                  className="react-select-container w-full"
-                  classNamePrefix="react-select"
+                  selected={sortOrder}
+                  onChange={(value) => handleSortChange({
+                    value,
+                    label: ''
+                  })}
                   placeholder="Featured"
-                  isSearchable={false}
-                  styles={{
-                    control: (provided) => ({
-                      ...provided,
-                      minHeight: '34px',
-                      borderRadius: '0.375rem',
-                      borderColor: '#d1d5db',
-                      backgroundColor: 'transparent',
-                      color: 'var(--text-color)',
-                      '&:hover': {
-                        borderColor: '#9ca3af',
-                      },
-                    }),
-                    singleValue: (provided) => ({
-                      ...provided,
-                      color: 'var(--text-color)',
-                      fontSize: '0.875rem',
-                    }),
-                    input: (provided) => ({
-                      ...provided,
-                      color: 'var(--text-color)',
-                      fontSize: '0.875rem',
-                    }),
-                    menu: (provided) => ({
-                      ...provided,
-                      backgroundColor: 'var(--bg-color)',
-                      borderColor: '#d1d5db',
-                      borderWidth: '1px',
-                      borderRadius: '0.375rem',
-                      boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1)',
-                      zIndex: 50,
-                    }),
-                    option: (provided, state) => ({
-                      ...provided,
-                      fontSize: '0.875rem',
-                      backgroundColor: state.isFocused
-                        ? state.isSelected 
-                          ? '#3b82f6'
-                          : '#e2e8f0'
-                        : 'transparent',
-                      color: state.isFocused
-                        ? state.isSelected
-                          ? 'white'
-                          : 'var(--text-color)'
-                        : 'var(--text-color)',
-                      ':active': {
-                        backgroundColor: state.isSelected ? '#3b82f6' : '#e2e8f0',
-                      },
-                    }),
-                    dropdownIndicator: (provided) => ({
-                      ...provided,
-                      color: '#64748b',
-                      padding: '4px',
-                      ':hover': {
-                        color: '#475569',
-                      },
-                    }),
-                    indicatorSeparator: (provided) => ({
-                      ...provided,
-                      backgroundColor: '#d1d5db',
-                    }),
-                  }}
                 />
               </div>
             </div>
+
   
             {/* Products List */}
             <div className="grid grid-cols-2 gap-x-3 gap-y-4 min-h-[400px] sm:grid-cols-3 sm:gap-x-4 sm:gap-y-6 lg:grid-cols-4 xl:grid-cols-5">
