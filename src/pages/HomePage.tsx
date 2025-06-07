@@ -48,10 +48,12 @@ export function HomePage() {
       : [...PRICE_RANGE];
   });
 
-  const [sizeGroups, setSizeGroups] = useState<string[]>([]);
   const [selectedSizeGroups, setSelectedSizeGroups] = useState<string[]>(
     JSON.parse(localStorage.getItem('selectedSizeGroups') || '[]')
   );
+
+  const [activeCategory, setActiveCategory] = useState('all');
+  const [allSizeData, setAllSizeData] = useState<{size_group: string, type: string}[]>([]);
 
   // Add a ref to track current request to prevent race conditions
   const currentRequestRef = useRef<AbortController | null>(null);
@@ -156,30 +158,28 @@ export function HomePage() {
 
   // Update shop names fetching to use the materialized view
   useEffect(() => {
-    async function fetchShopNames() {
-      const { data, error } = await supabase
+    async function fetchInitialData() {
+      // Fetch shop names
+      const { data: shopData, error: shopError } = await supabase
         .from('distinct_shop_names')
         .select('shop_name')
         .order('shop_name', { ascending: true });
       
-      if (data && !error) {
-        setShopNames(data.map(item => item.shop_name).filter(Boolean));
+      if (shopData && !shopError) {
+        setShopNames(shopData.map(item => item.shop_name).filter(Boolean));
+      }
+  
+      // Fetch size data
+      const { data: sizeData, error: sizeError } = await supabase
+        .from('distinct_size_groups_and_types')
+        .select('size_group, type');
+      
+      if (sizeData && !sizeError) {
+        setAllSizeData(sizeData);
       }
     }
-    fetchShopNames();
-
-    async function fetchSizeGroups() {
-      const { data } = await supabase
-        .from('products_with_details')
-        .select('size_groups');
-        
-      if (data) {
-        const allSizes = data.flatMap(p => p.size_groups || []);
-        const uniqueSizes = [...new Set(allSizes)].sort();
-        setSizeGroups(uniqueSizes);
-      }
-    }
-    fetchSizeGroups();
+    
+    fetchInitialData();
   }, []);
 
   // Create a stable reference for the debounced function
@@ -214,20 +214,6 @@ export function HomePage() {
       debouncedFetchProducts(filters, page, sortOrder);
     }
   }, [selectedShopName, inStockOnly, onSaleOnly, searchQuery, selectedPriceRange, sortOrder, page, fetchFilteredProducts, debouncedFetchProducts, selectedSizeGroups]);
-
-  // Separate effect for fetching shop names (only once)
-  useEffect(() => {
-    async function fetchShopNames() {
-      const { data, error } = await supabase
-        .from('distinct_shop_names')
-        .select('shop_name')
-        .order('shop_name', { ascending: true });
-      if (data && !error) {
-        setShopNames(data.map((item) => item.shop_name).filter(Boolean));
-      }
-    }
-    fetchShopNames();
-  }, []);
 
   // Local storage effects
   useEffect(() => {
@@ -340,6 +326,92 @@ export function HomePage() {
       setSelectedPriceRange([selectedPriceRange[0], newMax]);
     }
   };
+
+  // Handle size groups
+  
+  const getAvailableCategories = () => {
+    const uniqueTypes = Array.from(new Set(allSizeData.map(item => item.type)));
+    return uniqueTypes.filter(type => type !== null && type !== undefined);
+  };
+  
+  const getCurrentSizeOptions = (category: string) => {
+    // Filter size groups based on active category
+    const filteredSizes = category === 'all' 
+      ? allSizeData 
+      : allSizeData.filter(item => item.type === category);
+    
+    // Get unique size groups from the filtered data
+    const uniqueSizeGroups = Array.from(
+      new Set(filteredSizes.map(item => item.size_group))
+    ).filter(Boolean);
+    
+    return uniqueSizeGroups.map(size => ({
+      value: size,
+      label: size
+    }));
+  };
+
+  const SizeGroupsFilter = () => {
+    const availableCategories = getAvailableCategories();
+    const showCategoryTabs = availableCategories.length > 1;
+  
+    return (
+      <div>
+        <h3 className="text-xs font-medium text-gray-700 dark:text-gray-300 mb-2 sm:text-sm sm:mb-3">
+          Sizes {selectedSizeGroups.length > 0 && (
+            <span className="ml-1 text-xs text-gray-500 dark:text-gray-400">
+              ({selectedSizeGroups.length} selected)
+            </span>
+          )}
+        </h3>
+        
+        {/* Category Tabs - only show if we have multiple categories */}
+        {showCategoryTabs && (
+          <div className="flex flex-wrap gap-1 mb-3 border-b border-gray-200 dark:border-gray-600 pb-2">
+            <button 
+              className={`px-2 py-1 text-xs rounded ${
+                activeCategory === 'all' 
+                  ? 'bg-blue-100 text-blue-800 dark:bg-blue-900/50 dark:text-blue-200 font-medium' 
+                  : 'text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-700 dark:text-gray-300'
+              }`}
+              onClick={() => setActiveCategory('all')}
+            >
+              All
+            </button>
+            {availableCategories.map(category => (
+              <button 
+                key={category}
+                className={`px-2 py-1 text-xs rounded ${
+                  activeCategory === category 
+                    ? 'bg-blue-100 text-blue-800 dark:bg-blue-900/50 dark:text-blue-200 font-medium' 
+                    : 'text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-700 dark:text-gray-300'
+                }`}
+                onClick={() => setActiveCategory(category)}
+              >
+                {category}
+              </button>
+            ))}
+          </div>
+        )}
+        
+        <MultiSelectDropdown
+          options={getCurrentSizeOptions(activeCategory)}
+          selected={selectedSizeGroups}
+          onChange={setSelectedSizeGroups}
+          placeholder="All sizes"
+        />
+      </div>
+    );
+  };
+
+  const handleClearAllFilters = () => {
+    setSelectedShopName([]);
+    setInStockOnly(true);
+    setOnSaleOnly(false);
+    setSelectedSizeGroups([]);
+    setSelectedPriceRange([...PRICE_RANGE]);
+    setActiveCategory('all');
+  }
 
   function ProductCardSkeleton() {
     return (
@@ -460,22 +532,8 @@ export function HomePage() {
                   </div>
                 </div>
 
-                {/* Size Groups Filter */} 
-                <div>
-                  <h3 className="text-xs font-medium text-gray-700 dark:text-gray-300 mb-2 sm:text-sm sm:mb-3">
-                    Sizes {selectedSizeGroups.length > 0 && (
-                      <span className="ml-1 text-xs text-gray-500 dark:text-gray-400">
-                        ({selectedSizeGroups.length} selected)
-                      </span>
-                    )}
-                  </h3>
-                  <MultiSelectDropdown
-                    options={sizeGroups.map(group => ({ value: group, label: group }))}
-                    selected={selectedSizeGroups}
-                    onChange={setSelectedSizeGroups}
-                    placeholder="All sizes"
-                  />
-                </div>
+                {/* Size Groups Filter */}
+                <SizeGroupsFilter />
                 
                 {/* Combined Filters Section */}
                 <div>
@@ -597,13 +655,7 @@ export function HomePage() {
                       </div>
                       
                       <button
-                        onClick={() => {
-                          setSelectedShopName([]);
-                          setInStockOnly(true);
-                          setOnSaleOnly(false);
-                          setSelectedSizeGroups([]);
-                          setSelectedPriceRange([...PRICE_RANGE]);
-                        }}
+                        onClick= {handleClearAllFilters}
                         className="text-xs font-medium text-blue-600 hover:text-blue-800 dark:text-blue-400 dark:hover:text-blue-300 w-full text-left sm:text-sm"
                       >
                         Clear all filters
