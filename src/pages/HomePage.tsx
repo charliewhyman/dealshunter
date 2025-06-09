@@ -115,7 +115,7 @@ export function HomePage() {
         }
 
         if (filters.selectedSizeGroups.length > 0) {
-          query = query.in('size_group', filters.selectedSizeGroups);
+          query = query.overlaps('size_groups', filters.selectedSizeGroups);
         }
 
         // Updated sorting logic
@@ -367,31 +367,32 @@ export function HomePage() {
         
         {/* Category Tabs - only show if we have multiple categories */}
         {showCategoryTabs && (
-          <div className="flex flex-wrap gap-1 mb-3 border-b border-gray-200 dark:border-gray-600 pb-2">
+          <div className="flex flex-wrap gap-1.5 mb-3 border-b border-gray-200 dark:border-gray-600 pb-3">
+          {/* Define the exact order we want */}
+          {[
+            'all',
+            'Clothing',
+            'Footwear',
+            'Bras',
+            'Children\'s',
+            'Other'
+          ].filter(category => 
+            // Only show categories that exist in our data
+            category === 'all' || availableCategories.includes(category)
+          ).map(category => (
             <button 
-              className={`px-2 py-1 text-xs rounded ${
-                activeCategory === 'all' 
-                  ? 'bg-blue-100 text-blue-800 dark:bg-blue-900/50 dark:text-blue-200 font-medium' 
-                  : 'text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-700 dark:text-gray-300'
+              key={category}
+              className={`px-3 py-1.5 text-xs rounded-md transition-all ${
+                activeCategory === category 
+                  ? 'bg-blue-100 text-blue-800 dark:bg-blue-900/60 dark:text-blue-100 font-medium shadow-inner' 
+                  : 'text-gray-600 hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-gray-700'
               }`}
-              onClick={() => setActiveCategory('all')}
+              onClick={() => setActiveCategory(category === 'all' ? 'all' : category)}
             >
-              All
+              {category === 'all' ? 'All Sizes' : category}
             </button>
-            {availableCategories.map(category => (
-              <button 
-                key={category}
-                className={`px-2 py-1 text-xs rounded ${
-                  activeCategory === category 
-                    ? 'bg-blue-100 text-blue-800 dark:bg-blue-900/50 dark:text-blue-200 font-medium' 
-                    : 'text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-700 dark:text-gray-300'
-                }`}
-                onClick={() => setActiveCategory(category)}
-              >
-                {category}
-              </button>
-            ))}
-          </div>
+          ))}
+        </div>
         )}
         
         <MultiSelectDropdown
