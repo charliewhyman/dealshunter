@@ -6,7 +6,7 @@ import { ProductCard } from '../components/ProductCard';
 import { SingleValue } from 'react-select';
 import { Header } from '../components/Header';
 import { useLocation, useNavigate } from 'react-router-dom';
-import _ from 'lodash';
+import { debounce, isEqual } from 'lodash-es';
 import { Range } from 'react-range';
 import { MultiSelectDropdown, SingleSelectDropdown } from '../components/Dropdowns';
 
@@ -184,7 +184,7 @@ export function HomePage() {
 
   // Create a stable reference for the debounced function
   const debouncedFetchProducts = useRef(
-    _.debounce(
+    debounce(
       (filters: FilterOptions, page: number, sortOrder: 'asc' | 'desc') => {
         fetchFilteredProducts(filters, page, sortOrder);
       },
@@ -450,7 +450,7 @@ export function HomePage() {
                   {selectedShopName.length > 0 || 
                    inStockOnly !== false || 
                    onSaleOnly !== false || 
-                   !_.isEqual(selectedPriceRange, PRICE_RANGE) ? (
+                   !isEqual(selectedPriceRange, PRICE_RANGE) ? (
                     <span className="inline-flex items-center justify-center px-1.5 py-0.5 text-xs font-bold leading-none text-white bg-blue-600 rounded-full sm:px-2 sm:py-1">
                       Active
                     </span>
@@ -572,7 +572,7 @@ export function HomePage() {
                 {(selectedShopName.length > 0 || 
                   inStockOnly !== false || 
                   onSaleOnly !== false || 
-                  !_.isEqual(selectedPriceRange, PRICE_RANGE)) && (
+                  !isEqual(selectedPriceRange, PRICE_RANGE)) && (
                   <div className="pt-3 border-t border-gray-200 dark:border-gray-700 sm:pt-4">
                     <div className="space-y-2 sm:space-y-3">
                       <h3 className="text-xs font-medium text-gray-700 dark:text-gray-300 sm:text-sm">
@@ -599,7 +599,7 @@ export function HomePage() {
                           </>
                         )}
                         
-                        {!_.isEqual(selectedPriceRange, PRICE_RANGE) && (
+                        {!isEqual(selectedPriceRange, PRICE_RANGE) && (
                           <div className="inline-flex items-center rounded-md bg-blue-50 dark:bg-blue-900/30 px-1.5 py-0.5 text-xs font-medium text-blue-700 dark:text-blue-200 ring-1 ring-inset ring-blue-700/10 dark:ring-blue-500/30 sm:px-2 sm:py-1">
                             ${selectedPriceRange[0]} - ${selectedPriceRange[1]}
                             <button 
