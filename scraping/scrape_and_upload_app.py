@@ -5,34 +5,32 @@ from logging.handlers import RotatingFileHandler
 import subprocess
 import os
 import sys
-import httpx
 import asyncio
-from urllib.parse import urlparse
-from typing import Dict, Optional
+from typing import Dict, Optional, List
 import supabase
-from supabase import create_client, Client
+from supabase import create_client
 from dotenv import load_dotenv
 
 load_dotenv()
 
-class SupabaseMaterializedViewRefresher:
+class PipelineRunner:
     def __init__(self, config_path: str = "config/pipeline.json"):
-        # First initialize basic attributes
+        # Initialize with environment variables
         self.supabase_url = os.getenv("SUPABASE_URL")
         self.supabase_key = os.getenv("SUPABASE_SERVICE_ROLE_KEY")
         
-        # Initialize a temporary basic logger
-        self.logger = logging.getLogger("SupabaseRefresher")
+        # Setup basic logging first
+        self.logger = logging.getLogger("PipelineRunner")
         self.logger.addHandler(logging.StreamHandler())
         self.logger.setLevel(logging.INFO)
         
-        # Now load config which might use the basic logger
+        # Load configuration
         self.config = self._load_config(config_path)
         
-        # Setup proper logging with file handler after we have config
+        # Setup proper logging
         self._setup_logging()
         
-        # Ensure required config values exist
+        # Ensure required config values
         self.config.setdefault("timeouts", {
             "default": 900,
             "get_shopify_products.py": 1800,
@@ -40,7 +38,7 @@ class SupabaseMaterializedViewRefresher:
         })
         self.config.setdefault("max_concurrent_scripts", 2)
         
-        # Initialize Supabase client (will be properly initialized in __aenter__)
+        # Initialize clients
         self.supabase_client = None
     
     def _setup_logging(self):
@@ -49,9 +47,10 @@ class SupabaseMaterializedViewRefresher:
         for handler in self.logger.handlers[:]:
             self.logger.removeHandler(handler)
             
-        # Create output directory if it doesn't exist
+        # Create output directory
         os.makedirs('output', exist_ok=True)
         
+        # File handler
         file_handler = RotatingFileHandler(
             'output/pipeline.log',
             maxBytes=5*1024*1024,
@@ -62,27 +61,28 @@ class SupabaseMaterializedViewRefresher:
         )
         file_handler.setFormatter(file_formatter)
         
+        # Console handler
         console_handler = logging.StreamHandler()
         console_formatter = logging.Formatter('%(levelname)s - %(message)s')
         console_handler.setFormatter(console_formatter)
 
         self.logger.addHandler(file_handler)
         self.logger.addHandler(console_handler)
+        self.logger.setLevel(logging.INFO)
 
     def _load_config(self, path: str) -> Dict:
         """Load pipeline configuration with defaults."""
         default_config = {
             "scripts": [
-                'upload_shops.py',
                 'get_shopify_collections.py',
                 'get_shopify_products.py',
                 'get_shopify_collections_to_products.py',
+                'upload_shops.py',
                 'upload_shopify_collections.py',
                 'upload_shopify_products.py',
                 'upload_shopify_collections_to_products.py',
             ],
             "critical_scripts": [
-                "upload_shops.py",
                 "get_shopify_products.py",
                 "upload_shopify_products.py"
             ],
@@ -90,7 +90,7 @@ class SupabaseMaterializedViewRefresher:
         }
 
         try:
-            # Create config directory if it doesn't exist
+            # Create config directory if needed
             os.makedirs(os.path.dirname(path), exist_ok=True)
             
             # Try to load existing config
@@ -100,7 +100,7 @@ class SupabaseMaterializedViewRefresher:
                     # Merge with defaults
                     return {**default_config, **user_config}
             
-            # Create new config file with defaults
+            # Create new config file
             with open(path, 'w') as f:
                 json.dump(default_config, f, indent=2)
             self.logger.info(f"Created default config file at {path}")
@@ -114,52 +114,27 @@ class SupabaseMaterializedViewRefresher:
             return default_config
 
     async def __aenter__(self):
-        self.client = httpx.AsyncClient(
-            timeout=httpx.Timeout(30.0),
-            limits=httpx.Limits(max_connections=5),
-            base_url=self.supabase_url,
-            headers={
-                "apikey": self.supabase_key,
-                "Authorization": f"Bearer {self.supabase_key}",
-                "Content-Type": "application/json"
-            }
-        )
-        await self.client.__aenter__()
-        
         # Initialize Supabase client
-        self.supabase_client = create_client(self.supabase_url, self.supabase_key)
+        if self.supabase_url and self.supabase_key:
+            self.supabase_client = create_client(self.supabase_url, self.supabase_key)
+            self.logger.info("Supabase client initialized")
+        else:
+            self.logger.warning("Supabase credentials missing - some features disabled")
         return self
 
     async def __aexit__(self, exc_type, exc_val, exc_tb):
-        if self.client:
-            await self.client.__aexit__(exc_type, exc_val, exc_tb)
         self.supabase_client = None
 
-    async def is_supabase_reachable(self) -> bool:
-        """Check if Supabase is available."""
-        if not self.supabase_url:
-            self.logger.warning("SUPABASE_URL is not set.")
-            return False
-
-        try:
-            parsed = urlparse(self.supabase_url)
-            health_check_url = f"{parsed.scheme}://{parsed.netloc}/rest/v1/"
-            async with httpx.AsyncClient() as client:
-                response = await client.get(health_check_url, timeout=5)
-                if response.status_code >= 500:
-                    self.logger.warning(f"Supabase is reachable but not responding properly (HTTP {response.status_code}).")
-                    return False
-                return True
-        except Exception as e:
-            self.logger.warning(f"Failed to connect to Supabase: {e}")
-            return False
+    def _is_supabase_available(self) -> bool:
+        """Check if Supabase client is ready."""
+        return self.supabase_client is not None
 
     async def execute_script(self, script_path: str) -> bool:
         script_name = os.path.basename(script_path)
         timeout = self.config["timeouts"].get(script_name, self.config["timeouts"]["default"])
 
         try:
-            self.logger.info(f"Starting script: {script_name}")
+            self.logger.info(f"🚀 Starting script: {script_name}")
             proc = await asyncio.create_subprocess_exec(
                 sys.executable, script_path,
                 stdout=subprocess.PIPE,
@@ -169,26 +144,30 @@ class SupabaseMaterializedViewRefresher:
                 stdout, stderr = await asyncio.wait_for(proc.communicate(), timeout=timeout)
                 if proc.returncode != 0:
                     error_msg = stderr.decode().strip()
-                    self.logger.error(f"Script {script_name} failed with error: {error_msg}")
+                    self.logger.error(f"❌ Script {script_name} failed with error: {error_msg}")
                     return False
-                self.logger.info(f"Script {script_name} completed successfully")
+                self.logger.info(f"✅ Script {script_name} completed successfully")
                 return True
             except asyncio.TimeoutError:
                 proc.kill()
                 await proc.wait()
-                self.logger.error(f"Script {script_name} timed out after {timeout} seconds")
+                self.logger.error(f"⏱️ Script {script_name} timed out after {timeout} seconds")
                 return False
             finally:
                 if proc.returncode is None:
                     proc.kill()
                     await proc.wait()
         except Exception as e:
-            self.logger.error(f"Error executing {script_name}: {str(e)}")
+            self.logger.error(f"⚠️ Error executing {script_name}: {str(e)}")
             return False
         
     async def run_post_refresh_scripts(self) -> bool:
-        """Run scripts that should execute after the view refresh."""
+        """Run scripts after view refresh."""
         if "post_refresh_scripts" not in self.config:
+            return True
+            
+        scripts = self.config["post_refresh_scripts"]
+        if not scripts:
             return True
             
         base_path = os.path.dirname(__file__)
@@ -204,34 +183,36 @@ class SupabaseMaterializedViewRefresher:
                     critical_failure = True
                 return success
 
-        tasks = [run_script(script) for script in self.config["post_refresh_scripts"]]
+        tasks = [run_script(script) for script in scripts]
         results = await asyncio.gather(*tasks, return_exceptions=True)
         return not critical_failure
     
     async def log_refresh_start(self, method: str = 'incremental') -> Optional[int]:
-        """Log the start of a refresh operation and return the refresh_id."""
+        """Log the start of a refresh operation."""
+        if not self._is_supabase_available():
+            return None
+            
         try:
-            response = await self.client.post(
-                "/rest/v1/view_refresh_history",
-                json={
-                    "start_time": datetime.datetime.now(datetime.timezone.utc).isoformat(),
-                    "refresh_method": method,
-                    "status": "started"
-                }
-            )
-            response.raise_for_status()
-            result = response.json()
-            if result and len(result) > 0:
-                refresh_id = result[0].get('refresh_id')
-                self.logger.info(f"Started refresh tracking with ID: {refresh_id}")
+            result = self.supabase_client.table("view_refresh_history").insert({
+                "start_time": datetime.datetime.now(datetime.timezone.utc).isoformat(),
+                "refresh_method": method,
+                "status": "started"
+            }).execute()
+            
+            if result.data and len(result.data) > 0:
+                refresh_id = result.data[0].get('refresh_id')
+                self.logger.info(f"📝 Started refresh tracking with ID: {refresh_id}")
                 return refresh_id
             return None
         except Exception as e:
-            self.logger.warning(f"Failed to log refresh start: {e}")
+            self.logger.warning(f"⚠️ Failed to log refresh start: {e}")
             return None
     
     async def log_refresh_end(self, refresh_id: int, rows_affected: Optional[int] = None, success: bool = True):
         """Log the end of a refresh operation."""
+        if not self._is_supabase_available():
+            return
+            
         try:
             update_data = {
                 "end_time": datetime.datetime.now(datetime.timezone.utc).isoformat(),
@@ -240,55 +221,60 @@ class SupabaseMaterializedViewRefresher:
             if rows_affected is not None:
                 update_data["rows_affected"] = rows_affected
             
-            response = await self.client.patch(
-                f"/rest/v1/view_refresh_history?refresh_id=eq.{refresh_id}",
-                json=update_data
-            )
-            response.raise_for_status()
+            self.supabase_client.table("view_refresh_history").update(update_data).eq(
+                "refresh_id", refresh_id
+            ).execute()
+            
             status = "completed" if success else "failed"
-            self.logger.info(f"Refresh {refresh_id} {status}")
+            self.logger.info(f"📝 Refresh {refresh_id} {status}")
         except Exception as e:
-            self.logger.warning(f"Failed to log refresh end: {e}")
+            self.logger.warning(f"⚠️ Failed to log refresh end: {e}")
         
     async def should_refresh_view(self, threshold_minutes: int = 30) -> bool:
-        """Check if view needs refresh based on last refresh time."""
-        try:
-            # Get the most recent successful refresh
-            response = await self.client.get(
-                "/rest/v1/view_refresh_history?status=eq.completed&order=end_time.desc&limit=1"
-            )
-            response.raise_for_status()
-            result = response.json()
+        """Check if view needs refresh."""
+        if not self._is_supabase_available():
+            self.logger.warning("Supabase unavailable - skipping refresh check")
+            return False
             
-            if not result:
-                self.logger.info("No previous refresh found - refresh needed")
+        try:
+            # Get most recent successful refresh
+            result = self.supabase_client.table("view_refresh_history").select(
+                "end_time"
+            ).eq(
+                "status", "completed"
+            ).order(
+                "end_time", desc=True
+            ).limit(1).execute()
+            
+            if not result.data or len(result.data) == 0:
+                self.logger.info("🔍 No previous refresh found - refresh needed")
                 return True
                 
-            last_refresh_str = result[0]['end_time']
+            last_refresh_str = result.data[0]['end_time']
             last_refresh_time = datetime.datetime.fromisoformat(last_refresh_str.replace('Z', '+00:00'))
             time_since_refresh = datetime.datetime.now(datetime.timezone.utc) - last_refresh_time
             minutes_since = time_since_refresh.total_seconds() / 60
             
             if minutes_since < threshold_minutes:
                 self.logger.info(
-                    f"View refreshed {minutes_since:.1f} minutes ago "
+                    f"⏱️ View refreshed {minutes_since:.1f} minutes ago "
                     f"(under {threshold_minutes} minute threshold) - skipping refresh"
                 )
                 return False
                 
             self.logger.info(
-                f"View last refreshed {minutes_since:.1f} minutes ago - refresh needed"
+                f"🔄 View last refreshed {minutes_since:.1f} minutes ago - refresh needed"
             )
             return True
             
         except Exception as e:
-            self.logger.error(f"Error checking refresh status: {e} - proceeding with refresh")
+            self.logger.error(f"⚠️ Error checking refresh status: {e} - proceeding with refresh")
             return True
 
     async def refresh_materialized_view(self) -> bool:
-        """Refresh the materialized view with proper error handling."""
-        if not self.supabase_client:
-            self.logger.warning("Supabase client not initialized - cannot refresh view")
+        """Refresh the materialized view."""
+        if not self._is_supabase_available():
+            self.logger.warning("❌ Supabase client not available - cannot refresh view")
             return False
             
         refresh_id = await self.log_refresh_start()
@@ -297,27 +283,29 @@ class SupabaseMaterializedViewRefresher:
         
         try:
             # First try incremental refresh
-            self.logger.info("Attempting incremental materialized view refresh")
+            self.logger.info("🔄 Attempting incremental materialized view refresh")
             result = self.supabase_client.rpc('refresh_products_view_incremental', {}).execute()
             
             if hasattr(result, 'data') and result.data:
-                # Handle if we modify the function to return row count
+                # Handle response with row count
                 rows_affected = result.data[0].get('row_count')
-                self.logger.info(f"Incremental refresh successful ({rows_affected} products updated)")
+                message = f"✅ Incremental refresh successful ({rows_affected} products updated)"
             else:
-                self.logger.info("Incremental refresh completed successfully")
+                message = "✅ Incremental refresh completed successfully"
+                
+            self.logger.info(message)
             success = True
             
         except Exception as e:
-            self.logger.error(f"Incremental refresh failed: {str(e)}")
+            self.logger.error(f"❌ Incremental refresh failed: {str(e)}")
             try:
-                # Fallback to full refresh if incremental fails
-                self.logger.warning("Attempting full refresh as fallback")
+                # Fallback to full refresh
+                self.logger.warning("🔄 Attempting full refresh as fallback")
                 self.supabase_client.execute('REFRESH MATERIALIZED VIEW CONCURRENTLY public.products_with_details')
-                self.logger.info("Full refresh completed successfully")
+                self.logger.info("✅ Full refresh completed successfully")
                 success = True
             except Exception as full_refresh_error:
-                self.logger.error(f"Full refresh also failed: {str(full_refresh_error)}")
+                self.logger.error(f"❌ Full refresh failed: {str(full_refresh_error)}")
                 success = False
         finally:
             if refresh_id:
@@ -325,32 +313,21 @@ class SupabaseMaterializedViewRefresher:
                 
         return success
 
-    async def get_refresh_history(self, limit: int = 10) -> Optional[list]:
-        """Get recent refresh history for monitoring."""
-        try:
-            response = await self.client.get(
-                f"/rest/v1/view_refresh_history?order=start_time.desc&limit={limit}"
-            )
-            response.raise_for_status()
-            return response.json()
-        except Exception as e:
-            self.logger.warning(f"Couldn't fetch refresh history: {e}")
-            return None
-
-    async def run_all_scripts(self) -> bool:
-        """Run the complete pipeline including scripts and view refresh."""
-        supabase_reachable = await self.is_supabase_reachable()
+    async def run_scripts(self, script_list: List[str]) -> bool:
+        """Run a list of scripts with proper concurrency and error handling."""
         base_path = os.path.dirname(__file__)
         critical_failure = False
         semaphore = asyncio.Semaphore(self.config["max_concurrent_scripts"])
+        supabase_available = self._is_supabase_available()
 
         async def run_script(script: str) -> bool:
             nonlocal critical_failure
             async with semaphore:
                 script_path = os.path.join(base_path, script)
                 
-                if script.startswith('upload_') and not supabase_reachable:
-                    self.logger.warning(f"Skipping {script} - Supabase unreachable")
+                # Skip upload scripts if Supabase is unavailable
+                if script.startswith('upload_') and not supabase_available:
+                    self.logger.warning(f"⏭️ Skipping {script} - Supabase unavailable")
                     if script in self.config["critical_scripts"]:
                         critical_failure = True
                     return False
@@ -360,48 +337,57 @@ class SupabaseMaterializedViewRefresher:
                     critical_failure = True
                 return success
 
-        # Run main scripts
-        tasks = [run_script(script) for script in self.config["scripts"]]
+        tasks = [run_script(script) for script in script_list]
         results = await asyncio.gather(*tasks, return_exceptions=True)
+        return not critical_failure
 
-        if critical_failure:
-            self.logger.error("Critical script failed - aborting pipeline")
-            return False
+    async def run_all_scripts(self) -> bool:
+        """Run the complete pipeline including scripts and view refresh."""
+        # Separate get and upload scripts for better control
+        get_scripts = [s for s in self.config["scripts"] if s.startswith('get_')]
+        upload_scripts = [s for s in self.config["scripts"] if s.startswith('upload_')]
+        other_scripts = [s for s in self.config["scripts"] if s not in get_scripts + upload_scripts]
+        
+        # Run scripts in order: get, then other, then upload
+        script_groups = [get_scripts, other_scripts, upload_scripts]
+        
+        for group in script_groups:
+            if group:
+                group_success = await self.run_scripts(group)
+                if not group_success:
+                    self.logger.error("❌ Critical script failed - aborting pipeline")
+                    return False
 
+        # Refresh materialized view if needed
         refresh_success = True
-        if supabase_reachable:
-            # Only refresh if needed
+        if self._is_supabase_available():
             if await self.should_refresh_view(threshold_minutes=30):
                 refresh_success = await self.refresh_materialized_view()
-                if refresh_success:
-                    # Get recent refresh history for logging
-                    history = await self.get_refresh_history(limit=1)
-                    if history and len(history) > 0:
-                        last_refresh = history[0]
-                        self.logger.info(f"View refreshed at: {last_refresh['end_time']}")
             else:
-                self.logger.info("Skipping view refresh - recently refreshed")
+                self.logger.info("⏭️ Skipping view refresh - recently refreshed")
+        else:
+            self.logger.warning("⏭️ Skipping view refresh - Supabase unavailable")
 
-        # Run post-refresh scripts only if everything succeeded so far
-        if refresh_success and not critical_failure:
+        # Run post-refresh scripts only if everything succeeded
+        if refresh_success:
             post_refresh_success = await self.run_post_refresh_scripts()
             return post_refresh_success
         
-        return refresh_success and not critical_failure
+        return refresh_success
 
 async def main():
     try:
-        async with SupabaseMaterializedViewRefresher() as refresher:
-            success = await refresher.run_all_scripts()
+        async with PipelineRunner() as runner:
+            success = await runner.run_all_scripts()
             
             if success:
-                print("All scripts executed and view refreshed successfully")
+                print("✅ All scripts executed and view refreshed successfully")
                 return 0
             else:
-                print("Script execution or view refresh failed")
+                print("❌ Script execution or view refresh failed")
                 return 1
     except Exception as e:
-        logging.error(f"Fatal error in main: {e}")
+        logging.error(f"💥 Fatal error in main: {e}")
         return 1
 
 if __name__ == "__main__":
