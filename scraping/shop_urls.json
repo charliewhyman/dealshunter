@@ -39,7 +39,7 @@
     { "id": 49, "url": "https://ecologyst.com", "category": "Clothing", "shop_name": "Ecologyst", "location": "", "tags": [], "shipping": "", "returns": "" },
     { "id": 50, "url": "https://www.mtnhead.com", "category": "Clothing", "shop_name": "Muttonhead", "location": "", "tags": [], "shipping": "", "returns": "" },
     { "id": 51, "url": "https://www.encircled.ca", "category": "Women's Clothing", "shop_name": "Encircled", "location": "", "tags": [], "shipping": "", "returns": "" },
-    { "id": 52, "url": "https://freelabel.com", "category": "Women's Clothing", "shop_name": "Free Label" , "location": "Vancouver", "tags": ["Ethical", "Independent", "Canadian-made","Sustainable"], "shipping": "Free shipping on orders over $200. For smaller orders the cost of shipping is calculated at check out via Canada Post expedited parcel with a tracking number.", "returns": "Within 7 days - $15 flat fee return shipping label, no exchanges."},
+    { "id": 52, "url": "https://freelabel.com", "category": "Women's Clothing", "shop_name": "Free Label" , "location": "Vancouver British Columbia", "tags": ["Ethical", "Independent", "Canadian-made","Sustainable"], "shipping": "Free shipping on orders over $200. For smaller orders the cost of shipping is calculated at check out via Canada Post expedited parcel with a tracking number.", "returns": "Within 7 days - $15 flat fee return shipping label, no exchanges."},
     { "id": 53, "url": "https://buttercreamclothing.com", "category": "Women's Clothing", "shop_name": "Buttercream Clothing" , "location": "Calgary, Alberta", "tags": ["Ethical","Independent", "Canadian-made"], "shipping": "Free shipping", "returns": "Within 30 days - no customized items. Buyer pays postage. Exchanges or store credit only."},
     { "id": 54, "url": "https://rudsak.com", "category": "Clothing", "shop_name": "Rudsak" , "location": "Montreal, Quebec", "tags": [], "shipping": "Free shipping on all orders over $100. For orders under $100, there is a shipping fee of $7.95 + taxes.", "returns": "Free returns within 15 days. Exchange or store credit only."},
     { "id": 55, "url": "https://ecksand.com", "category": "Jewelry", "shop_name": "Ecksand" , "location": "Montreal, Quebec", "tags": [], "shipping": "", "returns": ""},
@@ -47,6 +47,11 @@
     { "id": 57, "url": "ca.bather.com", "category": "Men's Clothing", "shop_name": "Bather" , "location": "Toronto, Ontario", "tags": [], "shipping": "", "returns": ""},
     { "id": 58, "url": "https://knix.ca", "category": "Women's Clothing", "shop_name": "Knix" , "location": "Toronto, Ontario", "tags": [], "shipping": "", "returns": ""},
     { "id": 59, "url": "https://www.pranavidastyle.com/", "category": "Women's Clothing", "shop_name": "Prana Vida" , "location": "Winnipeg, Manitoba", "tags": [], "shipping": "", "returns": ""},
-    { "id": 60, "url": "https://www.goodnbr.com/", "category": "Clothing", "shop_name": "Good Neighbour" , "location": "Toronto, Ontario", "tags": [], "shipping": "", "returns": ""}
+    { "id": 60, "url": "https://www.goodnbr.com/", "category": "Clothing", "shop_name": "Good Neighbour" , "location": "Toronto, Ontario", "tags": [], "shipping": "", "returns": ""},
+    { "id": 61, "url": "https://typebooks.ca/", "category": "Books", "shop_name": "Type Books" , "location": "Toronto, Ontario", "tags": [], "shipping": "", "returns": ""},
+    { "id": 62, "url": "https://mosaicbooks.ca/", "category": "Books", "shop_name": "Mosaic Books" , "location": "Kelowna, British Columbia", "tags": [], "shipping": "", "returns": ""},
+    { "id": 63, "url": "https://www.audreys.ca/", "category": "Books", "shop_name": "Audreys Books" , "location": "Edmonton, Alberta", "tags": [], "shipping": "", "returns": ""},
+    { "id": 64, "url": "https://bookoutlet.ca/", "category": "Books", "shop_name": "Book Outlet" , "location": "", "tags": [], "shipping": "", "returns": ""}
+
 ]
  

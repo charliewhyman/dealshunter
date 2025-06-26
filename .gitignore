@@ -29,3 +29,4 @@ scraping/shopify_summary.csv
 .vscode/
 venv/
 .vercel
+.env
