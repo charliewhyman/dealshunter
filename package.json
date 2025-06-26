@@ -13,8 +13,11 @@
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.46.2",
+    "@types/lodash": "^4.17.15",
     "clsx": "^2.1.1",
     "date-fns": "^4.1.0",
+    "deno": "^2.2.6",
+    "lodash": "^4.17.21",
     "lucide-react": "^0.462.0",
     "react": "^19.1.0",
     "react-dom": "^19.1.0",

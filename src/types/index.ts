@@ -1,25 +1,91 @@
-import { User } from "@supabase/supabase-js";
+interface VariantDetail {
+  id: number;
+  title: string;
+  price: number;
+  discount_percentage: number;
+  available: boolean;
+}
 
-// Supabase types
-export type Product = Tables<'products'>;
-export type Comment = Tables<'comments'>;
+interface ImageDetail {
+  id: number;
+  src: string;
+  alt?: string;
+  position?: number;
+}
 
-export interface CommentWithUser extends Comment {
-  Products: { id: string };
-  profiles: { username: string | null };
-  children?: CommentWithUser[];
-  parent_comment?: { 
-    comment_text: string | null; 
-    profiles: { username: string | null };
+export interface ProductWithDetails {
+  id: number;
+  title: string;
+  shop_id: string;
+  shop_name: string;
+  created_at: string;
+  url: string;
+  description?: string;
+  updated_at_external?: string;
+  in_stock: boolean;
+  min_price?: number;
+  max_discount_percentage?: number;
+  on_sale: boolean;
+  variants?: VariantDetail[];
+  images?: ImageDetail[];
+}
+
+export interface ProductVariant {
+  id: number;
+  is_price_lower: boolean;
+}
+
+export interface ProductOffer {
+  id: number;
+  availability: string;
+  price: number;
+}
+
+export interface Product {
+  id: number;
+  title: string;
+  description: string;
+  shop_id: string;
+  shop_name?: string | null;
+  created_at: string;
+  url: string;
+  updated_at_external: string | null;
+  min_price: number;
+  in_stock: boolean;
+  max_discount_percentage: number | null;
+  on_sale: boolean;
+  variants?: ProductVariant[];
+  offers?: ProductOffer[];
+}
+
+// Supabase view response type
+export interface ProductFromView {
+  id: string;
+  title: string;
+  shop_id: string;
+  shop_name: string;
+  created_at: string;
+  url: string;
+  description: string;
+  updated_at_external: string;
+  in_stock: boolean;
+  min_price: number;
+  max_discount_percentage: number | null;
+  on_sale: boolean;
+}
+
+// Helper function to convert view response to Product
+export function toProduct(viewProduct: ProductFromView): Product {
+  return {
+    ...viewProduct,
+    id: parseInt(viewProduct.id),
+    variants: [],
+    offers: []
   };
 }
 
-export interface AuthContextType {
-  user: User | null;
-  loading: boolean;
-  refreshUser: () => Promise<void>;
-}
 
+// Supabase types
 export type Json =
   | string
   | number
@@ -56,6 +122,90 @@ export type Database = {
   }
   public: {
     Tables: {
+      collection_groups: {
+        Row: {
+          created_at: string
+          group_name: string | null
+          id: number
+        }
+        Insert: {
+          created_at?: string
+          group_name?: string | null
+          id?: number
+        }
+        Update: {
+          created_at?: string
+          group_name?: string | null
+          id?: number
+        }
+        Relationships: []
+      }
+      collections: {
+        Row: {
+          collection_group_id: number | null
+          collection_url: string | null
+          created_at: string
+          deleted_at: string | null
+          description: string | null
+          handle: string | null
+          id: number
+          products_count: number | null
+          published_at_external: string | null
+          shop_id: number | null
+          submitted_by: string
+          title: string | null
+          updated_at: string | null
+          updated_at_external: string | null
+        }
+        Insert: {
+          collection_group_id?: number | null
+          collection_url?: string | null
+          created_at?: string
+          deleted_at?: string | null
+          description?: string | null
+          handle?: string | null
+          id?: number
+          products_count?: number | null
+          published_at_external?: string | null
+          shop_id?: number | null
+          submitted_by: string
+          title?: string | null
+          updated_at?: string | null
+          updated_at_external?: string | null
+        }
+        Update: {
+          collection_group_id?: number | null
+          collection_url?: string | null
+          created_at?: string
+          deleted_at?: string | null
+          description?: string | null
+          handle?: string | null
+          id?: number
+          products_count?: number | null
+          published_at_external?: string | null
+          shop_id?: number | null
+          submitted_by?: string
+          title?: string | null
+          updated_at?: string | null
+          updated_at_external?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "collections_shop_id_fkey"
+            columns: ["shop_id"]
+            isOneToOne: false
+            referencedRelation: "shops"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "collections_submitted_by_fkey"
+            columns: ["submitted_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       comments: {
         Row: {
           comment_text: string | null
@@ -92,7 +242,21 @@ export type Database = {
             foreignKeyName: "comments_product_id_fkey"
             columns: ["product_id"]
             isOneToOne: false
+            referencedRelation: "product_min_prices"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "comments_product_id_fkey"
+            columns: ["product_id"]
+            isOneToOne: false
             referencedRelation: "products"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "comments_product_id_fkey"
+            columns: ["product_id"]
+            isOneToOne: false
+            referencedRelation: "products_with_min_price"
             referencedColumns: ["id"]
           },
           {
@@ -114,46 +278,73 @@ export type Database = {
       images: {
         Row: {
           alt: string | null
+          collection_id: number | null
           created_at: string | null
+          created_at_external: string | null
           height: number | null
           id: number
           position: number | null
           product_id: number | null
           src: string | null
           updated_at: string | null
-          url: string | null
+          updated_at_external: string | null
           width: number | null
         }
         Insert: {
           alt?: string | null
+          collection_id?: number | null
           created_at?: string | null
+          created_at_external?: string | null
           height?: number | null
           id: number
           position?: number | null
           product_id?: number | null
           src?: string | null
           updated_at?: string | null
-          url?: string | null
+          updated_at_external?: string | null
           width?: number | null
         }
         Update: {
           alt?: string | null
+          collection_id?: number | null
           created_at?: string | null
+          created_at_external?: string | null
           height?: number | null
           id?: number
           position?: number | null
           product_id?: number | null
           src?: string | null
           updated_at?: string | null
-          url?: string | null
+          updated_at_external?: string | null
           width?: number | null
         }
         Relationships: [
+          {
+            foreignKeyName: "images_collection_id_fkey"
+            columns: ["collection_id"]
+            isOneToOne: false
+            referencedRelation: "collections"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "images_product_id_fkey"
+            columns: ["product_id"]
+            isOneToOne: false
+            referencedRelation: "product_min_prices"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "images_product_id_fkey"
             columns: ["product_id"]
             isOneToOne: false
             referencedRelation: "products"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "images_product_id_fkey"
+            columns: ["product_id"]
+            isOneToOne: false
+            referencedRelation: "products_with_min_price"
             referencedColumns: ["id"]
           },
         ]
@@ -209,7 +400,21 @@ export type Database = {
             foreignKeyName: "offers_product_id_fkey"
             columns: ["product_id"]
             isOneToOne: false
+            referencedRelation: "product_min_prices"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "offers_product_id_fkey"
+            columns: ["product_id"]
+            isOneToOne: false
             referencedRelation: "products"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "offers_product_id_fkey"
+            columns: ["product_id"]
+            isOneToOne: false
+            referencedRelation: "products_with_min_price"
             referencedColumns: ["id"]
           },
         ]
@@ -241,7 +446,86 @@ export type Database = {
             foreignKeyName: "options_product_id_fkey"
             columns: ["product_id"]
             isOneToOne: false
+            referencedRelation: "product_min_prices"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "options_product_id_fkey"
+            columns: ["product_id"]
+            isOneToOne: false
             referencedRelation: "products"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "options_product_id_fkey"
+            columns: ["product_id"]
+            isOneToOne: false
+            referencedRelation: "products_with_min_price"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      pending_view_refreshes: {
+        Row: {
+          created_at: string | null
+          id: number
+        }
+        Insert: {
+          created_at?: string | null
+          id?: number
+        }
+        Update: {
+          created_at?: string | null
+          id?: number
+        }
+        Relationships: []
+      }
+      product_collections: {
+        Row: {
+          collection_id: number
+          date_updated: string | null
+          id: number
+          product_id: number
+        }
+        Insert: {
+          collection_id: number
+          date_updated?: string | null
+          id?: number
+          product_id: number
+        }
+        Update: {
+          collection_id?: number
+          date_updated?: string | null
+          id?: number
+          product_id?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "product_collections_collection_id_fkey"
+            columns: ["collection_id"]
+            isOneToOne: false
+            referencedRelation: "collections"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "product_collections_product_id_fkey"
+            columns: ["product_id"]
+            isOneToOne: false
+            referencedRelation: "product_min_prices"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "product_collections_product_id_fkey"
+            columns: ["product_id"]
+            isOneToOne: false
+            referencedRelation: "products"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "product_collections_product_id_fkey"
+            columns: ["product_id"]
+            isOneToOne: false
+            referencedRelation: "products_with_min_price"
             referencedColumns: ["id"]
           },
         ]
@@ -267,7 +551,21 @@ export type Database = {
             foreignKeyName: "product_tags_product_id_fkey"
             columns: ["product_id"]
             isOneToOne: false
+            referencedRelation: "product_min_prices"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "product_tags_product_id_fkey"
+            columns: ["product_id"]
+            isOneToOne: false
             referencedRelation: "products"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "product_tags_product_id_fkey"
+            columns: ["product_id"]
+            isOneToOne: false
+            referencedRelation: "products_with_min_price"
             referencedColumns: ["id"]
           },
         ]
@@ -278,14 +576,16 @@ export type Database = {
           created_at_external: string | null
           deleted_at: string | null
           description: string | null
+          fts: unknown | null
           handle: string | null
           id: number
           product_type: string | null
           published_at_external: string | null
-          shop_name: string | null
+          shop_id: number | null
           submitted_by: string
           tags: string[] | null
           title: string | null
+          title_search: unknown | null
           updated_at: string | null
           updated_at_external: string | null
           url: string | null
@@ -297,14 +597,16 @@ export type Database = {
           created_at_external?: string | null
           deleted_at?: string | null
           description?: string | null
+          fts?: unknown | null
           handle?: string | null
           id: number
           product_type?: string | null
           published_at_external?: string | null
-          shop_name?: string | null
+          shop_id?: number | null
           submitted_by: string
           tags?: string[] | null
           title?: string | null
+          title_search?: unknown | null
           updated_at?: string | null
           updated_at_external?: string | null
           url?: string | null
@@ -316,21 +618,31 @@ export type Database = {
           created_at_external?: string | null
           deleted_at?: string | null
           description?: string | null
+          fts?: unknown | null
           handle?: string | null
           id?: number
           product_type?: string | null
           published_at_external?: string | null
-          shop_name?: string | null
+          shop_id?: number | null
           submitted_by?: string
           tags?: string[] | null
           title?: string | null
+          title_search?: unknown | null
           updated_at?: string | null
           updated_at_external?: string | null
           url?: string | null
           vendor?: string | null
           votes?: number | null
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "products_shop_id_fkey"
+            columns: ["shop_id"]
+            isOneToOne: false
+            referencedRelation: "shops"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       profiles: {
         Row: {
@@ -399,7 +711,21 @@ export type Database = {
             foreignKeyName: "reports_product_id_fkey"
             columns: ["product_id"]
             isOneToOne: false
+            referencedRelation: "product_min_prices"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "reports_product_id_fkey"
+            columns: ["product_id"]
+            isOneToOne: false
             referencedRelation: "products"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "reports_product_id_fkey"
+            columns: ["product_id"]
+            isOneToOne: false
+            referencedRelation: "products_with_min_price"
             referencedColumns: ["id"]
           },
           {
@@ -418,16 +744,78 @@ export type Database = {
           },
         ]
       }
+      shops: {
+        Row: {
+          category: string | null
+          created_at: string
+          id: number
+          location: string | null
+          returns: string | null
+          shipping: string | null
+          shop_name: string | null
+          tags: string[] | null
+          url: string | null
+        }
+        Insert: {
+          category?: string | null
+          created_at?: string
+          id?: number
+          location?: string | null
+          returns?: string | null
+          shipping?: string | null
+          shop_name?: string | null
+          tags?: string[] | null
+          url?: string | null
+        }
+        Update: {
+          category?: string | null
+          created_at?: string
+          id?: number
+          location?: string | null
+          returns?: string | null
+          shipping?: string | null
+          shop_name?: string | null
+          tags?: string[] | null
+          url?: string | null
+        }
+        Relationships: []
+      }
+      size_groups: {
+        Row: {
+          created_at: string
+          id: number
+          size: string | null
+          size_group: string | null
+          type: string | null
+        }
+        Insert: {
+          created_at?: string
+          id?: number
+          size?: string | null
+          size_group?: string | null
+          type?: string | null
+        }
+        Update: {
+          created_at?: string
+          id?: number
+          size?: string | null
+          size_group?: string | null
+          type?: string | null
+        }
+        Relationships: []
+      }
       variants: {
         Row: {
           available: boolean | null
           compare_at_price: number | null
           created_at: string | null
           created_at_external: string | null
+          discount_percentage: number | null
           featured_image: string | null
           grams: number | null
           id: number
           inventory_quantity: number | null
+          is_price_lower: boolean | null
           option1: string | null
           option2: string | null
           option3: string | null
@@ -435,6 +823,7 @@ export type Database = {
           price: number | null
           product_id: number | null
           requires_shipping: boolean | null
+          size_groups_id: number | null
           sku: string | null
           taxable: boolean | null
           title: string | null
@@ -446,10 +835,12 @@ export type Database = {
           compare_at_price?: number | null
           created_at?: string | null
           created_at_external?: string | null
+          discount_percentage?: number | null
           featured_image?: string | null
           grams?: number | null
           id: number
           inventory_quantity?: number | null
+          is_price_lower?: boolean | null
           option1?: string | null
           option2?: string | null
           option3?: string | null
@@ -457,6 +848,7 @@ export type Database = {
           price?: number | null
           product_id?: number | null
           requires_shipping?: boolean | null
+          size_groups_id?: number | null
           sku?: string | null
           taxable?: boolean | null
           title?: string | null
@@ -468,10 +860,12 @@ export type Database = {
           compare_at_price?: number | null
           created_at?: string | null
           created_at_external?: string | null
+          discount_percentage?: number | null
           featured_image?: string | null
           grams?: number | null
           id?: number
           inventory_quantity?: number | null
+          is_price_lower?: boolean | null
           option1?: string | null
           option2?: string | null
           option3?: string | null
@@ -479,6 +873,7 @@ export type Database = {
           price?: number | null
           product_id?: number | null
           requires_shipping?: boolean | null
+          size_groups_id?: number | null
           sku?: string | null
           taxable?: boolean | null
           title?: string | null
@@ -490,10 +885,55 @@ export type Database = {
             foreignKeyName: "variants_product_id_fkey"
             columns: ["product_id"]
             isOneToOne: false
+            referencedRelation: "product_min_prices"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "variants_product_id_fkey"
+            columns: ["product_id"]
+            isOneToOne: false
             referencedRelation: "products"
             referencedColumns: ["id"]
           },
+          {
+            foreignKeyName: "variants_product_id_fkey"
+            columns: ["product_id"]
+            isOneToOne: false
+            referencedRelation: "products_with_min_price"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "variants_size_groups_id_fkey"
+            columns: ["size_groups_id"]
+            isOneToOne: false
+            referencedRelation: "size_groups"
+            referencedColumns: ["id"]
+          },
         ]
+      }
+      view_refresh_history: {
+        Row: {
+          end_time: string | null
+          refresh_id: number
+          refresh_method: string | null
+          rows_affected: number | null
+          start_time: string
+        }
+        Insert: {
+          end_time?: string | null
+          refresh_id?: number
+          refresh_method?: string | null
+          rows_affected?: number | null
+          start_time: string
+        }
+        Update: {
+          end_time?: string | null
+          refresh_id?: number
+          refresh_method?: string | null
+          rows_affected?: number | null
+          start_time?: string
+        }
+        Relationships: []
       }
       votes: {
         Row: {
@@ -532,7 +972,21 @@ export type Database = {
             foreignKeyName: "votes_product_id_fkey"
             columns: ["product_id"]
             isOneToOne: false
+            referencedRelation: "product_min_prices"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "votes_product_id_fkey"
+            columns: ["product_id"]
+            isOneToOne: false
             referencedRelation: "products"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "votes_product_id_fkey"
+            columns: ["product_id"]
+            isOneToOne: false
+            referencedRelation: "products_with_min_price"
             referencedColumns: ["id"]
           },
           {
@@ -546,9 +1000,21 @@ export type Database = {
       }
     }
     Views: {
+      distinct_collection_titles: {
+        Row: {
+          title: string | null
+        }
+        Relationships: []
+      }
       distinct_shop_names: {
         Row: {
           shop_name: string | null
+        }
+        Relationships: []
+      }
+      distinct_variant_titles: {
+        Row: {
+          title: string | null
         }
         Relationships: []
       }
@@ -558,19 +1024,68 @@ export type Database = {
         }
         Relationships: []
       }
+      product_min_prices: {
+        Row: {
+          id: number | null
+          min_price: number | null
+        }
+        Relationships: []
+      }
+      products_with_min_price: {
+        Row: {
+          created_at: string | null
+          description: string | null
+          fts: unknown | null
+          id: number | null
+          in_stock: boolean | null
+          min_price: number | null
+          on_sale: boolean | null
+          shop_id: number | null
+          shop_name: string | null
+          title: string | null
+          updated_at_external: string | null
+          url: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "products_shop_id_fkey"
+            columns: ["shop_id"]
+            isOneToOne: false
+            referencedRelation: "shops"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
     }
     Functions: {
-      increment_votes:
-        | {
-            Args: Record<PropertyKey, never>
-            Returns: undefined
-          }
-        | {
-            Args: {
-              deal_id: string
-            }
-            Returns: undefined
-          }
+      generate_fts: {
+        Args: { title: string; description: string; tags: string[] }
+        Returns: unknown
+      }
+      get_price_range: {
+        Args: {
+          shop_names: string[]
+          in_stock: boolean
+          on_sale: boolean
+          search_query: string
+        }
+        Returns: {
+          min_price: number
+          max_price: number
+        }[]
+      }
+      increment_votes: {
+        Args: Record<PropertyKey, never> | { deal_id: string }
+        Returns: undefined
+      }
+      match_size_group: {
+        Args: { variant_title: string }
+        Returns: number
+      }
+      refresh_products_view: {
+        Args: Record<PropertyKey, never>
+        Returns: undefined
+      }
     }
     Enums: {
       entity_types: "comment" | "user" | "deal"
@@ -581,27 +1096,29 @@ export type Database = {
   }
 }
 
-type PublicSchema = Database[Extract<keyof Database, "public">]
+type DefaultSchema = Database[Extract<keyof Database, "public">]
 
 export type Tables<
-  PublicTableNameOrOptions extends
-    | keyof (PublicSchema["Tables"] & PublicSchema["Views"])
+  DefaultSchemaTableNameOrOptions extends
+    | keyof (DefaultSchema["Tables"] & DefaultSchema["Views"])
     | { schema: keyof Database },
-  TableName extends PublicTableNameOrOptions extends { schema: keyof Database }
-    ? keyof (Database[PublicTableNameOrOptions["schema"]]["Tables"] &
-        Database[PublicTableNameOrOptions["schema"]]["Views"])
+  TableName extends DefaultSchemaTableNameOrOptions extends {
+    schema: keyof Database
+  }
+    ? keyof (Database[DefaultSchemaTableNameOrOptions["schema"]]["Tables"] &
+        Database[DefaultSchemaTableNameOrOptions["schema"]]["Views"])
     : never = never,
-> = PublicTableNameOrOptions extends { schema: keyof Database }
-  ? (Database[PublicTableNameOrOptions["schema"]]["Tables"] &
-      Database[PublicTableNameOrOptions["schema"]]["Views"])[TableName] extends {
+> = DefaultSchemaTableNameOrOptions extends { schema: keyof Database }
+  ? (Database[DefaultSchemaTableNameOrOptions["schema"]]["Tables"] &
+      Database[DefaultSchemaTableNameOrOptions["schema"]]["Views"])[TableName] extends {
       Row: infer R
     }
     ? R
     : never
-  : PublicTableNameOrOptions extends keyof (PublicSchema["Tables"] &
-        PublicSchema["Views"])
-    ? (PublicSchema["Tables"] &
-        PublicSchema["Views"])[PublicTableNameOrOptions] extends {
+  : DefaultSchemaTableNameOrOptions extends keyof (DefaultSchema["Tables"] &
+        DefaultSchema["Views"])
+    ? (DefaultSchema["Tables"] &
+        DefaultSchema["Views"])[DefaultSchemaTableNameOrOptions] extends {
         Row: infer R
       }
       ? R
@@ -609,20 +1126,22 @@ export type Tables<
     : never
 
 export type TablesInsert<
-  PublicTableNameOrOptions extends
-    | keyof PublicSchema["Tables"]
+  DefaultSchemaTableNameOrOptions extends
+    | keyof DefaultSchema["Tables"]
     | { schema: keyof Database },
-  TableName extends PublicTableNameOrOptions extends { schema: keyof Database }
-    ? keyof Database[PublicTableNameOrOptions["schema"]]["Tables"]
+  TableName extends DefaultSchemaTableNameOrOptions extends {
+    schema: keyof Database
+  }
+    ? keyof Database[DefaultSchemaTableNameOrOptions["schema"]]["Tables"]
     : never = never,
-> = PublicTableNameOrOptions extends { schema: keyof Database }
-  ? Database[PublicTableNameOrOptions["schema"]]["Tables"][TableName] extends {
+> = DefaultSchemaTableNameOrOptions extends { schema: keyof Database }
+  ? Database[DefaultSchemaTableNameOrOptions["schema"]]["Tables"][TableName] extends {
       Insert: infer I
     }
     ? I
     : never
-  : PublicTableNameOrOptions extends keyof PublicSchema["Tables"]
-    ? PublicSchema["Tables"][PublicTableNameOrOptions] extends {
+  : DefaultSchemaTableNameOrOptions extends keyof DefaultSchema["Tables"]
+    ? DefaultSchema["Tables"][DefaultSchemaTableNameOrOptions] extends {
         Insert: infer I
       }
       ? I
@@ -630,20 +1149,22 @@ export type TablesInsert<
     : never
 
 export type TablesUpdate<
-  PublicTableNameOrOptions extends
-    | keyof PublicSchema["Tables"]
+  DefaultSchemaTableNameOrOptions extends
+    | keyof DefaultSchema["Tables"]
     | { schema: keyof Database },
-  TableName extends PublicTableNameOrOptions extends { schema: keyof Database }
-    ? keyof Database[PublicTableNameOrOptions["schema"]]["Tables"]
+  TableName extends DefaultSchemaTableNameOrOptions extends {
+    schema: keyof Database
+  }
+    ? keyof Database[DefaultSchemaTableNameOrOptions["schema"]]["Tables"]
     : never = never,
-> = PublicTableNameOrOptions extends { schema: keyof Database }
-  ? Database[PublicTableNameOrOptions["schema"]]["Tables"][TableName] extends {
+> = DefaultSchemaTableNameOrOptions extends { schema: keyof Database }
+  ? Database[DefaultSchemaTableNameOrOptions["schema"]]["Tables"][TableName] extends {
       Update: infer U
     }
     ? U
     : never
-  : PublicTableNameOrOptions extends keyof PublicSchema["Tables"]
-    ? PublicSchema["Tables"][PublicTableNameOrOptions] extends {
+  : DefaultSchemaTableNameOrOptions extends keyof DefaultSchema["Tables"]
+    ? DefaultSchema["Tables"][DefaultSchemaTableNameOrOptions] extends {
         Update: infer U
       }
       ? U
@@ -651,21 +1172,23 @@ export type TablesUpdate<
     : never
 
 export type Enums<
-  PublicEnumNameOrOptions extends
-    | keyof PublicSchema["Enums"]
+  DefaultSchemaEnumNameOrOptions extends
+    | keyof DefaultSchema["Enums"]
     | { schema: keyof Database },
-  EnumName extends PublicEnumNameOrOptions extends { schema: keyof Database }
-    ? keyof Database[PublicEnumNameOrOptions["schema"]]["Enums"]
+  EnumName extends DefaultSchemaEnumNameOrOptions extends {
+    schema: keyof Database
+  }
+    ? keyof Database[DefaultSchemaEnumNameOrOptions["schema"]]["Enums"]
     : never = never,
-> = PublicEnumNameOrOptions extends { schema: keyof Database }
-  ? Database[PublicEnumNameOrOptions["schema"]]["Enums"][EnumName]
-  : PublicEnumNameOrOptions extends keyof PublicSchema["Enums"]
-    ? PublicSchema["Enums"][PublicEnumNameOrOptions]
+> = DefaultSchemaEnumNameOrOptions extends { schema: keyof Database }
+  ? Database[DefaultSchemaEnumNameOrOptions["schema"]]["Enums"][EnumName]
+  : DefaultSchemaEnumNameOrOptions extends keyof DefaultSchema["Enums"]
+    ? DefaultSchema["Enums"][DefaultSchemaEnumNameOrOptions]
     : never
 
 export type CompositeTypes<
   PublicCompositeTypeNameOrOptions extends
-    | keyof PublicSchema["CompositeTypes"]
+    | keyof DefaultSchema["CompositeTypes"]
     | { schema: keyof Database },
   CompositeTypeName extends PublicCompositeTypeNameOrOptions extends {
     schema: keyof Database
@@ -674,6 +1197,17 @@ export type CompositeTypes<
     : never = never,
 > = PublicCompositeTypeNameOrOptions extends { schema: keyof Database }
   ? Database[PublicCompositeTypeNameOrOptions["schema"]]["CompositeTypes"][CompositeTypeName]
-  : PublicCompositeTypeNameOrOptions extends keyof PublicSchema["CompositeTypes"]
-    ? PublicSchema["CompositeTypes"][PublicCompositeTypeNameOrOptions]
+  : PublicCompositeTypeNameOrOptions extends keyof DefaultSchema["CompositeTypes"]
+    ? DefaultSchema["CompositeTypes"][PublicCompositeTypeNameOrOptions]
     : never
+
+export const Constants = {
+  graphql_public: {
+    Enums: {},
+  },
+  public: {
+    Enums: {
+      entity_types: ["comment", "user", "deal"],
+    },
+  },
+} as const

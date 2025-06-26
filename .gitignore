@@ -23,8 +23,9 @@ dist-ssr
 *.sln
 *.sw?
 
-# Scraping outputs
+# Scraping files
 scraping/output/
 scraping/shopify_summary.csv
-
+.vscode/
 venv/
+.vercel
