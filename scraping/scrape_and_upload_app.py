@@ -9,6 +9,11 @@ import httpx
 import asyncio
 from urllib.parse import urlparse
 from typing import Dict, Optional
+import supabase
+from supabase import create_client, Client
+from dotenv import load_dotenv
+
+load_dotenv()
 
 class SupabaseMaterializedViewRefresher:
     def __init__(self, config_path: str = "config/pipeline.json"):
@@ -34,6 +39,9 @@ class SupabaseMaterializedViewRefresher:
             "upload_shopify_products.py": 1200
         })
         self.config.setdefault("max_concurrent_scripts", 2)
+        
+        # Initialize Supabase client (will be properly initialized in __aenter__)
+        self.supabase_client = None
     
     def _setup_logging(self):
         """Initialize proper logging configuration."""
@@ -77,7 +85,8 @@ class SupabaseMaterializedViewRefresher:
                 "upload_shops.py",
                 "get_shopify_products.py",
                 "upload_shopify_products.py"
-            ]
+            ],
+            "post_refresh_scripts": []
         }
 
         try:
@@ -116,11 +125,15 @@ class SupabaseMaterializedViewRefresher:
             }
         )
         await self.client.__aenter__()
+        
+        # Initialize Supabase client
+        self.supabase_client = create_client(self.supabase_url, self.supabase_key)
         return self
 
     async def __aexit__(self, exc_type, exc_val, exc_tb):
         if self.client:
             await self.client.__aexit__(exc_type, exc_val, exc_tb)
+        self.supabase_client = None
 
     async def is_supabase_reachable(self) -> bool:
         """Check if Supabase is available."""
@@ -195,14 +208,15 @@ class SupabaseMaterializedViewRefresher:
         results = await asyncio.gather(*tasks, return_exceptions=True)
         return not critical_failure
     
-    async def log_refresh_start(self, method: str = 'direct') -> Optional[int]:
+    async def log_refresh_start(self, method: str = 'incremental') -> Optional[int]:
         """Log the start of a refresh operation and return the refresh_id."""
         try:
             response = await self.client.post(
                 "/rest/v1/view_refresh_history",
                 json={
                     "start_time": datetime.datetime.now(datetime.timezone.utc).isoformat(),
-                    "refresh_method": method
+                    "refresh_method": method,
+                    "status": "started"
                 }
             )
             response.raise_for_status()
@@ -220,7 +234,8 @@ class SupabaseMaterializedViewRefresher:
         """Log the end of a refresh operation."""
         try:
             update_data = {
-                "end_time": datetime.datetime.now(datetime.timezone.utc).isoformat()
+                "end_time": datetime.datetime.now(datetime.timezone.utc).isoformat(),
+                "status": "completed" if success else "failed"
             }
             if rows_affected is not None:
                 update_data["rows_affected"] = rows_affected
@@ -240,7 +255,7 @@ class SupabaseMaterializedViewRefresher:
         try:
             # Get the most recent successful refresh
             response = await self.client.get(
-                "/rest/v1/view_refresh_history?end_time=not.is.null&order=end_time.desc&limit=1"
+                "/rest/v1/view_refresh_history?status=eq.completed&order=end_time.desc&limit=1"
             )
             response.raise_for_status()
             result = response.json()
@@ -270,47 +285,45 @@ class SupabaseMaterializedViewRefresher:
             self.logger.error(f"Error checking refresh status: {e} - proceeding with refresh")
             return True
 
-    async def refresh_materialized_view(self, method: str = 'direct') -> bool:
-        """Refresh the materialized view with proper logging."""
-        refresh_id = await self.log_refresh_start(method)
+    async def refresh_materialized_view(self) -> bool:
+        """Refresh the materialized view with proper error handling."""
+        if not self.supabase_client:
+            self.logger.warning("Supabase client not initialized - cannot refresh view")
+            return False
+            
+        refresh_id = await self.log_refresh_start()
+        success = False
+        rows_affected = None
         
-        for attempt in range(3):
+        try:
+            # First try incremental refresh
+            self.logger.info("Attempting incremental materialized view refresh")
+            result = self.supabase_client.rpc('refresh_products_view_incremental', {}).execute()
+            
+            if hasattr(result, 'data') and result.data:
+                # Handle if we modify the function to return row count
+                rows_affected = result.data[0].get('row_count')
+                self.logger.info(f"Incremental refresh successful ({rows_affected} products updated)")
+            else:
+                self.logger.info("Incremental refresh completed successfully")
+            success = True
+            
+        except Exception as e:
+            self.logger.error(f"Incremental refresh failed: {str(e)}")
             try:
-                if method == 'direct':
-                    # Direct refresh via RPC function
-                    response = await self.client.post(
-                        "/rest/v1/rpc/refresh_products_with_details",
-                        json={}
-                    )
-                else:
-                    # Alternative method - you might need to implement this differently
-                    # based on your specific refresh mechanism
-                    self.logger.warning("Non-direct refresh method not implemented")
-                    return False
-                    
-                response.raise_for_status()
-                self.logger.info("Materialized view refresh successful")
+                # Fallback to full refresh if incremental fails
+                self.logger.warning("Attempting full refresh as fallback")
+                self.supabase_client.execute('REFRESH MATERIALIZED VIEW CONCURRENTLY public.products_with_details')
+                self.logger.info("Full refresh completed successfully")
+                success = True
+            except Exception as full_refresh_error:
+                self.logger.error(f"Full refresh also failed: {str(full_refresh_error)}")
+                success = False
+        finally:
+            if refresh_id:
+                await self.log_refresh_end(refresh_id, rows_affected, success)
                 
-                # Log successful completion
-                if refresh_id:
-                    await self.log_refresh_end(refresh_id, success=True)
-                
-                return True
-                
-            except httpx.HTTPStatusError as e:
-                if attempt == 2:
-                    self.logger.error(f"Failed to refresh view after 3 attempts: {e}")
-                    if refresh_id:
-                        await self.log_refresh_end(refresh_id, success=False)
-                    return False
-                wait_time = 2 ** attempt
-                self.logger.warning(f"View refresh failed (attempt {attempt + 1}), retrying in {wait_time} seconds...")
-                await asyncio.sleep(wait_time)
-            except Exception as e:
-                self.logger.error(f"Error refreshing view: {e}")
-                if refresh_id:
-                    await self.log_refresh_end(refresh_id, success=False)
-                return False
+        return success
 
     async def get_refresh_history(self, limit: int = 10) -> Optional[list]:
         """Get recent refresh history for monitoring."""
@@ -324,7 +337,8 @@ class SupabaseMaterializedViewRefresher:
             self.logger.warning(f"Couldn't fetch refresh history: {e}")
             return None
 
-    async def run_all_scripts(self, refresh_method: str = 'direct') -> bool:
+    async def run_all_scripts(self) -> bool:
+        """Run the complete pipeline including scripts and view refresh."""
         supabase_reachable = await self.is_supabase_reachable()
         base_path = os.path.dirname(__file__)
         critical_failure = False
@@ -358,13 +372,15 @@ class SupabaseMaterializedViewRefresher:
         if supabase_reachable:
             # Only refresh if needed
             if await self.should_refresh_view(threshold_minutes=30):
-                refresh_success = await self.refresh_materialized_view(method=refresh_method)
+                refresh_success = await self.refresh_materialized_view()
                 if refresh_success:
                     # Get recent refresh history for logging
                     history = await self.get_refresh_history(limit=1)
                     if history and len(history) > 0:
                         last_refresh = history[0]
                         self.logger.info(f"View refreshed at: {last_refresh['end_time']}")
+            else:
+                self.logger.info("Skipping view refresh - recently refreshed")
 
         # Run post-refresh scripts only if everything succeeded so far
         if refresh_success and not critical_failure:
@@ -376,7 +392,7 @@ class SupabaseMaterializedViewRefresher:
 async def main():
     try:
         async with SupabaseMaterializedViewRefresher() as refresher:
-            success = await refresher.run_all_scripts(refresh_method='direct')
+            success = await refresher.run_all_scripts()
             
             if success:
                 print("All scripts executed and view refreshed successfully")
