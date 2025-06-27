@@ -69,13 +69,20 @@ def process_options(product):
         for opt in options
     ]
 
-def process_variants(product):
+def process_variants(product, variant_types=None):
     """Process product variants into a standardized format."""
     variants = product.get("variants", [])
+    
+    # In process_variants()
+    if variant_types:
+        logger.debug(f"Found {len(variant_types)} variant types for product {product['id']}")
+        variant_types = product.get("variant_types", {})
+        
     return [
         {
             "id": variant["id"],
             "product_id": product["id"],
+            "variant_type": variant_types.get(str(variant["id"])),
             "title": variant["title"],
             "price": clean_numeric(variant["price"]),
             "compare_at_price": clean_numeric(variant.get("compare_at_price")),
@@ -144,6 +151,13 @@ def bulk_upsert_data(table_name, data, batch_size=100, retries=3):
     deduplicated_data = []
     duplicate_count = 0
 
+    # Special handling for variants table
+    if table_name == "variants":
+        # Ensure variant_type field exists with None default
+        for item in data:
+            if "variant_type" not in item:
+                item["variant_type"] = None
+
     for item in data:
         if item["id"] not in seen_ids:
             seen_ids.add(item["id"])
@@ -158,7 +172,13 @@ def bulk_upsert_data(table_name, data, batch_size=100, retries=3):
         batch = deduplicated_data[i:i + batch_size]
         for attempt in range(retries):
             try:
-                response = supabase.table(table_name).upsert(batch, on_conflict="id").execute()
+                # Handle variant_type conflict resolution
+                on_conflict = "id"
+                if table_name == "variants":
+                    on_conflict = "id,variant_type"  # Include variant_type in conflict resolution
+                
+                response = supabase.table(table_name).upsert(batch, on_conflict=on_conflict).execute()
+                
                 if response.data:
                     logger.info(f"Upserted batch {i // batch_size + 1} to {table_name}: {len(batch)} records")
                     break
@@ -166,10 +186,13 @@ def bulk_upsert_data(table_name, data, batch_size=100, retries=3):
                     logger.warning(f"Unexpected response for batch {i // batch_size + 1} in {table_name}")
             except (requests.exceptions.RequestException, json.JSONDecodeError) as e:
                 logger.error(f"Error in batch {i // batch_size + 1}, attempt {attempt + 1}: {e}")
+                # Special debug for variants
+                if table_name == "variants":
+                    logger.debug(f"Problematic batch contents: {batch}")
                 if attempt == retries - 1:
                     raise
                 time.sleep(5)
-
+                
 class ProductProcessor:
     """Helper class to process and upload product data."""
     def __init__(self, submitted_by):
@@ -212,6 +235,14 @@ class ProductProcessor:
             self.collections['variants'].extend(process_variants(product))
             self.collections['images'].extend(process_images(product))
             self.collections['offers'].extend(process_offers(product))
+            
+            # Capture variant types if available
+            self.variant_types = product.get("variant_types", {})
+            
+            # Process variants with variant types
+            self.collections['variants'].extend(
+                process_variants(product, self.variant_types)  # Pass to processor
+            )
 
             return product["id"]
         except Exception as e:

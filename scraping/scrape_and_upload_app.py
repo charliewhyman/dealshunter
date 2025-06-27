@@ -194,6 +194,7 @@ class PipelineRunner:
             
         try:
             result = self.supabase_client.table("view_refresh_history").insert({
+                "view_name": "products_with_details",
                 "start_time": datetime.datetime.now(datetime.timezone.utc).isoformat(),
                 "refresh_method": method,
                 "status": "started"
@@ -207,7 +208,7 @@ class PipelineRunner:
         except Exception as e:
             self.logger.warning(f"⚠️ Failed to log refresh start: {e}")
             return None
-    
+
     async def log_refresh_end(self, refresh_id: int, rows_affected: Optional[int] = None, success: bool = True):
         """Log the end of a refresh operation."""
         if not self._is_supabase_available():
@@ -228,7 +229,7 @@ class PipelineRunner:
             status = "completed" if success else "failed"
             self.logger.info(f"📝 Refresh {refresh_id} {status}")
         except Exception as e:
-            self.logger.warning(f"⚠️ Failed to log refresh end: {e}")
+            self.logger.warning(f"⚠️ Failed to log refresh end: {e}")                           
         
     async def should_refresh_view(self, threshold_minutes: int = 30) -> bool:
         """Check if view needs refresh based on last refresh time and method."""
@@ -279,68 +280,51 @@ class PipelineRunner:
         except Exception as e:
             self.logger.error(f"Error checking refresh status: {e} - proceeding with refresh")
             return True
-
-    async def refresh_materialized_view(self) -> bool:
-        """Refresh the materialized view with proper error handling."""
+    
+    async def refresh_materialized_view(self, view_name='products_with_details'):
         if not self._is_supabase_available():
-            self.logger.warning("❌ Supabase client not available - cannot refresh view")
+            self.logger.error("Supabase client not available - cannot refresh view")
             return False
-            
+
         refresh_id = await self.log_refresh_start()
+        rows_affected = 0
         success = False
-        rows_affected = None
-        
+
         try:
-            # First try incremental refresh
+            # Try incremental first
             self.logger.info("🔄 Attempting incremental materialized view refresh")
-            try:
-                result = self.supabase_client.rpc('refresh_products_view_incremental', {}).execute()
-                
-                if result.data and isinstance(result.data, list) and len(result.data) > 0:
-                    rows_affected = result.data[0].get('row_count', 0)
-                    message = f"✅ Incremental refresh successful ({rows_affected} products updated)"
-                    self.logger.info(message)
-                    success = True
-                else:
-                    raise RuntimeError("Incremental refresh returned no data")
-                    
-            except Exception as e:
-                error_msg = str(e)
-                if isinstance(e, dict):
-                    error_msg = e.get('message', str(e))
-                
-                if 'cannot change materialized view' in error_msg:
-                    self.logger.warning("⚠️ Incremental refresh not supported - falling back to full refresh")
-                    raise RuntimeError("Incremental refresh not supported")
-                raise RuntimeError(error_msg)
-                
+            result = self.supabase_client.rpc(
+                'refresh_products_view_incremental',
+                params={}
+            ).execute()
+            
+            if result.data:
+                rows_affected = result.data[0] if isinstance(result.data[0], int) else 0
+                self.logger.info(f"✅ Incremental refresh succeeded: {rows_affected} rows affected")
+                success = True
+            
         except Exception as e:
             self.logger.error(f"❌ Incremental refresh failed: {str(e)}")
             try:
-                # Fallback to full refresh using the renamed function
+                # Fallback to full refresh
                 self.logger.warning("🔄 Attempting full refresh as fallback")
+                result = self.supabase_client.rpc(
+                    'refresh_products_view_full',
+                    params={}
+                ).execute()
                 
-                # Updated to use the new function name
-                result = self.supabase_client.rpc('refresh_materialized_view_full', {}).execute()
-                
-                if result.data and isinstance(result.data, list) and len(result.data) > 0:
-                    rows_affected = result.data[0].get('row_count', 0)
-                    self.logger.info(f"✅ Full refresh completed successfully ({rows_affected} products)")
+                if result.data:
+                    rows_affected = result.data[0] if isinstance(result.data[0], int) else 0
+                    self.logger.info(f"✅ Full refresh succeeded: {rows_affected} rows affected")
                     success = True
-                else:
-                    raise RuntimeError("Full refresh returned no data")
                     
-            except Exception as full_refresh_error:
-                error_msg = str(full_refresh_error)
-                if isinstance(full_refresh_error, dict):
-                    error_msg = full_refresh_error.get('message', str(full_refresh_error))
-                self.logger.error(f"❌ Full refresh failed: {error_msg}")
+            except Exception as e:
+                self.logger.error(f"❌ Full refresh failed: {str(e)}")
                 success = False
+        
         finally:
-            if refresh_id:
-                await self.log_refresh_end(refresh_id, rows_affected, success)
-                
-        return success
+            await self.log_refresh_end(refresh_id, rows_affected, success)
+            return success
 
     async def run_scripts(self, script_list: List[str]) -> bool:
         """Run a list of scripts with proper concurrency and error handling."""
@@ -421,3 +405,13 @@ async def main():
 
 if __name__ == "__main__":
     sys.exit(asyncio.run(main()))
+
+""" # Test the refresh functionality
+async def test_refresh():
+    async with PipelineRunner() as runner:
+        if await runner.should_refresh_view():
+            result = await runner.refresh_materialized_view()
+            print("Refresh result:", result)
+            
+if __name__ == "__main__":
+    asyncio.run(test_refresh()) """

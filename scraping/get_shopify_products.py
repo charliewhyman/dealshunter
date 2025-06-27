@@ -89,6 +89,19 @@ def parse_product_page(product_url, product):
             schema_data = json.loads(script_tag.string)
             if isinstance(schema_data, dict) and schema_data.get('@type') == 'Product':
                 product['offers'] = schema_data.get('offers', [])
+                
+        # Add to parse_product_page() after schema extraction
+        variant_script = soup.find('script', {'class': 'product-variants'})
+        if variant_script:
+            try:
+                variants_data = json.loads(variant_script.string)
+                # Map variant IDs to their specific types
+                product['variant_types'] = {
+                    v['id']: v.get('type') for v in variants_data.get('variants', [])
+                }
+            except json.JSONDecodeError:
+                pass
+            
     except requests.exceptions.RequestException as e:
         print(f"Error fetching product page {product_url}: {e}")
 
