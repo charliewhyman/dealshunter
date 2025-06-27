@@ -76,91 +76,138 @@ export function HomePage() {
   }
 
   const fetchFilteredProducts = useCallback(
-    async (filters: FilterOptions, page: number, sortOrder: 'asc' | 'desc' | 'discount_desc') => {
-      if (currentRequestRef.current) {
-        currentRequestRef.current.abort();
+  async (
+    filters: FilterOptions,
+    page: number,
+    sortOrder: 'asc' | 'desc' | 'discount_desc',
+    attempt = 1
+  ) => {
+    // Abort previous request if it exists
+    if (currentRequestRef.current) {
+      currentRequestRef.current.abort();
+    }
+
+    const controller = new AbortController();
+    currentRequestRef.current = controller;
+
+    setLoading(true);
+    
+    try {
+      // Small delay to prevent rapid successive requests
+      await new Promise(resolve => setTimeout(resolve, 100));
+
+      let query = supabase
+        .from('products_with_details')
+        .select('*', { 
+          count: 'exact',
+          head: false
+        })
+        .limit(ITEMS_PER_PAGE)
+        .abortSignal(controller.signal);
+
+      // Apply filters
+      if (filters.selectedShopName.length > 0) {
+        query = query.in('shop_name', filters.selectedShopName);
       }
-      
-      currentRequestRef.current = new AbortController();
-      
-      setLoading(true);
-      try {
-        let query = supabase
-          .from('products_with_details')
-          .select('*', { 
-            count: 'exact',
-            head: false
-          })
-          .limit(ITEMS_PER_PAGE)
-          .abortSignal(currentRequestRef.current.signal);
 
-        if (filters.selectedShopName.length > 0) {
-          query = query.in('shop_name', filters.selectedShopName);
+      if (filters.inStockOnly) {
+        query = query.eq('in_stock', true);
+      }
+
+      if (filters.onSaleOnly) {
+        query = query.eq('on_sale', true);
+      }
+
+      if (filters.searchQuery) {
+        query = query.textSearch('fts', filters.searchQuery, {
+          type: 'plain',
+          config: 'english'
+        });
+      }
+
+      if (filters.selectedPriceRange) {
+        query = query
+          .gte('min_price', filters.selectedPriceRange[0])
+          .lte('min_price', filters.selectedPriceRange[1]);
+      }
+
+      if (filters.selectedSizeGroups.length > 0) {
+        query = query.overlaps('size_groups', filters.selectedSizeGroups);
+      }
+
+      // Apply sorting
+      if (sortOrder === 'discount_desc') {
+        query = query
+          .order('max_discount_percentage', { ascending: false, nullsFirst: false })
+          .order('created_at', { ascending: false });
+      } else {
+        query = query
+          .order('min_price', { ascending: sortOrder === 'asc' })
+          .order('created_at', { ascending: false });
+      }
+
+      const { data, error, count } = await query
+        .range(page * ITEMS_PER_PAGE, (page + 1) * ITEMS_PER_PAGE - 1);
+
+      // Handle Supabase errors
+      if (error) {
+        // Special handling for JWT/authentication errors
+        if (error.message.includes('JWT') || error.code === 'PGRST301') {
+          console.error('Auth error, attempting to refresh session');
+          const { error: refreshError } = await supabase.auth.refreshSession();
+          if (refreshError) throw refreshError;
+          if (attempt < 3) {
+            return fetchFilteredProducts(filters, page, sortOrder, attempt + 1);
+          }
+        }
+        throw error;
+      }
+
+      const totalItems = count || 0;
+      const loadedItems = page * ITEMS_PER_PAGE + (data?.length || 0);
+      const moreAvailable = loadedItems < totalItems;
+        
+      setProducts(prev => 
+        page === 0 
+          ? (data as ProductWithDetails[]) || [] 
+          : [...prev, ...(data as ProductWithDetails[] || [])]
+      );
+      setHasMore(moreAvailable);
+      setInitialLoad(false);
+      setError(null);
+
+    } catch (error: unknown) {
+      // Only handle error if it wasn't an abort
+      if (error instanceof Error && error.name !== 'AbortError') {
+        console.error('Fetch error:', error);
+        
+        // Retry for network errors or server issues
+        if (
+          (error instanceof TypeError || 
+           (error as any).code === 'ETIMEDOUT' ||
+           (error as any).code === 'ECONNABORTED') && 
+          attempt < 3
+        ) {
+          console.log(`Retrying... attempt ${attempt + 1}`);
+          await new Promise(resolve => setTimeout(resolve, 1000 * attempt));
+          return fetchFilteredProducts(filters, page, sortOrder, attempt + 1);
         }
 
-        if (filters.inStockOnly) {
-          query = query.eq('in_stock', true);
-        }
-
-        if (filters.onSaleOnly) {
-          query = query.eq('on_sale', true);
-        }
-
-        if (filters.searchQuery) {
-          // Use the full-text search index
-          query = query.textSearch('fts', filters.searchQuery, {
-            type: 'plain',
-            config: 'english'
-          });
-        }
-
-        if (filters.selectedPriceRange) {
-          query = query
-            .gte('min_price', filters.selectedPriceRange[0])
-            .lte('min_price', filters.selectedPriceRange[1]);
-        }
-
-        if (filters.selectedSizeGroups.length > 0) {
-          query = query.overlaps('size_groups', filters.selectedSizeGroups);
-        }
-
-        // Updated sorting logic
-        if (sortOrder === 'discount_desc') {
-          query = query
-            .order('max_discount_percentage', { ascending: false, nullsFirst: false })
-            .order('created_at', { ascending: false });
-        } else if (sortOrder === 'asc' || sortOrder === 'desc') {
-          query = query
-            .order('min_price', { ascending: sortOrder === 'asc' })
-            .order('created_at', { ascending: false });
-        }
-
-        const { data, error, count } = await query
-          .range(page * ITEMS_PER_PAGE, (page + 1) * ITEMS_PER_PAGE - 1);
-
-        if (error) throw error;
-
-        const totalItems = count || 0;
-        const loadedItems = page * ITEMS_PER_PAGE + (data?.length || 0);
-        const moreAvailable = loadedItems < totalItems;
-          
-        setProducts(prev => page === 0 ? (data as ProductWithDetails[]) || [] : [...prev, ...(data as ProductWithDetails[] || [])]);
-        setHasMore(moreAvailable);
-        setInitialLoad(false);
-        setError(null);
-      } catch (error: unknown) {
-        if (error instanceof Error && error.name !== 'AbortError') {
-          console.error('Error fetching products:', error);
-          setError(`Failed to load products: ${error instanceof Error ? error.message : 'Unknown error'}`);
-          setProducts([]);
-          setHasMore(false);
-        }
-      } finally {
+        setError(
+          `Failed to load products: ${error instanceof Error ? error.message : 'Unknown error'}`
+        );
+        setProducts([]);
+        setHasMore(false);
+      }
+    } finally {
+      // Only stop loading if this wasn't aborted for a new request
+      if (!controller.signal.aborted) {
         setLoading(false);
       }
-    },
-    []
-  );
+    }
+  },
+  []
+);
 
   // Update shop names fetching to use the materialized view
   useEffect(() => {
@@ -214,12 +261,21 @@ export function HomePage() {
     if (page === 0) {
       setProducts([]);
       setInitialLoad(true);
-      fetchFilteredProducts(filters, 0, sortOrder);
-    } else {
-      // This is a pagination request
-      debouncedFetchProducts(filters, page, sortOrder);
+      fetchFilteredProducts(filters, 0, sortOrder).catch(console.error);
+  } else {
+      fetchFilteredProducts(filters, page, sortOrder).catch(console.error);
     }
-  }, [selectedShopName, inStockOnly, onSaleOnly, searchQuery, selectedPriceRange, sortOrder, page, fetchFilteredProducts, debouncedFetchProducts, selectedSizeGroups]);
+  }, [
+    selectedShopName, 
+    inStockOnly, 
+    onSaleOnly, 
+    searchQuery, 
+    selectedPriceRange, 
+    sortOrder, 
+    page, 
+    selectedSizeGroups,
+    fetchFilteredProducts
+  ]);
 
   // Local storage effects
   useEffect(() => {
