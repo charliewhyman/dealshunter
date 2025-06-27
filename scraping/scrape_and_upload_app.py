@@ -19,7 +19,7 @@ class PipelineRunner:
         self.supabase_url = os.getenv("SUPABASE_URL")
         self.supabase_key = os.getenv("SUPABASE_SERVICE_ROLE_KEY")
         
-        # For view refresh operations, try to use elevated credentials if available
+        # For table refresh operations, try to use elevated credentials if available
         self.supabase_admin_key = os.getenv("SUPABASE_ADMIN_KEY") or self.supabase_key
         
         # Setup basic logging first
@@ -122,7 +122,7 @@ class PipelineRunner:
         if self.supabase_url and self.supabase_key:
             self.supabase_client = create_client(self.supabase_url, self.supabase_key)
             
-            # Initialize admin client for view refresh operations
+            # Initialize admin client for table refresh operations
             if self.supabase_admin_key and self.supabase_admin_key != self.supabase_key:
                 self.supabase_admin_client = create_client(self.supabase_url, self.supabase_admin_key)
                 self.logger.info("Supabase client and admin client initialized")
@@ -174,7 +174,7 @@ class PipelineRunner:
             return False
         
     async def run_post_refresh_scripts(self) -> bool:
-        """Run scripts after view refresh."""
+        """Run scripts after table refresh."""
         if "post_refresh_scripts" not in self.config:
             return True
             
@@ -205,8 +205,8 @@ class PipelineRunner:
             return None
             
         try:
-            result = self.supabase_client.table("view_refresh_history").insert({
-                "view_name": "products_with_details",
+            result = self.supabase_client.table("table_refresh_history").insert({
+                "table_name": "products_with_details",
                 "start_time": datetime.datetime.now(datetime.timezone.utc).isoformat(),
                 "refresh_method": method,
                 "status": "started"
@@ -234,7 +234,7 @@ class PipelineRunner:
             if rows_affected is not None:
                 update_data["rows_affected"] = rows_affected
             
-            self.supabase_client.table("view_refresh_history").update(update_data).eq(
+            self.supabase_client.table("table_refresh_history").update(update_data).eq(
                 "refresh_id", refresh_id
             ).execute()
             
@@ -345,10 +345,10 @@ class PipelineRunner:
 
         try:
             # Check when we last did a full refresh
-            result = self.supabase_client.table("view_refresh_history").select(
+            result = self.supabase_client.table("table_refresh_history").select(
                 "end_time", "refresh_method"
             ).eq(
-                "view_name", "products_with_details"
+                "table_name", "products_with_details"
             ).eq(
                 "status", "completed"
             ).order(
@@ -410,7 +410,7 @@ class PipelineRunner:
         return not critical_failure
 
     async def run_all_scripts(self) -> bool:
-        """Run the complete pipeline including scripts and view refresh."""
+        """Run the complete pipeline including scripts and table refresh."""
         # Separate get and upload scripts for better control
         get_scripts = [s for s in self.config["scripts"] if s.startswith('get_')]
         upload_scripts = [s for s in self.config["scripts"] if s.startswith('upload_')]
@@ -426,7 +426,7 @@ class PipelineRunner:
                     self.logger.error("❌ Critical script failed - aborting pipeline")
                     return False
 
-        # Refresh materialized view if needed
+        # Refresh table if needed
         refresh_success = True
         if self._is_supabase_available():
             if await self.should_refresh_products(threshold_minutes=30):
@@ -456,10 +456,10 @@ async def main():
             success = await runner.run_all_scripts()
             
             if success:
-                print("✅ All scripts executed and view refreshed successfully")
+                print("✅ All scripts executed and table refreshed successfully")
                 return 0
             else:
-                print("❌ Script execution or view refresh failed")
+                print("❌ Script execution or table refresh failed")
                 return 1
     except Exception as e:
         logging.error(f"💥 Fatal error in main: {e}")

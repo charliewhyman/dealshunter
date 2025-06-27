@@ -122,24 +122,6 @@ export type Database = {
   }
   public: {
     Tables: {
-      collection_groups: {
-        Row: {
-          created_at: string
-          group_name: string | null
-          id: number
-        }
-        Insert: {
-          created_at?: string
-          group_name?: string | null
-          id?: number
-        }
-        Update: {
-          created_at?: string
-          group_name?: string | null
-          id?: number
-        }
-        Relationships: []
-      }
       collections: {
         Row: {
           collection_group_id: number | null
@@ -253,13 +235,6 @@ export type Database = {
             referencedColumns: ["id"]
           },
           {
-            foreignKeyName: "comments_product_id_fkey"
-            columns: ["product_id"]
-            isOneToOne: false
-            referencedRelation: "products_with_min_price"
-            referencedColumns: ["id"]
-          },
-          {
             foreignKeyName: "comments_reply_of_fkey"
             columns: ["reply_of"]
             isOneToOne: false
@@ -283,6 +258,8 @@ export type Database = {
           created_at_external: string | null
           height: number | null
           id: number
+          last_modified: string
+          last_updated: string | null
           position: number | null
           product_id: number | null
           src: string | null
@@ -297,6 +274,8 @@ export type Database = {
           created_at_external?: string | null
           height?: number | null
           id: number
+          last_modified?: string
+          last_updated?: string | null
           position?: number | null
           product_id?: number | null
           src?: string | null
@@ -311,6 +290,8 @@ export type Database = {
           created_at_external?: string | null
           height?: number | null
           id?: number
+          last_modified?: string
+          last_updated?: string | null
           position?: number | null
           product_id?: number | null
           src?: string | null
@@ -340,13 +321,6 @@ export type Database = {
             referencedRelation: "products"
             referencedColumns: ["id"]
           },
-          {
-            foreignKeyName: "images_product_id_fkey"
-            columns: ["product_id"]
-            isOneToOne: false
-            referencedRelation: "products_with_min_price"
-            referencedColumns: ["id"]
-          },
         ]
       }
       offers: {
@@ -356,6 +330,8 @@ export type Database = {
           id: string
           image: string | null
           item_condition: string | null
+          last_modified: string
+          last_updated: string | null
           mpn: string | null
           price: number | null
           price_currency: string | null
@@ -371,6 +347,8 @@ export type Database = {
           id: string
           image?: string | null
           item_condition?: string | null
+          last_modified?: string
+          last_updated?: string | null
           mpn?: string | null
           price?: number | null
           price_currency?: string | null
@@ -386,6 +364,8 @@ export type Database = {
           id?: string
           image?: string | null
           item_condition?: string | null
+          last_modified?: string
+          last_updated?: string | null
           mpn?: string | null
           price?: number | null
           price_currency?: string | null
@@ -408,13 +388,6 @@ export type Database = {
             columns: ["product_id"]
             isOneToOne: false
             referencedRelation: "products"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "offers_product_id_fkey"
-            columns: ["product_id"]
-            isOneToOne: false
-            referencedRelation: "products_with_min_price"
             referencedColumns: ["id"]
           },
         ]
@@ -456,29 +429,7 @@ export type Database = {
             referencedRelation: "products"
             referencedColumns: ["id"]
           },
-          {
-            foreignKeyName: "options_product_id_fkey"
-            columns: ["product_id"]
-            isOneToOne: false
-            referencedRelation: "products_with_min_price"
-            referencedColumns: ["id"]
-          },
         ]
-      }
-      pending_view_refreshes: {
-        Row: {
-          created_at: string | null
-          id: number
-        }
-        Insert: {
-          created_at?: string | null
-          id?: number
-        }
-        Update: {
-          created_at?: string | null
-          id?: number
-        }
-        Relationships: []
       }
       product_collections: {
         Row: {
@@ -521,13 +472,6 @@ export type Database = {
             referencedRelation: "products"
             referencedColumns: ["id"]
           },
-          {
-            foreignKeyName: "product_collections_product_id_fkey"
-            columns: ["product_id"]
-            isOneToOne: false
-            referencedRelation: "products_with_min_price"
-            referencedColumns: ["id"]
-          },
         ]
       }
       product_tags: {
@@ -561,13 +505,6 @@ export type Database = {
             referencedRelation: "products"
             referencedColumns: ["id"]
           },
-          {
-            foreignKeyName: "product_tags_product_id_fkey"
-            columns: ["product_id"]
-            isOneToOne: false
-            referencedRelation: "products_with_min_price"
-            referencedColumns: ["id"]
-          },
         ]
       }
       products: {
@@ -579,6 +516,8 @@ export type Database = {
           fts: unknown | null
           handle: string | null
           id: number
+          last_modified: string
+          last_updated: string | null
           product_type: string | null
           published_at_external: string | null
           shop_id: number | null
@@ -600,6 +539,8 @@ export type Database = {
           fts?: unknown | null
           handle?: string | null
           id: number
+          last_modified?: string
+          last_updated?: string | null
           product_type?: string | null
           published_at_external?: string | null
           shop_id?: number | null
@@ -621,6 +562,8 @@ export type Database = {
           fts?: unknown | null
           handle?: string | null
           id?: number
+          last_modified?: string
+          last_updated?: string | null
           product_type?: string | null
           published_at_external?: string | null
           shop_id?: number | null
@@ -643,6 +586,75 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      products_with_details: {
+        Row: {
+          created_at: string | null
+          description: string | null
+          fts: unknown | null
+          has_clothing: boolean | null
+          has_footwear: boolean | null
+          id: number
+          images: Json[] | null
+          in_stock: boolean | null
+          last_updated: string | null
+          max_discount_percentage: number | null
+          min_price: number | null
+          on_sale: boolean | null
+          shop_id: number | null
+          shop_name: string | null
+          size_groups: string[] | null
+          size_types: string[] | null
+          title: string | null
+          updated_at_external: string | null
+          url: string | null
+          variants: Json[] | null
+        }
+        Insert: {
+          created_at?: string | null
+          description?: string | null
+          fts?: unknown | null
+          has_clothing?: boolean | null
+          has_footwear?: boolean | null
+          id: number
+          images?: Json[] | null
+          in_stock?: boolean | null
+          last_updated?: string | null
+          max_discount_percentage?: number | null
+          min_price?: number | null
+          on_sale?: boolean | null
+          shop_id?: number | null
+          shop_name?: string | null
+          size_groups?: string[] | null
+          size_types?: string[] | null
+          title?: string | null
+          updated_at_external?: string | null
+          url?: string | null
+          variants?: Json[] | null
+        }
+        Update: {
+          created_at?: string | null
+          description?: string | null
+          fts?: unknown | null
+          has_clothing?: boolean | null
+          has_footwear?: boolean | null
+          id?: number
+          images?: Json[] | null
+          in_stock?: boolean | null
+          last_updated?: string | null
+          max_discount_percentage?: number | null
+          min_price?: number | null
+          on_sale?: boolean | null
+          shop_id?: number | null
+          shop_name?: string | null
+          size_groups?: string[] | null
+          size_types?: string[] | null
+          title?: string | null
+          updated_at_external?: string | null
+          url?: string | null
+          variants?: Json[] | null
+        }
+        Relationships: []
       }
       profiles: {
         Row: {
@@ -722,13 +734,6 @@ export type Database = {
             referencedColumns: ["id"]
           },
           {
-            foreignKeyName: "reports_product_id_fkey"
-            columns: ["product_id"]
-            isOneToOne: false
-            referencedRelation: "products_with_min_price"
-            referencedColumns: ["id"]
-          },
-          {
             foreignKeyName: "reports_reported_by_fkey"
             columns: ["reported_by"]
             isOneToOne: false
@@ -786,6 +791,7 @@ export type Database = {
           id: number
           size: string | null
           size_group: string | null
+          size_group_order: number | null
           type: string | null
         }
         Insert: {
@@ -793,6 +799,7 @@ export type Database = {
           id?: number
           size?: string | null
           size_group?: string | null
+          size_group_order?: number | null
           type?: string | null
         }
         Update: {
@@ -800,7 +807,41 @@ export type Database = {
           id?: number
           size?: string | null
           size_group?: string | null
+          size_group_order?: number | null
           type?: string | null
+        }
+        Relationships: []
+      }
+      table_refresh_history: {
+        Row: {
+          end_time: string | null
+          error_message: string | null
+          refresh_id: number
+          refresh_method: string
+          rows_affected: number | null
+          start_time: string
+          status: string | null
+          table_name: string
+        }
+        Insert: {
+          end_time?: string | null
+          error_message?: string | null
+          refresh_id?: number
+          refresh_method: string
+          rows_affected?: number | null
+          start_time: string
+          status?: string | null
+          table_name: string
+        }
+        Update: {
+          end_time?: string | null
+          error_message?: string | null
+          refresh_id?: number
+          refresh_method?: string
+          rows_affected?: number | null
+          start_time?: string
+          status?: string | null
+          table_name?: string
         }
         Relationships: []
       }
@@ -816,6 +857,9 @@ export type Database = {
           id: number
           inventory_quantity: number | null
           is_price_lower: boolean | null
+          last_modified: string
+          last_size_group_update: string | null
+          last_updated: string
           option1: string | null
           option2: string | null
           option3: string | null
@@ -823,12 +867,13 @@ export type Database = {
           price: number | null
           product_id: number | null
           requires_shipping: boolean | null
-          size_groups_id: number | null
+          size_group_id: number | null
           sku: string | null
           taxable: boolean | null
           title: string | null
           updated_at: string | null
           updated_at_external: string | null
+          variant_type: string | null
         }
         Insert: {
           available?: boolean | null
@@ -841,6 +886,9 @@ export type Database = {
           id: number
           inventory_quantity?: number | null
           is_price_lower?: boolean | null
+          last_modified?: string
+          last_size_group_update?: string | null
+          last_updated?: string
           option1?: string | null
           option2?: string | null
           option3?: string | null
@@ -848,12 +896,13 @@ export type Database = {
           price?: number | null
           product_id?: number | null
           requires_shipping?: boolean | null
-          size_groups_id?: number | null
+          size_group_id?: number | null
           sku?: string | null
           taxable?: boolean | null
           title?: string | null
           updated_at?: string | null
           updated_at_external?: string | null
+          variant_type?: string | null
         }
         Update: {
           available?: boolean | null
@@ -866,6 +915,9 @@ export type Database = {
           id?: number
           inventory_quantity?: number | null
           is_price_lower?: boolean | null
+          last_modified?: string
+          last_size_group_update?: string | null
+          last_updated?: string
           option1?: string | null
           option2?: string | null
           option3?: string | null
@@ -873,12 +925,13 @@ export type Database = {
           price?: number | null
           product_id?: number | null
           requires_shipping?: boolean | null
-          size_groups_id?: number | null
+          size_group_id?: number | null
           sku?: string | null
           taxable?: boolean | null
           title?: string | null
           updated_at?: string | null
           updated_at_external?: string | null
+          variant_type?: string | null
         }
         Relationships: [
           {
@@ -896,44 +949,13 @@ export type Database = {
             referencedColumns: ["id"]
           },
           {
-            foreignKeyName: "variants_product_id_fkey"
-            columns: ["product_id"]
-            isOneToOne: false
-            referencedRelation: "products_with_min_price"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "variants_size_groups_id_fkey"
-            columns: ["size_groups_id"]
+            foreignKeyName: "variants_size_group_id_fkey"
+            columns: ["size_group_id"]
             isOneToOne: false
             referencedRelation: "size_groups"
             referencedColumns: ["id"]
           },
         ]
-      }
-      view_refresh_history: {
-        Row: {
-          end_time: string | null
-          refresh_id: number
-          refresh_method: string | null
-          rows_affected: number | null
-          start_time: string
-        }
-        Insert: {
-          end_time?: string | null
-          refresh_id?: number
-          refresh_method?: string | null
-          rows_affected?: number | null
-          start_time: string
-        }
-        Update: {
-          end_time?: string | null
-          refresh_id?: number
-          refresh_method?: string | null
-          rows_affected?: number | null
-          start_time?: string
-        }
-        Relationships: []
       }
       votes: {
         Row: {
@@ -983,13 +1005,6 @@ export type Database = {
             referencedColumns: ["id"]
           },
           {
-            foreignKeyName: "votes_product_id_fkey"
-            columns: ["product_id"]
-            isOneToOne: false
-            referencedRelation: "products_with_min_price"
-            referencedColumns: ["id"]
-          },
-          {
             foreignKeyName: "votes_user_id_fkey1"
             columns: ["user_id"]
             isOneToOne: false
@@ -1012,6 +1027,13 @@ export type Database = {
         }
         Relationships: []
       }
+      distinct_size_groups_and_types: {
+        Row: {
+          size_group: string | null
+          type: string | null
+        }
+        Relationships: []
+      }
       distinct_variant_titles: {
         Row: {
           title: string | null
@@ -1031,31 +1053,6 @@ export type Database = {
         }
         Relationships: []
       }
-      products_with_min_price: {
-        Row: {
-          created_at: string | null
-          description: string | null
-          fts: unknown | null
-          id: number | null
-          in_stock: boolean | null
-          min_price: number | null
-          on_sale: boolean | null
-          shop_id: number | null
-          shop_name: string | null
-          title: string | null
-          updated_at_external: string | null
-          url: string | null
-        }
-        Relationships: [
-          {
-            foreignKeyName: "products_shop_id_fkey"
-            columns: ["shop_id"]
-            isOneToOne: false
-            referencedRelation: "shops"
-            referencedColumns: ["id"]
-          },
-        ]
-      }
     }
     Functions: {
       generate_fts: {
@@ -1074,17 +1071,53 @@ export type Database = {
           max_price: number
         }[]
       }
-      increment_votes: {
-        Args: Record<PropertyKey, never> | { deal_id: string }
+      gtrgm_compress: {
+        Args: { "": unknown }
+        Returns: unknown
+      }
+      gtrgm_decompress: {
+        Args: { "": unknown }
+        Returns: unknown
+      }
+      gtrgm_in: {
+        Args: { "": unknown }
+        Returns: unknown
+      }
+      gtrgm_options: {
+        Args: { "": unknown }
         Returns: undefined
       }
-      match_size_group: {
-        Args: { variant_title: string }
+      gtrgm_out: {
+        Args: { "": unknown }
+        Returns: unknown
+      }
+      increment_votes: {
+        Args: { deal_id: string }
+        Returns: undefined
+      }
+      refresh_all_products: {
+        Args: Record<PropertyKey, never>
         Returns: number
       }
-      refresh_products_view: {
-        Args: Record<PropertyKey, never>
+      refresh_product_details: {
+        Args: { product_id: number }
         Returns: undefined
+      }
+      refresh_products_batch: {
+        Args: { product_ids: number[] }
+        Returns: undefined
+      }
+      set_limit: {
+        Args: { "": number }
+        Returns: number
+      }
+      show_limit: {
+        Args: Record<PropertyKey, never>
+        Returns: number
+      }
+      show_trgm: {
+        Args: { "": string }
+        Returns: string[]
       }
     }
     Enums: {
