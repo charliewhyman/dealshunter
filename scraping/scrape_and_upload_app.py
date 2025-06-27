@@ -19,6 +19,9 @@ class PipelineRunner:
         self.supabase_url = os.getenv("SUPABASE_URL")
         self.supabase_key = os.getenv("SUPABASE_SERVICE_ROLE_KEY")
         
+        # For view refresh operations, try to use elevated credentials if available
+        self.supabase_admin_key = os.getenv("SUPABASE_ADMIN_KEY") or self.supabase_key
+        
         # Setup basic logging first
         self.logger = logging.getLogger("PipelineRunner")
         self.logger.addHandler(logging.StreamHandler())
@@ -27,7 +30,7 @@ class PipelineRunner:
         # Load configuration
         self.config = self._load_config(config_path)
         
-        # Setup propedeer logging
+        # Setup proper logging
         self._setup_logging()
         
         # Ensure required config values
@@ -40,6 +43,7 @@ class PipelineRunner:
         
         # Initialize clients
         self.supabase_client = None
+        self.supabase_admin_client = None
     
     def _setup_logging(self):
         """Initialize proper logging configuration."""
@@ -114,16 +118,24 @@ class PipelineRunner:
             return default_config
 
     async def __aenter__(self):
-        # Initialize Supabase client
+        # Initialize Supabase clients with extended timeouts
         if self.supabase_url and self.supabase_key:
             self.supabase_client = create_client(self.supabase_url, self.supabase_key)
-            self.logger.info("Supabase client initialized")
+            
+            # Initialize admin client for view refresh operations
+            if self.supabase_admin_key and self.supabase_admin_key != self.supabase_key:
+                self.supabase_admin_client = create_client(self.supabase_url, self.supabase_admin_key)
+                self.logger.info("Supabase client and admin client initialized")
+            else:
+                self.supabase_admin_client = self.supabase_client
+                self.logger.info("Supabase client initialized")
         else:
             self.logger.warning("Supabase credentials missing - some features disabled")
         return self
 
     async def __aexit__(self, exc_type, exc_val, exc_tb):
         self.supabase_client = None
+        self.supabase_admin_client = None
 
     def _is_supabase_available(self) -> bool:
         """Check if Supabase client is ready."""
@@ -231,14 +243,108 @@ class PipelineRunner:
         except Exception as e:
             self.logger.warning(f"⚠️ Failed to log refresh end: {e}")                           
         
-    async def should_refresh_view(self, threshold_minutes: int = 30) -> bool:
-        """Check if view needs refresh based on last refresh time and method."""
+    async def refresh_products_table(self, product_ids: Optional[List[int]] = None):
+        """Refresh the products_with_details table for specific products or all products"""
         if not self._is_supabase_available():
-            self.logger.warning("Supabase unavailable - skipping refresh check")
+            self.logger.error("Supabase client not available - cannot refresh products")
             return False
-            
+
+        refresh_id = await self.log_refresh_start(
+            method='targeted' if product_ids else 'full'
+        )
+        success = False
+        rows_affected = 0
+
         try:
-            # Get most recent successful refresh
+            if product_ids:
+                # Refresh specific products
+                self.logger.info(f"🔄 Refreshing {len(product_ids)} products in batches")
+                
+                # Process in batches of 100
+                batch_size = 100
+                for i in range(0, len(product_ids), batch_size):
+                    batch = product_ids[i:i + batch_size]
+                    self.logger.debug(f"Processing batch {i//batch_size + 1}: IDs {batch[0]} to {batch[-1]}")
+                    
+                    result = self.supabase_client.rpc(
+                        'refresh_products_batch',
+                        {'product_ids': batch}
+                    ).execute()
+                    
+                    if result.data:
+                        rows_affected += len(batch)
+            else:
+                # Full refresh
+                self.logger.info("🔄 Refreshing all products")
+                result = self.supabase_client.rpc(
+                    'refresh_all_products'
+                ).execute()
+                
+                if result.data:
+                    rows_affected = result.data[0] if isinstance(result.data[0], int) else 0
+
+            success = True
+            self.logger.info(f"✅ Refreshed {rows_affected} products")
+            
+        except Exception as e:
+            self.logger.error(f"❌ Product refresh failed: {str(e)}")
+            success = False
+        
+        finally:
+            await self.log_refresh_end(refresh_id, rows_affected, success)
+            return success
+
+    async def get_modified_product_ids(self, since_minutes: int = 30) -> List[int]:
+        """Get IDs of products modified in the last X minutes"""
+        if not self._is_supabase_available():
+            self.logger.warning("Supabase unavailable - cannot get modified products")
+            return []
+
+        try:
+            cutoff = datetime.datetime.now(datetime.timezone.utc) - datetime.timedelta(minutes=since_minutes)
+            
+            # Get modified products
+            products = self.supabase_client.table('products').select(
+                'id'
+            ).gte(
+                'last_modified', cutoff.isoformat()
+            ).execute()
+            
+            # Get products with modified variants
+            variants = self.supabase_client.table('variants').select(
+                'product_id'
+            ).gte(
+                'last_modified', cutoff.isoformat()
+            ).execute()
+            
+            # Get products with modified images
+            images = self.supabase_client.table('images').select(
+                'product_id'
+            ).gte(
+                'last_modified', cutoff.isoformat()
+            ).execute()
+            
+            # Combine all IDs
+            all_ids = (
+                [p['id'] for p in products.data] +
+                [v['product_id'] for v in variants.data] +
+                [i['product_id'] for i in images.data]
+            )
+            
+            return list(set(all_ids))  # Deduplicate
+        
+        except Exception as e:
+            self.logger.error(f"Error getting modified products: {e}")
+            return []
+
+    async def should_refresh_products(self, threshold_minutes: int = 30) -> bool:
+        """Check if products need refresh based on modification time"""
+        if not self._is_supabase_available():
+            self.logger.warning("Supabase unavailable - proceeding with refresh")
+            return True
+
+        try:
+            # Check when we last did a full refresh
             result = self.supabase_client.table("view_refresh_history").select(
                 "end_time", "refresh_method"
             ).eq(
@@ -250,7 +356,6 @@ class PipelineRunner:
             ).limit(1).execute()
             
             if not result.data:
-                self.logger.info("No previous refresh found - refresh needed")
                 return True
                 
             last_refresh = result.data[0]
@@ -258,73 +363,23 @@ class PipelineRunner:
             time_since_refresh = datetime.datetime.now(datetime.timezone.utc) - last_refresh_time
             minutes_since = time_since_refresh.total_seconds() / 60
             
-            # If last refresh was incremental, consider forcing periodic full refresh
-            if last_refresh['refresh_method'] == 'incremental' and minutes_since > (threshold_minutes * 24):  # Daily full refresh
-                self.logger.info(
-                    f"Last refresh was incremental {minutes_since/60:.1f} hours ago - "
-                    "recommending full refresh"
-                )
+            # Force periodic full refresh
+            if minutes_since > (threshold_minutes * 24 * 3):  # Every 3 days
+                self.logger.info("Time for periodic full refresh")
                 return True
-            elif minutes_since < threshold_minutes:
-                self.logger.info(
-                    f"View refreshed {minutes_since:.1f} minutes ago "
-                    f"(under {threshold_minutes} minute threshold) - skipping refresh"
-                )
-                return False
                 
-            self.logger.info(
-                f"View last refreshed {minutes_since:.1f} minutes ago - refresh needed"
-            )
-            return True
-            
-        except Exception as e:
-            self.logger.error(f"Error checking refresh status: {e} - proceeding with refresh")
-            return True
-    
-    async def refresh_materialized_view(self, view_name='products_with_details'):
-        if not self._is_supabase_available():
-            self.logger.error("Supabase client not available - cannot refresh view")
+            # Check for modified products
+            modified_ids = await self.get_modified_product_ids(threshold_minutes)
+            if modified_ids:
+                self.logger.info(f"Found {len(modified_ids)} modified products needing refresh")
+                return True
+                
+            self.logger.info("No products modified recently - skipping refresh")
             return False
-
-        refresh_id = await self.log_refresh_start()
-        rows_affected = 0
-        success = False
-
-        try:
-            # Try incremental first
-            self.logger.info("🔄 Attempting incremental materialized view refresh")
-            result = self.supabase_client.rpc(
-                'refresh_products_view_incremental',
-                params={}
-            ).execute()
-            
-            if result.data:
-                rows_affected = result.data[0] if isinstance(result.data[0], int) else 0
-                self.logger.info(f"✅ Incremental refresh succeeded: {rows_affected} rows affected")
-                success = True
             
         except Exception as e:
-            self.logger.error(f"❌ Incremental refresh failed: {str(e)}")
-            try:
-                # Fallback to full refresh
-                self.logger.warning("🔄 Attempting full refresh as fallback")
-                result = self.supabase_client.rpc(
-                    'refresh_products_view_full',
-                    params={}
-                ).execute()
-                
-                if result.data:
-                    rows_affected = result.data[0] if isinstance(result.data[0], int) else 0
-                    self.logger.info(f"✅ Full refresh succeeded: {rows_affected} rows affected")
-                    success = True
-                    
-            except Exception as e:
-                self.logger.error(f"❌ Full refresh failed: {str(e)}")
-                success = False
-        
-        finally:
-            await self.log_refresh_end(refresh_id, rows_affected, success)
-            return success
+            self.logger.error(f"Error checking refresh need: {e}")
+            return True
 
     async def run_scripts(self, script_list: List[str]) -> bool:
         """Run a list of scripts with proper concurrency and error handling."""
@@ -374,12 +429,19 @@ class PipelineRunner:
         # Refresh materialized view if needed
         refresh_success = True
         if self._is_supabase_available():
-            if await self.should_refresh_view(threshold_minutes=30):
-                refresh_success = await self.refresh_materialized_view()
+            if await self.should_refresh_products(threshold_minutes=30):
+                # First try incremental refresh
+                modified_ids = await self.get_modified_product_ids(24*60)  # Last 24 hours
+                if modified_ids:
+                    refresh_success = await self.refresh_products_table(modified_ids)
+                
+                # Fallback to full refresh if incremental fails or no modified products
+                if not refresh_success or not modified_ids:
+                    refresh_success = await self.refresh_products_table()
             else:
-                self.logger.info("⏭️ Skipping view refresh - recently refreshed")
+                self.logger.info("⏭️ Skipping product refresh - no changes detected")
         else:
-            self.logger.warning("⏭️ Skipping view refresh - Supabase unavailable")
+            self.logger.warning("⏭️ Skipping product refresh - Supabase unavailable")
 
         # Run post-refresh scripts only if everything succeeded
         if refresh_success:
@@ -403,15 +465,16 @@ async def main():
         logging.error(f"💥 Fatal error in main: {e}")
         return 1
 
-if __name__ == "__main__":
-    sys.exit(asyncio.run(main()))
+# if __name__ == "__main__":
+#     sys.exit(asyncio.run(main()))
 
-""" # Test the refresh functionality
 async def test_refresh():
     async with PipelineRunner() as runner:
-        if await runner.should_refresh_view():
-            result = await runner.refresh_materialized_view()
-            print("Refresh result:", result)
-            
-if __name__ == "__main__":
-    asyncio.run(test_refresh()) """
+        # Test incremental refresh
+        modified_ids = await runner.get_modified_product_ids(1)  # Last 2 hours
+        if modified_ids:
+            await runner.refresh_products_table(modified_ids)
+        else:
+            print("No modified products found")
+
+asyncio.run(test_refresh())
