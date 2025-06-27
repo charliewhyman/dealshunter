@@ -27,7 +27,7 @@ class PipelineRunner:
         # Load configuration
         self.config = self._load_config(config_path)
         
-        # Setup proper logging
+        # Setup propedeer logging
         self._setup_logging()
         
         # Ensure required config values
@@ -231,7 +231,7 @@ class PipelineRunner:
             self.logger.warning(f"⚠️ Failed to log refresh end: {e}")
         
     async def should_refresh_view(self, threshold_minutes: int = 30) -> bool:
-        """Check if view needs refresh."""
+        """Check if view needs refresh based on last refresh time and method."""
         if not self._is_supabase_available():
             self.logger.warning("Supabase unavailable - skipping refresh check")
             return False
@@ -239,40 +239,49 @@ class PipelineRunner:
         try:
             # Get most recent successful refresh
             result = self.supabase_client.table("view_refresh_history").select(
-                "end_time"
+                "end_time", "refresh_method"
+            ).eq(
+                "view_name", "products_with_details"
             ).eq(
                 "status", "completed"
             ).order(
                 "end_time", desc=True
             ).limit(1).execute()
             
-            if not result.data or len(result.data) == 0:
-                self.logger.info("🔍 No previous refresh found - refresh needed")
+            if not result.data:
+                self.logger.info("No previous refresh found - refresh needed")
                 return True
                 
-            last_refresh_str = result.data[0]['end_time']
-            last_refresh_time = datetime.datetime.fromisoformat(last_refresh_str.replace('Z', '+00:00'))
+            last_refresh = result.data[0]
+            last_refresh_time = datetime.datetime.fromisoformat(last_refresh['end_time'].replace('Z', '+00:00'))
             time_since_refresh = datetime.datetime.now(datetime.timezone.utc) - last_refresh_time
             minutes_since = time_since_refresh.total_seconds() / 60
             
-            if minutes_since < threshold_minutes:
+            # If last refresh was incremental, consider forcing periodic full refresh
+            if last_refresh['refresh_method'] == 'incremental' and minutes_since > (threshold_minutes * 24):  # Daily full refresh
                 self.logger.info(
-                    f"⏱️ View refreshed {minutes_since:.1f} minutes ago "
+                    f"Last refresh was incremental {minutes_since/60:.1f} hours ago - "
+                    "recommending full refresh"
+                )
+                return True
+            elif minutes_since < threshold_minutes:
+                self.logger.info(
+                    f"View refreshed {minutes_since:.1f} minutes ago "
                     f"(under {threshold_minutes} minute threshold) - skipping refresh"
                 )
                 return False
                 
             self.logger.info(
-                f"🔄 View last refreshed {minutes_since:.1f} minutes ago - refresh needed"
+                f"View last refreshed {minutes_since:.1f} minutes ago - refresh needed"
             )
             return True
             
         except Exception as e:
-            self.logger.error(f"⚠️ Error checking refresh status: {e} - proceeding with refresh")
+            self.logger.error(f"Error checking refresh status: {e} - proceeding with refresh")
             return True
 
     async def refresh_materialized_view(self) -> bool:
-        """Refresh the materialized view."""
+        """Refresh the materialized view with proper error handling."""
         if not self._is_supabase_available():
             self.logger.warning("❌ Supabase client not available - cannot refresh view")
             return False
@@ -284,28 +293,48 @@ class PipelineRunner:
         try:
             # First try incremental refresh
             self.logger.info("🔄 Attempting incremental materialized view refresh")
-            result = self.supabase_client.rpc('refresh_products_view_incremental', {}).execute()
-            
-            if hasattr(result, 'data') and result.data:
-                # Handle response with row count
-                rows_affected = result.data[0].get('row_count')
-                message = f"✅ Incremental refresh successful ({rows_affected} products updated)"
-            else:
-                message = "✅ Incremental refresh completed successfully"
+            try:
+                result = self.supabase_client.rpc('refresh_products_view_incremental', {}).execute()
                 
-            self.logger.info(message)
-            success = True
-            
+                if result.data and isinstance(result.data, list) and len(result.data) > 0:
+                    rows_affected = result.data[0].get('row_count', 0)
+                    message = f"✅ Incremental refresh successful ({rows_affected} products updated)"
+                    self.logger.info(message)
+                    success = True
+                else:
+                    raise RuntimeError("Incremental refresh returned no data")
+                    
+            except Exception as e:
+                error_msg = str(e)
+                if isinstance(e, dict):
+                    error_msg = e.get('message', str(e))
+                
+                if 'cannot change materialized view' in error_msg:
+                    self.logger.warning("⚠️ Incremental refresh not supported - falling back to full refresh")
+                    raise RuntimeError("Incremental refresh not supported")
+                raise RuntimeError(error_msg)
+                
         except Exception as e:
             self.logger.error(f"❌ Incremental refresh failed: {str(e)}")
             try:
-                # Fallback to full refresh
+                # Fallback to full refresh using the renamed function
                 self.logger.warning("🔄 Attempting full refresh as fallback")
-                self.supabase_client.execute('REFRESH MATERIALIZED VIEW CONCURRENTLY public.products_with_details')
-                self.logger.info("✅ Full refresh completed successfully")
-                success = True
+                
+                # Updated to use the new function name
+                result = self.supabase_client.rpc('refresh_materialized_view_full', {}).execute()
+                
+                if result.data and isinstance(result.data, list) and len(result.data) > 0:
+                    rows_affected = result.data[0].get('row_count', 0)
+                    self.logger.info(f"✅ Full refresh completed successfully ({rows_affected} products)")
+                    success = True
+                else:
+                    raise RuntimeError("Full refresh returned no data")
+                    
             except Exception as full_refresh_error:
-                self.logger.error(f"❌ Full refresh failed: {str(full_refresh_error)}")
+                error_msg = str(full_refresh_error)
+                if isinstance(full_refresh_error, dict):
+                    error_msg = full_refresh_error.get('message', str(full_refresh_error))
+                self.logger.error(f"❌ Full refresh failed: {error_msg}")
                 success = False
         finally:
             if refresh_id:
