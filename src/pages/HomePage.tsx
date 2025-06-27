@@ -30,9 +30,15 @@ export function HomePage() {
   );
   const navigate = useNavigate();
 
-  const [selectedShopName, setSelectedShopName] = useState<string[]>(
-    JSON.parse(localStorage.getItem('selectedShopName') || '[]')
-  );
+  const [selectedShopName, setSelectedShopName] = useState<string[]>(() => {
+    try {
+      const saved = localStorage.getItem('selectedShopName');
+      return saved ? JSON.parse(saved) : [];
+    } catch {
+      return [];
+    }
+  });
+
   const [inStockOnly, setInStockOnly] = useState<boolean>(
     JSON.parse(localStorage.getItem('inStockOnly') || 'true')
   );
