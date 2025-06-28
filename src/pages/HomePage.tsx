@@ -183,10 +183,10 @@ export function HomePage() {
         
         // Retry for network errors or server issues
         if (
-          (error instanceof TypeError || 
-           (error as any).code === 'ETIMEDOUT' ||
-           (error as any).code === 'ECONNABORTED') && 
-          attempt < 3
+          (error instanceof TypeError ||
+            (typeof error === 'object' && error !== null && 'code' in error && (error as { code?: string }).code === 'ETIMEDOUT') ||
+            (typeof error === 'object' && error !== null && 'code' in error && (error as { code?: string }).code === 'ECONNABORTED')
+          ) && attempt < 3
         ) {
           console.log(`Retrying... attempt ${attempt + 1}`);
           await new Promise(resolve => setTimeout(resolve, 1000 * attempt));
@@ -261,9 +261,13 @@ export function HomePage() {
     if (page === 0) {
       setProducts([]);
       setInitialLoad(true);
-      fetchFilteredProducts(filters, 0, sortOrder).catch(console.error);
+      fetchFilteredProducts(filters, 0, sortOrder).catch(err => {
+        console.error('Error:', err);
+      });
   } else {
-      fetchFilteredProducts(filters, page, sortOrder).catch(console.error);
+      fetchFilteredProducts(filters, page, sortOrder).catch(err => {
+        console.error('Error:', err);
+      });
     }
   }, [
     selectedShopName, 
