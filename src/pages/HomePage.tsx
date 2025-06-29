@@ -19,6 +19,7 @@ export function HomePage() {
   const [hasMore, setHasMore] = useState(true);
   const [page, setPage] = useState(0);
   const [shopNames, setShopNames] = useState<string[]>([]);
+  const [productTypes, setProductTypes] = useState<string[]>([]);
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('asc');
   const observerRef = useRef<HTMLDivElement | null>(null);
   const [showFilters, setShowFilters] = useState(false);
@@ -33,6 +34,15 @@ export function HomePage() {
   const [selectedShopName, setSelectedShopName] = useState<string[]>(() => {
     try {
       const saved = localStorage.getItem('selectedShopName');
+      return saved ? JSON.parse(saved) : [];
+    } catch {
+      return [];
+    }
+  });
+
+  const [selectedProductTypes, setSelectedProductTypes] = useState<string[]>(() => {
+    try {
+      const saved = localStorage.getItem('selectedProductTypes');
       return saved ? JSON.parse(saved) : [];
     } catch {
       return [];
@@ -69,6 +79,7 @@ export function HomePage() {
   interface FilterOptions {
     selectedShopName: string[];
     selectedSizeGroups: string[];
+    selectedProductTypes: string[];
     inStockOnly: boolean;
     onSaleOnly: boolean;
     searchQuery: string;
@@ -108,6 +119,10 @@ export function HomePage() {
       // Apply filters
       if (filters.selectedShopName.length > 0) {
         query = query.in('shop_name', filters.selectedShopName);
+      }
+
+      if (filters.selectedProductTypes.length > 0) {
+        query = query.in('product_type', filters.selectedProductTypes);
       }
 
       if (filters.inStockOnly) {
@@ -221,6 +236,20 @@ export function HomePage() {
       if (shopData && !shopError) {
         setShopNames(shopData.map(item => item.shop_name).filter(Boolean));
       }
+
+      // Fetch product types
+      const { data: productTypeData, error: productTypeError } = await supabase
+        .from('products_with_details')
+        .select('product_type')
+        .not('product_type', 'is', null)
+        .order('product_type', { ascending: true });
+
+      if (productTypeData && !productTypeError) {
+        const uniqueTypes = Array.from(new Set(
+          productTypeData.map(item => item.product_type).filter(Boolean)
+        ));
+        setProductTypes(uniqueTypes);
+      }
   
       // Fetch size data
       const { data: sizeData, error: sizeError } = await supabase
@@ -251,6 +280,7 @@ export function HomePage() {
     const filters: FilterOptions = {
       selectedShopName,
       selectedSizeGroups,
+      selectedProductTypes,
       inStockOnly,
       onSaleOnly,
       searchQuery,
@@ -269,23 +299,17 @@ export function HomePage() {
         console.error('Error:', err);
       });
     }
-  }, [
-    selectedShopName, 
-    inStockOnly, 
-    onSaleOnly, 
-    searchQuery, 
-    selectedPriceRange, 
-    sortOrder, 
-    page, 
-    selectedSizeGroups,
-    fetchFilteredProducts
-  ]);
+  }, [selectedShopName, inStockOnly, onSaleOnly, searchQuery, selectedPriceRange, sortOrder, page, selectedSizeGroups, fetchFilteredProducts, selectedProductTypes]);
 
   // Local storage effects
   useEffect(() => {
     localStorage.setItem('selectedShopName', JSON.stringify(selectedShopName));
   }, [selectedShopName]);
   
+  useEffect(() => {
+    localStorage.setItem('selectedProductTypes', JSON.stringify(selectedProductTypes));
+  }, [selectedProductTypes]);
+
   useEffect(() => {
     localStorage.setItem('inStockOnly', JSON.stringify(inStockOnly));
   }, [inStockOnly]);
@@ -473,6 +497,7 @@ export function HomePage() {
 
   const handleClearAllFilters = () => {
     setSelectedShopName([]);
+    setSelectedProductTypes([]);
     setInStockOnly(true);
     setOnSaleOnly(false);
     setSelectedSizeGroups([]);
@@ -513,13 +538,15 @@ export function HomePage() {
                   <span className="text-sm font-medium text-gray-900 dark:text-gray-100 sm:text-base">
                     Filters
                   </span>
-                  {selectedShopName.length > 0 || 
-                   inStockOnly !== false || 
-                   onSaleOnly !== false || 
-                   !isEqual(selectedPriceRange, PRICE_RANGE) ? (
-                    <span className="inline-flex items-center justify-center px-1.5 py-0.5 text-xs font-bold leading-none text-white bg-blue-600 rounded-full sm:px-2 sm:py-1">
-                      Active
-                    </span>
+                  {
+                    selectedShopName.length > 0 || 
+                    selectedProductTypes.length > 0 ||
+                    inStockOnly !== false || 
+                    onSaleOnly !== false || 
+                    !isEqual(selectedPriceRange, PRICE_RANGE) ? (
+                      <span className="inline-flex items-center justify-center px-1.5 py-0.5 text-xs font-bold leading-none text-white bg-blue-600 rounded-full sm:px-2 sm:py-1">
+                        Active
+                      </span>
                   ) : null}
                 </div>
                 {showFilters ? (
@@ -547,6 +574,26 @@ export function HomePage() {
                     selected={selectedShopName}
                     onChange={setSelectedShopName}
                     placeholder="All shops"
+                  />
+                </div>
+
+                {/* Product Type Filter */}
+                <div>
+                  <h3 className="text-xs font-medium text-gray-700 dark:text-gray-300 mb-2 sm:text-sm sm:mb-3">
+                    Product Types {selectedProductTypes.length > 0 && (
+                      <span className="ml-1 text-xs text-gray-500 dark:text-gray-400">
+                        ({selectedProductTypes.length} selected)
+                      </span>
+                    )}
+                  </h3>
+                  <MultiSelectDropdown
+                    options={productTypes.map(type => ({
+                      value: type,
+                      label: type
+                    }))}
+                    selected={selectedProductTypes}
+                    onChange={setSelectedProductTypes}
+                    placeholder="All product types"
                   />
                 </div>
   
@@ -656,6 +703,25 @@ export function HomePage() {
                                 {shop}
                                 <button 
                                   onClick={() => setSelectedShopName(prev => prev.filter(s => s !== shop))}
+                                  className="ml-1 inline-flex text-blue-500 hover:text-blue-700 dark:text-blue-300 dark:hover:text-blue-100"
+                                >
+                                  <X className="h-2.5 w-2.5 sm:h-3 sm:w-3" />
+                                </button>
+                              </div>
+                            ))}
+                          </>
+                        )}
+
+                        {selectedProductTypes.length > 0 && (
+                          <>
+                            {selectedProductTypes.map(type => (
+                              <div 
+                                key={type}
+                                className="inline-flex items-center rounded-md bg-blue-50 dark:bg-blue-900/30 px-1.5 py-0.5 text-xs font-medium text-blue-700 dark:text-blue-200 ring-1 ring-inset ring-blue-700/10 dark:ring-blue-500/30 sm:px-2 sm:py-1"
+                              >
+                                {type}
+                                <button 
+                                  onClick={() => setSelectedProductTypes(prev => prev.filter(t => t !== type))}
                                   className="ml-1 inline-flex text-blue-500 hover:text-blue-700 dark:text-blue-300 dark:hover:text-blue-100"
                                 >
                                   <X className="h-2.5 w-2.5 sm:h-3 sm:w-3" />
