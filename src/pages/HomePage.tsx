@@ -19,7 +19,7 @@ export function HomePage() {
   const [hasMore, setHasMore] = useState(true);
   const [page, setPage] = useState(0);
   const [shopNames, setShopNames] = useState<string[]>([]);
-  const [productTypes, setProductTypes] = useState<string[]>([]);
+  const [categories, setCategories] = useState<string[]>([]);
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('asc');
   const observerRef = useRef<HTMLDivElement | null>(null);
   const [showFilters, setShowFilters] = useState(false);
@@ -40,9 +40,9 @@ export function HomePage() {
     }
   });
 
-  const [selectedProductTypes, setSelectedProductTypes] = useState<string[]>(() => {
+  const [selectedCategories, setSelectedCategories] = useState<string[]>(() => {
     try {
-      const saved = localStorage.getItem('selectedProductTypes');
+      const saved = localStorage.getItem('selectedCategories');
       return saved ? JSON.parse(saved) : [];
     } catch {
       return [];
@@ -79,7 +79,7 @@ export function HomePage() {
   interface FilterOptions {
     selectedShopName: string[];
     selectedSizeGroups: string[];
-    selectedProductTypes: string[];
+    selectedCategories: string[];
     inStockOnly: boolean;
     onSaleOnly: boolean;
     searchQuery: string;
@@ -121,8 +121,8 @@ export function HomePage() {
         query = query.in('shop_name', filters.selectedShopName);
       }
 
-      if (filters.selectedProductTypes.length > 0) {
-        query = query.in('product_type', filters.selectedProductTypes);
+      if (filters.selectedCategories.length > 0) {
+        query = query.overlaps('categories', filters.selectedCategories);
       }
 
       if (filters.inStockOnly) {
@@ -237,18 +237,17 @@ export function HomePage() {
         setShopNames(shopData.map(item => item.shop_name).filter(Boolean));
       }
 
-      // Fetch product types
-      const { data: productTypeData, error: productTypeError } = await supabase
+      // Fetch product categories
+      const { data: categoryData, error: categoryError } = await supabase
         .from('products_with_details')
-        .select('product_type')
-        .not('product_type', 'is', null)
-        .order('product_type', { ascending: true });
+        .select('categories')
+        .not('categories', 'is', null);
 
-      if (productTypeData && !productTypeError) {
-        const uniqueTypes = Array.from(new Set(
-          productTypeData.map(item => item.product_type).filter(Boolean)
-        ));
-        setProductTypes(uniqueTypes);
+      if (categoryData && !categoryError) {
+        const uniqueCategories = Array.from(new Set(
+          categoryData.flatMap(item => item.categories).filter(Boolean)
+        )).sort();
+        setCategories(uniqueCategories);
       }
   
       // Fetch size data
@@ -280,7 +279,7 @@ export function HomePage() {
     const filters: FilterOptions = {
       selectedShopName,
       selectedSizeGroups,
-      selectedProductTypes,
+      selectedCategories,
       inStockOnly,
       onSaleOnly,
       searchQuery,
@@ -299,7 +298,7 @@ export function HomePage() {
         console.error('Error:', err);
       });
     }
-  }, [selectedShopName, inStockOnly, onSaleOnly, searchQuery, selectedPriceRange, sortOrder, page, selectedSizeGroups, fetchFilteredProducts, selectedProductTypes]);
+  }, [selectedShopName, inStockOnly, onSaleOnly, searchQuery, selectedPriceRange, sortOrder, page, selectedSizeGroups, fetchFilteredProducts, selectedCategories]);
 
   // Local storage effects
   useEffect(() => {
@@ -307,9 +306,8 @@ export function HomePage() {
   }, [selectedShopName]);
   
   useEffect(() => {
-    localStorage.setItem('selectedProductTypes', JSON.stringify(selectedProductTypes));
-  }, [selectedProductTypes]);
-
+    localStorage.setItem('selectedCategories', JSON.stringify(selectedCategories));
+  }, [selectedCategories]);
   useEffect(() => {
     localStorage.setItem('inStockOnly', JSON.stringify(inStockOnly));
   }, [inStockOnly]);
@@ -497,7 +495,7 @@ export function HomePage() {
 
   const handleClearAllFilters = () => {
     setSelectedShopName([]);
-    setSelectedProductTypes([]);
+    setSelectedCategories([]);
     setInStockOnly(true);
     setOnSaleOnly(false);
     setSelectedSizeGroups([]);
@@ -540,7 +538,7 @@ export function HomePage() {
                   </span>
                   {
                     selectedShopName.length > 0 || 
-                    selectedProductTypes.length > 0 ||
+                    selectedCategories.length > 0 ||
                     inStockOnly !== false || 
                     onSaleOnly !== false || 
                     !isEqual(selectedPriceRange, PRICE_RANGE) ? (
@@ -577,23 +575,23 @@ export function HomePage() {
                   />
                 </div>
 
-                {/* Product Type Filter */}
+                {/* Category Filter */}
                 <div>
                   <h3 className="text-xs font-medium text-gray-700 dark:text-gray-300 mb-2 sm:text-sm sm:mb-3">
-                    Product Types {selectedProductTypes.length > 0 && (
+                    Categories {selectedCategories.length > 0 && (
                       <span className="ml-1 text-xs text-gray-500 dark:text-gray-400">
-                        ({selectedProductTypes.length} selected)
+                        ({selectedCategories.length} selected)
                       </span>
                     )}
                   </h3>
                   <MultiSelectDropdown
-                    options={productTypes.map(type => ({
-                      value: type,
-                      label: type
+                    options={categories.map(cat => ({
+                      value: cat,
+                      label: cat
                     }))}
-                    selected={selectedProductTypes}
-                    onChange={setSelectedProductTypes}
-                    placeholder="All product types"
+                    selected={selectedCategories}
+                    onChange={setSelectedCategories}
+                    placeholder="All categories"
                   />
                 </div>
   
@@ -712,16 +710,16 @@ export function HomePage() {
                           </>
                         )}
 
-                        {selectedProductTypes.length > 0 && (
+                        {selectedCategories.length > 0 && (
                           <>
-                            {selectedProductTypes.map(type => (
+                            {selectedCategories.map(cat => (
                               <div 
-                                key={type}
+                                key={cat}
                                 className="inline-flex items-center rounded-md bg-blue-50 dark:bg-blue-900/30 px-1.5 py-0.5 text-xs font-medium text-blue-700 dark:text-blue-200 ring-1 ring-inset ring-blue-700/10 dark:ring-blue-500/30 sm:px-2 sm:py-1"
                               >
-                                {type}
+                                {cat}
                                 <button 
-                                  onClick={() => setSelectedProductTypes(prev => prev.filter(t => t !== type))}
+                                  onClick={() => setSelectedCategories(prev => prev.filter(c => c !== cat))}
                                   className="ml-1 inline-flex text-blue-500 hover:text-blue-700 dark:text-blue-300 dark:hover:text-blue-100"
                                 >
                                   <X className="h-2.5 w-2.5 sm:h-3 sm:w-3" />
