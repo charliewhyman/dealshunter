@@ -1,31 +1,40 @@
+# map_shopify_taxonomy.py
 import os
 import re
+import json
+import logging
 import requests
 import zipfile
-import json
+import numpy as np
 from pathlib import Path
+from io import BytesIO
+from datetime import datetime
+from dotenv import load_dotenv
 from supabase import create_client
 from sentence_transformers import SentenceTransformer
 from sklearn.metrics.pairwise import cosine_similarity
-import numpy as np
-from io import BytesIO
-import logging
+
+# Load environment variables
+load_dotenv()
 
 # Configure logging
-logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
+logger.setLevel(logging.INFO)
+handler = logging.StreamHandler()
+formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+handler.setFormatter(formatter)
+logger.addHandler(handler)
 
 # Configuration
 SUPABASE_URL = os.getenv("SUPABASE_URL")
-SUPABASE_KEY = os.getenv("SUPABASE_KEY")
-DEFAULT_VERSION = "2025-03"  # Fallback version from requirements
+SUPABASE_KEY = os.getenv("SUPABASE_SERVICE_ROLE_KEY")
+TAXONOMY_VERSION = os.getenv("TAXONOMY_VERSION", "2025-03")
 REPO_URL = "https://github.com/Shopify/product-taxonomy"
 BATCH_SIZE = 500
 MIN_SIMILARITY = 0.6
 CACHE_DIR = Path("./taxonomy_cache")
 
-# Initialize Supabase client
-supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
+# Ensure cache directory exists
 CACHE_DIR.mkdir(parents=True, exist_ok=True)
 
 def get_latest_taxonomy_version():
@@ -38,12 +47,11 @@ def get_latest_taxonomy_version():
         logger.info(f"Detected latest taxonomy version: {version}")
         return version
     except Exception as e:
-        logger.warning(f"Failed to fetch latest version: {str(e)}. Using fallback {DEFAULT_VERSION}")
-        return DEFAULT_VERSION
+        logger.warning(f"Failed to fetch latest version: {str(e)}. Using fallback {TAXONOMY_VERSION}")
+        return TAXONOMY_VERSION
 
 def download_and_cache_taxonomy(version):
     """Download and cache taxonomy with version validation"""
-    # Create version-specific cache file
     cache_file = CACHE_DIR / f"taxonomy_{version}.json"
     v_version = f"v{version}"  # GitHub uses v-prefixed tags
     
@@ -118,89 +126,90 @@ def prepare_text(product):
     return text
 
 def map_products_to_taxonomy():
-    """Main processing function with enhanced error handling"""
-    try:
-        # Get taxonomy version (latest or fallback)
-        version = get_latest_taxonomy_version()
-        taxonomy = download_and_cache_taxonomy(version)
+    """Main taxonomy mapping function"""
+    # Initialize Supabase client
+    supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
+    
+    # Get taxonomy version
+    version = get_latest_taxonomy_version()
+    taxonomy = download_and_cache_taxonomy(version)
+    
+    # Initialize model
+    model = SentenceTransformer('all-MiniLM-L6-v2')
+    logger.info("Generating taxonomy embeddings...")
+    taxonomy_embeddings = model.encode(taxonomy)
+    
+    # Batch processing with resume capability
+    last_id = 0
+    progress_file = CACHE_DIR / "taxonomy_progress.json"
+    
+    # Resume from last processed ID if available
+    if progress_file.exists():
+        with open(progress_file, 'r') as f:
+            progress = json.load(f)
+            last_id = progress.get('last_id', 0)
+            logger.info(f"Resuming taxonomy mapping from ID {last_id}")
+    
+    processed = 0
+    matched = 0
+    
+    while True:
+        # Fetch product batch
+        query = supabase.table('products').select('*')
+        if last_id > 0:
+            query = query.gt('id', last_id)
         
-        # Initialize model
-        model = SentenceTransformer('all-MiniLM-L6-v2')
-        logger.info("Generating taxonomy embeddings...")
-        taxonomy_embeddings = model.encode(taxonomy)
+        # Only process products without taxonomy
+        query = query.is_('taxonomy_path', 'null')
         
-        # Batch processing with resume capability
-        last_id = 0
-        progress_file = CACHE_DIR / "progress.json"
+        products = query.order('id').limit(BATCH_SIZE).execute()
         
-        # Resume from last processed ID if available
-        if progress_file.exists():
-            with open(progress_file, 'r') as f:
-                progress = json.load(f)
-                last_id = progress.get('last_id', 0)
-                logger.info(f"Resuming from ID {last_id}")
-        
-        processed = 0
-        matched = 0
-        
-        while True:
-            try:
-                # Fetch product batch
-                query = supabase.table('products').select('*')
-                if last_id > 0:
-                    query = query.gt('id', last_id)
-                
-                products = query.order('id').limit(BATCH_SIZE).execute()
-                
-                if not products.data:
-                    logger.info("Reached end of products table")
-                    break
-                    
-                updates = []
-                for product in products.data:
-                    last_id = product['id']
-                    processed += 1
-                    
-                    # Skip products with existing taxonomy
-                    if product.get('taxonomy_path'):
-                        continue
-                    
-                    product_text = prepare_text(product)
-                    if not product_text.strip():
-                        continue
-                    
-                    # Semantic matching
-                    text_embedding = model.encode([product_text])
-                    similarities = cosine_similarity(text_embedding, taxonomy_embeddings)[0]
-                    max_idx = np.argmax(similarities)
-                    
-                    if similarities[max_idx] >= MIN_SIMILARITY:
-                        matched += 1
-                        updates.append({
-                            'id': product['id'],
-                            'taxonomy_path': taxonomy[max_idx]
-                        })
-                
-                # Batch update Supabase
-                if updates:
-                    supabase.table('products').upsert(updates).execute()
-                    logger.info(f"Updated {len(updates)} products | Total processed: {processed} | Matched: {matched}")
-                
-                # Save progress after each batch
-                with open(progress_file, 'w') as f:
-                    json.dump({'last_id': last_id}, f)
+        if not products.data:
+            logger.info("No more products to process")
+            break
             
-            except Exception as e:
-                logger.error(f"Error processing batch: {str(e)}")
-                # Save progress for recovery
-                with open(progress_file, 'w') as f:
-                    json.dump({'last_id': last_id}, f)
-                raise
-
-    except Exception as e:
-        logger.exception("Fatal error in taxonomy mapping")
-    finally:
-        logger.info("Taxonomy mapping completed")
+        updates = []
+        for product in products.data:
+            last_id = product['id']
+            processed += 1
+            
+            product_text = prepare_text(product)
+            if not product_text.strip():
+                continue
+            
+            # Semantic matching
+            text_embedding = model.encode([product_text])
+            similarities = cosine_similarity(text_embedding, taxonomy_embeddings)[0]
+            max_idx = np.argmax(similarities)
+            
+            if similarities[max_idx] >= MIN_SIMILARITY:
+                matched += 1
+                updates.append({
+                    'id': product['id'],
+                    'taxonomy_path': taxonomy[max_idx],
+                    'taxonomy_mapped_at': datetime.utcnow().isoformat()
+                })
+        
+        # Batch update Supabase
+        if updates:
+            supabase.table('products').upsert(updates).execute()
+            logger.info(f"Mapped {len(updates)} products | Total: {processed} | Matched: {matched}")
+        
+        # Save progress after each batch
+        with open(progress_file, 'w') as f:
+            json.dump({
+                'last_id': last_id,
+                'processed': processed,
+                'matched': matched,
+                'timestamp': datetime.utcnow().isoformat()
+            }, f)
+    
+    logger.info(f"Taxonomy mapping completed. Processed: {processed}, Matched: {matched}")
+    return True
 
 if __name__ == "__main__":
-    map_products_to_taxonomy()
+    try:
+        map_products_to_taxonomy()
+    except Exception as e:
+        logger.exception("Fatal error in taxonomy mapping")
+        raise

@@ -18,8 +18,6 @@ class PipelineRunner:
         # Initialize with environment variables
         self.supabase_url = os.getenv("SUPABASE_URL")
         self.supabase_key = os.getenv("SUPABASE_SERVICE_ROLE_KEY")
-        
-        # For table refresh operations, try to use elevated credentials if available
         self.supabase_admin_key = os.getenv("SUPABASE_ADMIN_KEY") or self.supabase_key
         
         # Setup basic logging first
@@ -37,7 +35,8 @@ class PipelineRunner:
         self.config.setdefault("timeouts", {
             "default": 900,
             "get_shopify_products.py": 1800,
-            "upload_shopify_products.py": 1200
+            "upload_shopify_products.py": 1200,
+            "map_shopify_taxonomy.py": 3600
         })
         self.config.setdefault("max_concurrent_scripts", 2)
         
@@ -47,14 +46,11 @@ class PipelineRunner:
     
     def _setup_logging(self):
         """Initialize proper logging configuration."""
-        # Remove any existing handlers
         for handler in self.logger.handlers[:]:
             self.logger.removeHandler(handler)
             
-        # Create output directory
         os.makedirs('output', exist_ok=True)
         
-        # File handler
         file_handler = RotatingFileHandler(
             'output/pipeline.log',
             maxBytes=5*1024*1024,
@@ -65,7 +61,6 @@ class PipelineRunner:
         )
         file_handler.setFormatter(file_formatter)
         
-        # Console handler
         console_handler = logging.StreamHandler()
         console_formatter = logging.Formatter('%(levelname)s - %(message)s')
         console_handler.setFormatter(console_formatter)
@@ -75,7 +70,7 @@ class PipelineRunner:
         self.logger.setLevel(logging.INFO)
 
     def _load_config(self, path: str) -> Dict:
-        """Load pipeline configuration with defaults."""
+        """Load pipeline configuration with taxonomy defaults."""
         default_config = {
             "scripts": [
                 'get_shopify_collections.py',
@@ -90,21 +85,20 @@ class PipelineRunner:
                 "get_shopify_products.py",
                 "upload_shopify_products.py"
             ],
-            "post_refresh_scripts": []
+            "post_refresh_scripts": ["map_shopify_taxonomy.py"]
         }
 
         try:
-            # Create config directory if needed
             os.makedirs(os.path.dirname(path), exist_ok=True)
             
-            # Try to load existing config
             if os.path.exists(path):
                 with open(path, 'r') as f:
                     user_config = json.load(f)
-                    # Merge with defaults
+                    # Ensure taxonomy mapping is in post-refresh
+                    if "post_refresh_scripts" not in user_config:
+                        user_config["post_refresh_scripts"] = default_config["post_refresh_scripts"]
                     return {**default_config, **user_config}
             
-            # Create new config file
             with open(path, 'w') as f:
                 json.dump(default_config, f, indent=2)
             self.logger.info(f"Created default config file at {path}")
@@ -118,11 +112,9 @@ class PipelineRunner:
             return default_config
 
     async def __aenter__(self):
-        # Initialize Supabase clients with extended timeouts
         if self.supabase_url and self.supabase_key:
             self.supabase_client = create_client(self.supabase_url, self.supabase_key)
             
-            # Initialize admin client for table refresh operations
             if self.supabase_admin_key and self.supabase_admin_key != self.supabase_key:
                 self.supabase_admin_client = create_client(self.supabase_url, self.supabase_admin_key)
                 self.logger.info("Supabase client and admin client initialized")
@@ -138,7 +130,6 @@ class PipelineRunner:
         self.supabase_admin_client = None
 
     def _is_supabase_available(self) -> bool:
-        """Check if Supabase client is ready."""
         return self.supabase_client is not None
 
     async def execute_script(self, script_path: str) -> bool:
@@ -174,14 +165,11 @@ class PipelineRunner:
             return False
         
     async def run_post_refresh_scripts(self) -> bool:
-        """Run scripts after table refresh."""
-        if "post_refresh_scripts" not in self.config:
+        """Run post-refresh scripts including taxonomy mapping."""
+        if not self.config.get("post_refresh_scripts"):
             return True
             
         scripts = self.config["post_refresh_scripts"]
-        if not scripts:
-            return True
-            
         base_path = os.path.dirname(__file__)
         critical_failure = False
         semaphore = asyncio.Semaphore(self.config["max_concurrent_scripts"])
@@ -200,7 +188,6 @@ class PipelineRunner:
         return not critical_failure
     
     async def log_refresh_start(self, method: str = 'incremental') -> Optional[int]:
-        """Log the start of a refresh operation."""
         if not self._is_supabase_available():
             return None
             
@@ -212,7 +199,7 @@ class PipelineRunner:
                 "status": "started"
             }).execute()
             
-            if result.data and len(result.data) > 0:
+            if result.data:
                 refresh_id = result.data[0].get('refresh_id')
                 self.logger.info(f"📝 Started refresh tracking with ID: {refresh_id}")
                 return refresh_id
@@ -222,7 +209,6 @@ class PipelineRunner:
             return None
 
     async def log_refresh_end(self, refresh_id: int, rows_affected: Optional[int] = None, success: bool = True):
-        """Log the end of a refresh operation."""
         if not self._is_supabase_available():
             return
             
@@ -244,7 +230,6 @@ class PipelineRunner:
             self.logger.warning(f"⚠️ Failed to log refresh end: {e}")                           
         
     async def refresh_products_table(self, product_ids: Optional[List[int]] = None):
-        """Refresh the products_with_details table for specific products or all products"""
         if not self._is_supabase_available():
             self.logger.error("Supabase client not available - cannot refresh products")
             return False
@@ -257,14 +242,11 @@ class PipelineRunner:
 
         try:
             if product_ids:
-                # Refresh specific products
                 self.logger.info(f"🔄 Refreshing {len(product_ids)} products in batches")
-                
-                # Process in batches of 100
                 batch_size = 100
                 for i in range(0, len(product_ids), batch_size):
                     batch = product_ids[i:i + batch_size]
-                    self.logger.debug(f"Processing batch {i//batch_size + 1}: IDs {batch[0]} to {batch[-1]}")
+                    self.logger.debug(f"Processing batch {i//batch_size + 1}")
                     
                     result = self.supabase_client.rpc(
                         'refresh_products_batch',
@@ -274,12 +256,8 @@ class PipelineRunner:
                     if result.data:
                         rows_affected += len(batch)
             else:
-                # Full refresh
                 self.logger.info("🔄 Refreshing all products")
-                result = self.supabase_client.rpc(
-                    'refresh_all_products'
-                ).execute()
-                
+                result = self.supabase_client.rpc('refresh_all_products').execute()
                 if result.data:
                     rows_affected = result.data[0] if isinstance(result.data[0], int) else 0
 
@@ -295,7 +273,6 @@ class PipelineRunner:
             return success
 
     async def get_modified_product_ids(self, since_minutes: int = 30) -> List[int]:
-        """Get IDs of products modified in the last X minutes"""
         if not self._is_supabase_available():
             self.logger.warning("Supabase unavailable - cannot get modified products")
             return []
@@ -303,56 +280,33 @@ class PipelineRunner:
         try:
             cutoff = datetime.datetime.now(datetime.timezone.utc) - datetime.timedelta(minutes=since_minutes)
             
-            # Get modified products
-            products = self.supabase_client.table('products').select(
-                'id'
-            ).gte(
-                'last_modified', cutoff.isoformat()
-            ).execute()
+            products = self.supabase_client.table('products').select('id').gte('last_modified', cutoff.isoformat()).execute()
+            variants = self.supabase_client.table('variants').select('product_id').gte('last_modified', cutoff.isoformat()).execute()
+            images = self.supabase_client.table('images').select('product_id').gte('last_modified', cutoff.isoformat()).execute()
             
-            # Get products with modified variants
-            variants = self.supabase_client.table('variants').select(
-                'product_id'
-            ).gte(
-                'last_modified', cutoff.isoformat()
-            ).execute()
-            
-            # Get products with modified images
-            images = self.supabase_client.table('images').select(
-                'product_id'
-            ).gte(
-                'last_modified', cutoff.isoformat()
-            ).execute()
-            
-            # Combine all IDs
             all_ids = (
                 [p['id'] for p in products.data] +
                 [v['product_id'] for v in variants.data] +
                 [i['product_id'] for i in images.data]
             )
             
-            return list(set(all_ids))  # Deduplicate
+            return list(set(all_ids))
         
         except Exception as e:
             self.logger.error(f"Error getting modified products: {e}")
             return []
 
     async def should_refresh_products(self, threshold_minutes: int = 30) -> bool:
-        """Check if products need refresh based on modification time"""
         if not self._is_supabase_available():
             self.logger.warning("Supabase unavailable - proceeding with refresh")
             return True
 
         try:
-            # Check when we last did a full refresh
             result = self.supabase_client.table("table_refresh_history").select(
                 "end_time", "refresh_method"
-            ).eq(
-                "table_name", "products_with_details"
-            ).eq(
-                "status", "completed"
-            ).order(
-                "end_time", desc=True
+            ).eq("table_name", "products_with_details"
+            ).eq("status", "completed"
+            ).order("end_time", desc=True
             ).limit(1).execute()
             
             if not result.data:
@@ -360,15 +314,12 @@ class PipelineRunner:
                 
             last_refresh = result.data[0]
             last_refresh_time = datetime.datetime.fromisoformat(last_refresh['end_time'].replace('Z', '+00:00'))
-            time_since_refresh = datetime.datetime.now(datetime.timezone.utc) - last_refresh_time
-            minutes_since = time_since_refresh.total_seconds() / 60
+            minutes_since = (datetime.datetime.now(datetime.timezone.utc) - last_refresh_time).total_seconds() / 60
             
-            # Force periodic full refresh
-            if minutes_since > (threshold_minutes * 24 * 3):  # Every 3 days
+            if minutes_since > (threshold_minutes * 24 * 3):
                 self.logger.info("Time for periodic full refresh")
                 return True
                 
-            # Check for modified products
             modified_ids = await self.get_modified_product_ids(threshold_minutes)
             if modified_ids:
                 self.logger.info(f"Found {len(modified_ids)} modified products needing refresh")
@@ -382,7 +333,6 @@ class PipelineRunner:
             return True
 
     async def run_scripts(self, script_list: List[str]) -> bool:
-        """Run a list of scripts with proper concurrency and error handling."""
         base_path = os.path.dirname(__file__)
         critical_failure = False
         semaphore = asyncio.Semaphore(self.config["max_concurrent_scripts"])
@@ -393,7 +343,6 @@ class PipelineRunner:
             async with semaphore:
                 script_path = os.path.join(base_path, script)
                 
-                # Skip upload scripts if Supabase is unavailable
                 if script.startswith('upload_') and not supabase_available:
                     self.logger.warning(f"⏭️ Skipping {script} - Supabase unavailable")
                     if script in self.config["critical_scripts"]:
@@ -410,32 +359,25 @@ class PipelineRunner:
         return not critical_failure
 
     async def run_all_scripts(self) -> bool:
-        """Run the complete pipeline including scripts and table refresh."""
-        # Separate get and upload scripts for better control
+        """Run complete pipeline with taxonomy mapping integration."""
         get_scripts = [s for s in self.config["scripts"] if s.startswith('get_')]
         upload_scripts = [s for s in self.config["scripts"] if s.startswith('upload_')]
         other_scripts = [s for s in self.config["scripts"] if s not in get_scripts + upload_scripts]
         
-        # Run scripts in order: get, then other, then upload
-        script_groups = [get_scripts, other_scripts, upload_scripts]
-        
-        for group in script_groups:
+        for group in [get_scripts, other_scripts, upload_scripts]:
             if group:
                 group_success = await self.run_scripts(group)
                 if not group_success:
                     self.logger.error("❌ Critical script failed - aborting pipeline")
                     return False
 
-        # Refresh table if needed
         refresh_success = True
         if self._is_supabase_available():
             if await self.should_refresh_products(threshold_minutes=30):
-                # First try incremental refresh
-                modified_ids = await self.get_modified_product_ids(24*60)  # Last 24 hours
+                modified_ids = await self.get_modified_product_ids(24*60)
                 if modified_ids:
                     refresh_success = await self.refresh_products_table(modified_ids)
                 
-                # Fallback to full refresh if incremental fails or no modified products
                 if not refresh_success or not modified_ids:
                     refresh_success = await self.refresh_products_table()
             else:
@@ -443,7 +385,6 @@ class PipelineRunner:
         else:
             self.logger.warning("⏭️ Skipping product refresh - Supabase unavailable")
 
-        # Run post-refresh scripts only if everything succeeded
         if refresh_success:
             post_refresh_success = await self.run_post_refresh_scripts()
             return post_refresh_success
@@ -456,25 +397,14 @@ async def main():
             success = await runner.run_all_scripts()
             
             if success:
-                print("✅ All scripts executed and table refreshed successfully")
+                print("✅ Pipeline completed successfully")
                 return 0
             else:
-                print("❌ Script execution or table refresh failed")
+                print("❌ Pipeline failed")
                 return 1
     except Exception as e:
-        logging.error(f"💥 Fatal error in main: {e}")
+        logging.error(f"💥 Fatal error: {e}")
         return 1
 
-# if __name__ == "__main__":
-#     sys.exit(asyncio.run(main()))
-
-async def test_refresh():
-    async with PipelineRunner() as runner:
-        # Test incremental refresh
-        modified_ids = await runner.get_modified_product_ids(1)  # Last 2 hours
-        if modified_ids:
-            await runner.refresh_products_table(modified_ids)
-        else:
-            print("No modified products found")
-
-asyncio.run(test_refresh())
+if __name__ == "__main__":
+    sys.exit(asyncio.run(main()))
