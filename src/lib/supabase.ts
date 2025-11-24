@@ -1,7 +1,15 @@
 import { createClient } from '@supabase/supabase-js';
 
-const supabaseUrl = 'https://arykyvofzxhxbfviccyo.supabase.co';
-const supabaseKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImFyeWt5dm9menhoeGJmdmljY3lvIiwicm9sZSI6ImFub24iLCJpYXQiOjE3MzMwNjcxNjMsImV4cCI6MjA0ODY0MzE2M30.bQTiVAM84qzqyfL6FmEpzWauOLFpba8ZtK3DZSGj4rc';
+type ViteEnv = {
+  VITE_SUPABASE_URL: string;
+  VITE_SUPABASE_ANON_KEY: string;
+};
+
+type ViteImportMeta = ImportMeta & { env: ViteEnv };
+
+const { env } = import.meta as ViteImportMeta;
+const supabaseUrl = env.VITE_SUPABASE_URL;
+const supabaseKey = env.VITE_SUPABASE_ANON_KEY;
 
 export const supabase = createClient(supabaseUrl, supabaseKey, {
     auth: {
@@ -9,4 +17,4 @@ export const supabase = createClient(supabaseUrl, supabaseKey, {
       persistSession: true,
       detectSessionInUrl: false,
     },
-  })
+  });
