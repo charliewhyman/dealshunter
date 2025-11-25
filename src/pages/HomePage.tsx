@@ -1,7 +1,7 @@
 import { ChangeEvent, FormEvent, useCallback, useEffect, useRef, useState } from 'react';
 import { ProductWithDetails } from '../types';
 import { supabase } from '../lib/supabase';
-import { Loader2, ChevronDown, ChevronUp, X } from 'lucide-react';
+import { ChevronDown, ChevronUp, X } from 'lucide-react';
 import { ProductCard } from '../components/ProductCard';
 import { SingleValue } from 'react-select';
 import { Header } from '../components/Header';
@@ -73,6 +73,9 @@ export function HomePage() {
 
   // Add a ref to track current request to prevent race conditions
   const currentRequestRef = useRef<AbortController | null>(null);
+  // Request id to ignore stale responses and a cache for prefetched pages
+  const requestIdRef = useRef(0);
+  const prefetchCacheRef = useRef<Record<number, { data: ProductWithDetails[]; count: number }>>({});
   
 
 
@@ -93,19 +96,74 @@ export function HomePage() {
     sortOrder: 'asc' | 'desc' | 'discount_desc',
     attempt = 1
   ) => {
-    // Abort previous request if it exists
-    if (currentRequestRef.current) {
+    // Only abort previous request for top-level changes (page === 0)
+    if (page === 0 && currentRequestRef.current) {
       currentRequestRef.current.abort();
     }
 
     const controller = new AbortController();
     currentRequestRef.current = controller;
 
+    // assign a request id so we can ignore stale responses
+    const myRequestId = ++requestIdRef.current;
+
     setLoading(true);
     
     try {
       // Small delay to prevent rapid successive requests
       await new Promise(resolve => setTimeout(resolve, 100));
+
+      // If we already prefetched this page for the current filter set, use it
+      const cached = prefetchCacheRef.current[page];
+      if (cached) {
+        // ignore if a newer request started
+        if (myRequestId !== requestIdRef.current) return;
+
+        setProducts(prev => 
+          page === 0 
+            ? cached.data || [] 
+            : [...prev, ...(cached.data || [])]
+        );
+        setHasMore((page + 1) * ITEMS_PER_PAGE < (cached.count || 0));
+        setInitialLoad(false);
+        setError(null);
+
+        // fire-and-forget prefetch for the next page if more available
+        if ((page + 1) * ITEMS_PER_PAGE < (cached.count || 0)) {
+          (async () => {
+            try {
+              let prefetchQuery = supabase
+                .from('products_with_details')
+                .select('*', { count: 'exact', head: false })
+                .limit(ITEMS_PER_PAGE);
+
+              if (filters.selectedShopName.length > 0) prefetchQuery = prefetchQuery.in('shop_name', filters.selectedShopName);
+              if (filters.selectedCategories.length > 0) prefetchQuery = prefetchQuery.overlaps('categories', filters.selectedCategories);
+              if (filters.inStockOnly) prefetchQuery = prefetchQuery.eq('in_stock', true);
+              if (filters.onSaleOnly) prefetchQuery = prefetchQuery.eq('on_sale', true);
+              if (filters.searchQuery) prefetchQuery = prefetchQuery.textSearch('fts', filters.searchQuery, { type: 'plain', config: 'english' });
+              if (filters.selectedPriceRange) prefetchQuery = prefetchQuery.gte('min_price', filters.selectedPriceRange[0]).lte('min_price', filters.selectedPriceRange[1]);
+              if (filters.selectedSizeGroups.length > 0) prefetchQuery = prefetchQuery.overlaps('size_groups', filters.selectedSizeGroups);
+
+              if (sortOrder === 'discount_desc') {
+                prefetchQuery = prefetchQuery.order('max_discount_percentage', { ascending: false, nullsFirst: false }).order('created_at', { ascending: false });
+              } else {
+                prefetchQuery = prefetchQuery.order('min_price', { ascending: sortOrder === 'asc' }).order('created_at', { ascending: false });
+              }
+
+              const { data: pData, count: pCount, error: pError } = await prefetchQuery.range((page + 1) * ITEMS_PER_PAGE, (page + 2) * ITEMS_PER_PAGE - 1);
+              if (!pError && pData) {
+                prefetchCacheRef.current[page + 1] = { data: pData as ProductWithDetails[], count: pCount || 0 };
+              }
+            } catch {
+              // silent: prefetch failures are non-blocking
+            }
+          })();
+        }
+
+        if (!controller.signal.aborted) setLoading(false);
+        return;
+      }
 
       let query = supabase
         .from('products_with_details')
@@ -164,6 +222,9 @@ export function HomePage() {
       const { data, error, count } = await query
         .range(page * ITEMS_PER_PAGE, (page + 1) * ITEMS_PER_PAGE - 1);
 
+      // ignore stale responses
+      if (myRequestId !== requestIdRef.current) return;
+
       // Handle Supabase errors
       if (error) {
         // Special handling for JWT/authentication errors
@@ -190,6 +251,42 @@ export function HomePage() {
       setHasMore(moreAvailable);
       setInitialLoad(false);
       setError(null);
+
+      // store this page in prefetch cache
+      prefetchCacheRef.current[page] = { data: (data as ProductWithDetails[]) || [], count: totalItems };
+
+      // Prefetch the next page if there are more items
+      if (moreAvailable) {
+        (async () => {
+          try {
+            let prefetchQuery = supabase
+              .from('products_with_details')
+              .select('*', { count: 'exact', head: false })
+              .limit(ITEMS_PER_PAGE);
+
+            if (filters.selectedShopName.length > 0) prefetchQuery = prefetchQuery.in('shop_name', filters.selectedShopName);
+            if (filters.selectedCategories.length > 0) prefetchQuery = prefetchQuery.overlaps('categories', filters.selectedCategories);
+            if (filters.inStockOnly) prefetchQuery = prefetchQuery.eq('in_stock', true);
+            if (filters.onSaleOnly) prefetchQuery = prefetchQuery.eq('on_sale', true);
+            if (filters.searchQuery) prefetchQuery = prefetchQuery.textSearch('fts', filters.searchQuery, { type: 'plain', config: 'english' });
+            if (filters.selectedPriceRange) prefetchQuery = prefetchQuery.gte('min_price', filters.selectedPriceRange[0]).lte('min_price', filters.selectedPriceRange[1]);
+            if (filters.selectedSizeGroups.length > 0) prefetchQuery = prefetchQuery.overlaps('size_groups', filters.selectedSizeGroups);
+
+            if (sortOrder === 'discount_desc') {
+              prefetchQuery = prefetchQuery.order('max_discount_percentage', { ascending: false, nullsFirst: false }).order('created_at', { ascending: false });
+            } else {
+              prefetchQuery = prefetchQuery.order('min_price', { ascending: sortOrder === 'asc' }).order('created_at', { ascending: false });
+            }
+
+            const { data: pData, count: pCount, error: pError } = await prefetchQuery.range((page + 1) * ITEMS_PER_PAGE, (page + 2) * ITEMS_PER_PAGE - 1);
+            if (!pError && pData) {
+              prefetchCacheRef.current[page + 1] = { data: pData as ProductWithDetails[], count: pCount || 0 };
+            }
+          } catch {
+            // silent
+          }
+        })();
+      }
 
     } catch (error: unknown) {
       // Only handle error if it wasn't an abort
@@ -341,7 +438,8 @@ export function HomePage() {
           setPage(prev => prev + 1);
         }
       },
-      { threshold: 0.1 }
+      // Start loading before user reaches the end (prefetch)
+      { rootMargin: '600px 0px' }
     );
 
     const currentRef = observerRef.current;
@@ -867,9 +965,12 @@ export function HomePage() {
                     </div>
                   ))}
                   {loading && page > 0 && (
-                    <div className="col-span-full flex justify-center items-center py-3 sm:py-4">
-                      <Loader2 className="w-6 h-6 animate-spin text-blue-600 dark:text-blue-500 sm:w-8 sm:h-8" />
-                    </div>
+                    // show inline skeleton cards instead of a centered spinner
+                    Array.from({ length: ITEMS_PER_PAGE }).map((_, i) => (
+                      <div key={`skeleton-${page}-${i}`} className="h-full">
+                        <ProductCardSkeleton />
+                      </div>
+                    ))
                   )}
                 </>
               )}
