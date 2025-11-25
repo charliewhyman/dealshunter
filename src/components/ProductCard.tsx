@@ -28,6 +28,8 @@ export function ProductCard({ product }: ProductCardProps) {
   const dbSrcSet = firstImageRecord ? (firstImageRecord['srcset'] as string | undefined) : undefined;
   const dbWebpSrcSet = firstImageRecord ? (firstImageRecord['webp_srcset'] as string | undefined) : undefined;
   const dbPlaceholder = firstImageRecord ? (firstImageRecord['placeholder'] as string | undefined) : undefined;
+  const dbThumbnail = firstImageRecord ? (firstImageRecord['thumbnail'] as string | undefined) : undefined;
+  const dbThumbnailWebp = firstImageRecord ? (firstImageRecord['thumbnail_webp'] as string | undefined) : undefined;
   const dbWidth = firstImageRecord ? (firstImageRecord['width'] as number | undefined) : undefined;
   const dbHeight = firstImageRecord ? (firstImageRecord['height'] as number | undefined) : undefined;
 
@@ -37,7 +39,8 @@ export function ProductCard({ product }: ProductCardProps) {
   const buildSrcSets = (url?: string) => {
     if (!url) return { src: undefined as string | undefined, srcSet: undefined as string | undefined, webpSrcSet: undefined as string | undefined };
     try {
-      const sizes = [320, 480, 640, 960, 1280, 1600];
+      // Include a small 200px variant so thumbnails can request a very small image.
+      const sizes = [200, 320, 480, 640, 960, 1280, 1600];
       const parsed = new URL(url);
       const base = parsed.origin + parsed.pathname;
       const originalParams = parsed.searchParams;
@@ -72,9 +75,11 @@ export function ProductCard({ product }: ProductCardProps) {
   const { src: responsiveSrc, srcSet: responsiveSrcSet, webpSrcSet } = buildSrcSets(productImage || undefined);
 
   // Final sources we will use in the <picture>
-  const finalFallback = dbFallback || responsiveSrc || productImage || undefined;
+  // For list thumbnails prefer an explicit small thumbnail if available.
+  const finalFallback = dbThumbnail || dbFallback || responsiveSrc || productImage || undefined;
+  // Prefer thumbnail webp srcset for very small displays if available
   const finalSrcSet = dbSrcSet || responsiveSrcSet;
-  const finalWebpSrcSet = dbWebpSrcSet || webpSrcSet;
+  const finalWebpSrcSet = dbThumbnailWebp || dbWebpSrcSet || webpSrcSet;
 
   // Process variants from the product data
   const variants = useMemo(() => 
@@ -161,7 +166,8 @@ export function ProductCard({ product }: ProductCardProps) {
             <img
               src={finalFallback}
               srcSet={finalSrcSet}
-              sizes="(max-width: 640px) 50vw, 25vw"
+              // Hint that thumbnails are small; use an explicit fallback slot of ~200px
+              sizes="(max-width: 640px) 50vw, 200px"
               loading="lazy"
               decoding="async"
               fetchPriority="low"

@@ -139,6 +139,9 @@ def process_images(product):
             variants['srcset'] = ', '.join(f"{variants['src_' + str(w)]} {w}w" for w in sizes)
             variants['webp_srcset'] = ', '.join(f"{variants['src_webp_' + str(w)]} {w}w" for w in sizes)
             variants['fallback'] = variants.get('src_640') or url
+            # Explicit thumbnail (small) for list views — prefer 320px if available
+            variants['thumbnail'] = variants.get('src_320') or variants.get('src_200') or variants['fallback']
+            variants['thumbnail_webp'] = variants.get('src_webp_320') or variants.get('src_webp_200') or variants.get('webp_srcset')
             return variants
         except Exception:
             return {'fallback': url}
