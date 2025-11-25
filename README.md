@@ -46,7 +46,7 @@ This project uses Vite. For runtime configuration, create a file named `.env.loc
 
 ```
 VITE_SUPABASE_URL=https://your-project.supabase.co
-VITE_SUPABASE_KEY=your-anon-or-service-key
+VITE_SUPABASE_KEY=your-service-key
 ```
 
 ## Python scrapers
