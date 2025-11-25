@@ -7,9 +7,16 @@ type ViteEnv = {
 
 type ViteImportMeta = ImportMeta & { env: ViteEnv };
 
-const { env } = import.meta as ViteImportMeta;
-const supabaseUrl = env.VITE_SUPABASE_URL;
-const supabaseKey = env.VITE_SUPABASE_ANON_KEY;
+const importMetaEnv = (typeof import.meta !== 'undefined'
+  ? (import.meta as ViteImportMeta).env
+  : undefined) as ViteEnv | undefined;
+
+const supabaseUrl = importMetaEnv?.VITE_SUPABASE_URL ?? (typeof process !== 'undefined' ? process.env.VITE_SUPABASE_URL : undefined) ?? '';
+const supabaseKey = importMetaEnv?.VITE_SUPABASE_ANON_KEY ?? (typeof process !== 'undefined' ? process.env.VITE_SUPABASE_ANON_KEY : undefined) ?? '';
+
+if (!supabaseUrl || !supabaseKey) {
+  console.warn('Supabase URL or ANON KEY is not set. Provide via VITE_SUPABASE_URL / VITE_SUPABASE_ANON_KEY or process.env.');
+}
 
 export const supabase = createClient(supabaseUrl, supabaseKey, {
     auth: {

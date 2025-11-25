@@ -1,15 +1,14 @@
-#!/usr/bin/env python3
+#!/Users/charlie/dealshunter/scraping/.venv/bin/python3
 """
 scrape_and_upload_all.py
 One-shot runner that executes the whole Shopify scraping → upload → refresh
-pipeline in the correct order.  Add this file next to the other upload
-scripts and run:
+pipeline in the correct order.  Run via:
 
-    python scrape_and_upload_all.py
+    uv run python scrape_and_upload_all.py
 
-Environment variables expected:
-  SUPABASE_URL   – e.g. https://xyz.supabase.co
-  SUPABASE_SERVICE_ROLE_KEY  – service_role key (bypasses RLS so you can write)
+Environment variables expected in a `.env` file:
+  SUPABASE_URL                 – e.g. https://xyz.supabase.co
+  SUPABASE_SERVICE_ROLE_KEY     – service_role key (bypasses RLS)
 """
 
 import os
@@ -19,9 +18,10 @@ from pathlib import Path
 from typing import List
 
 from supabase import create_client, Client
+from dotenv import load_dotenv
 
 # ------------------------------------------------------------------
-# 1.  Configuration
+# 1. Configuration
 # ------------------------------------------------------------------
 SCRIPTS: List[str] = [
     "get_shopify_collections.py",
@@ -31,24 +31,34 @@ SCRIPTS: List[str] = [
     "upload_shopify_collections.py",
     "upload_shopify_products.py",
     "upload_shopify_collections_to_products.py",
-    "map_shopify_taxonomy.py",
+    "map_product_to_taxonomy.py",
 ]
 
-SUPABASE_URL: str = os.environ["SUPABASE_URL"]
-SUPABASE_KEY: str = os.environ["SUPABASE_SERVICE_ROLE_KEY"]
+# Load environment variables from .env
+load_dotenv()
+
+SUPABASE_URL: str = os.environ.get("SUPABASE_URL")
+SUPABASE_KEY: str = os.environ.get("SUPABASE_SERVICE_ROLE_KEY")
+
+if not SUPABASE_URL or not SUPABASE_KEY:
+    print("❌  SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY not set in environment.")
+    sys.exit(1)
 
 supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
 
-
 # ------------------------------------------------------------------
-# 2.  Helper: run a single script and abort on non-zero exit code
+# 2. Helper: run a single script
 # ------------------------------------------------------------------
 def run_script(script: str) -> None:
     """Execute script via subprocess; stream stdout/stderr in real time."""
+    script_path = Path(__file__).parent / script
+    if not script_path.exists():
+        print(f"❌  Script {script} not found at {script_path}")
+        sys.exit(1)
+
     print(f"\n🚀  Running {script} …")
     result = subprocess.run(
-        [sys.executable, script],
-        cwd=Path(__file__).parent,
+        [sys.executable, str(script_path)],
         stdout=sys.stdout,
         stderr=sys.stderr,
     )
@@ -57,33 +67,30 @@ def run_script(script: str) -> None:
         sys.exit(result.returncode)
     print(f"✅  {script} finished successfully")
 
-
 # ------------------------------------------------------------------
-# 3.  Helper: incremental refresh via Supabase RPC
+# 3. Helper: incremental refresh via Supabase RPC
 # ------------------------------------------------------------------
 def refresh_products_with_details() -> None:
     print("\n🔄  Refreshing products_with_details …")
     try:
         resp = supabase.rpc("refresh_products_with_details_incremental").execute()
-        if resp.data is None:  # returns void on success
+        if resp.data is None:
             print("✅  products_with_details refreshed")
         else:
-            print("Unexpected response:", resp.data)
+            print("⚠️  Unexpected response from RPC:", resp.data)
     except Exception as exc:
         print("❌  refresh_products_with_details failed:", exc)
         sys.exit(1)
 
-
 # ------------------------------------------------------------------
-# 4.  Main orchestration
+# 4. Main runner
 # ------------------------------------------------------------------
 def main() -> None:
+    print("📦  Starting Shopify scrape → upload → refresh pipeline…")
     for script in SCRIPTS:
         run_script(script)
-
     refresh_products_with_details()
-    print("\n🎉  All scraping & upload steps completed.")
-
+    print("\n🎉  All scripts completed successfully!")
 
 if __name__ == "__main__":
     main()
