@@ -76,10 +76,12 @@ export function ProductCard({ product }: ProductCardProps) {
 
   // Final sources we will use in the <picture>
   // For list thumbnails prefer an explicit small thumbnail if available.
+  // If a thumbnail URL exists, force the card to use that URL (no large srcset)
+  // so browsers won't request a large 1280/1600 image for small card slots.
   const finalFallback = dbThumbnail || dbFallback || responsiveSrc || productImage || undefined;
-  // Prefer thumbnail webp srcset for very small displays if available
-  const finalSrcSet = dbSrcSet || responsiveSrcSet;
-  const finalWebpSrcSet = dbThumbnailWebp || dbWebpSrcSet || webpSrcSet;
+  // If we have a dedicated thumbnail, avoid offering large srcset candidates
+  const finalSrcSet = dbThumbnail ? undefined : (dbSrcSet || responsiveSrcSet);
+  const finalWebpSrcSet = dbThumbnailWebp ? undefined : (dbThumbnailWebp || dbWebpSrcSet || webpSrcSet);
 
   // Process variants from the product data
   const variants = useMemo(() => 
