@@ -19,6 +19,18 @@ export function ProductCard({ product }: ProductCardProps) {
     product.images?.[0]?.src || null
   );
 
+  // Track when the main image has loaded to hide the placeholder
+  const [imgLoaded, setImgLoaded] = useState(false);
+
+  // Prefer responsive fields produced by the scraping pipeline if available
+  const firstImageRecord = product.images?.[0] as Record<string, unknown> | undefined;
+  const dbFallback = firstImageRecord ? (firstImageRecord['responsive_fallback'] as string | undefined) : undefined;
+  const dbSrcSet = firstImageRecord ? (firstImageRecord['srcset'] as string | undefined) : undefined;
+  const dbWebpSrcSet = firstImageRecord ? (firstImageRecord['webp_srcset'] as string | undefined) : undefined;
+  const dbPlaceholder = firstImageRecord ? (firstImageRecord['placeholder'] as string | undefined) : undefined;
+  const dbWidth = firstImageRecord ? (firstImageRecord['width'] as number | undefined) : undefined;
+  const dbHeight = firstImageRecord ? (firstImageRecord['height'] as number | undefined) : undefined;
+
   // Helper: build srcset strings for an image URL using common widths.
   // For many CDNs (including Shopify's CDN) adding a `width` query param
   // returns a resized image. We also build a WebP variant via `format=webp`.
@@ -52,12 +64,17 @@ export function ProductCard({ product }: ProductCardProps) {
       const src = `${base}?${fallbackParams.toString()}`;
 
       return { src, srcSet, webpSrcSet };
-    } catch (e) {
+    } catch {
       return { src: url, srcSet: undefined, webpSrcSet: undefined };
     }
   };
 
   const { src: responsiveSrc, srcSet: responsiveSrcSet, webpSrcSet } = buildSrcSets(productImage || undefined);
+
+  // Final sources we will use in the <picture>
+  const finalFallback = dbFallback || responsiveSrc || productImage || undefined;
+  const finalSrcSet = dbSrcSet || responsiveSrcSet;
+  const finalWebpSrcSet = dbWebpSrcSet || webpSrcSet;
 
   // Process variants from the product data
   const variants = useMemo(() => 
@@ -127,21 +144,36 @@ export function ProductCard({ product }: ProductCardProps) {
       <div className="relative w-full pt-[100%] sm:pt-[70%] overflow-hidden">
         {productImage ? (
           <picture>
-            {webpSrcSet && (
-              <source type="image/webp" srcSet={webpSrcSet} />
+            {finalWebpSrcSet && (
+              <source type="image/webp" srcSet={finalWebpSrcSet} />
             )}
+
+            {/* placeholder LQIP: low-res tiny image that stays blurred until main img loads */}
+            {dbPlaceholder && (
+              <img
+                src={dbPlaceholder}
+                alt={product.title ? `${product.title} placeholder` : 'placeholder'}
+                aria-hidden
+                className={`absolute top-0 left-0 w-full h-full object-cover filter blur-sm scale-105 transition-opacity duration-500 ${imgLoaded ? 'opacity-0' : 'opacity-100'}`}
+              />
+            )}
+
             <img
-              src={responsiveSrc || productImage}
-              srcSet={responsiveSrcSet}
+              src={finalFallback}
+              srcSet={finalSrcSet}
               sizes="(max-width: 640px) 50vw, 25vw"
               loading="lazy"
               decoding="async"
               fetchPriority="low"
               alt={product.title || 'Product image'}
-              width={product.images?.[0]?.width}
-              height={product.images?.[0]?.height}
-              className="absolute top-0 left-0 w-full h-full object-cover"
-              onError={() => setProductImage(null)}
+              width={dbWidth}
+              height={dbHeight}
+              className={`absolute top-0 left-0 w-full h-full object-cover transition-opacity duration-500 ${imgLoaded ? 'opacity-100' : 'opacity-0'}`}
+              onLoad={() => setImgLoaded(true)}
+              onError={() => {
+                setProductImage(null);
+                setImgLoaded(true);
+              }}
             />
           </picture>
         ) : (

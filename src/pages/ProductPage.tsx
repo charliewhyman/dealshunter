@@ -13,6 +13,8 @@ function ProductPage() {
   const [product, setProduct] = useState<Product | null>(null);
   const [loading, setLoading] = useState(true);
   const [productImage, setProductImage] = useState<string | undefined>(undefined);
+  const [imageRecord, setImageRecord] = useState<Record<string, unknown> | null>(null);
+  const [imgLoaded, setImgLoaded] = useState(false);
   const [variants, setVariants] = useState<Array<{ title: string; available: boolean }>>([]);
   const { variantPrice, compareAtPrice, offerPrice } = useProductPricing(ProductId!);
   const navigate = useNavigate();
@@ -38,15 +40,16 @@ function ProductPage() {
         
         setProduct(productData);
   
-        // Fetch image
+        // Fetch image (include responsive fields if available)
         const { data: imageData } = await supabase
           .from('images')
-          .select('src')
+          .select('src, responsive_fallback, srcset, webp_srcset, placeholder, width, height')
           .eq('product_id', ProductId)
           .limit(1)
           .single();
-  
-        setProductImage(imageData?.src);
+
+        setImageRecord(imageData || null);
+        setProductImage((imageData && ((imageData.responsive_fallback as string) || (imageData.src as string))) ?? undefined);
   
         // Fetch variants
         const { data: variantsData } = await supabase
@@ -103,12 +106,34 @@ function ProductPage() {
             {/* Photo Section - Responsive sizing */}
             <div className="w-full lg:w-1/2 xl:w-2/5">
               <div className="sticky top-4">
-                <img
-                  src={productImage ?? '/default-image.png'}
-                  loading='lazy'
-                  alt={product?.title ?? 'Product image'}
-                  className="w-full h-auto max-h-[70vh] object-contain rounded-lg shadow-md"
-                />
+                <div className="w-full h-auto max-h-[70vh] relative">
+                  {/* placeholder */}
+                  {imageRecord?.placeholder && (
+                    <img
+                      src={imageRecord.placeholder as string}
+                      alt={product?.title ? `${product.title} placeholder` : 'placeholder'}
+                      aria-hidden
+                      className={`absolute inset-0 w-full h-full object-contain filter blur-sm scale-105 transition-opacity duration-500 ${imgLoaded ? 'opacity-0' : 'opacity-100'}`}
+                    />
+                  )}
+
+                  <picture>
+                    {imageRecord?.webp_srcset && (
+                      <source type="image/webp" srcSet={imageRecord.webp_srcset as string} />
+                    )}
+                    <img
+                      src={productImage ?? '/default-image.png'}
+                      srcSet={imageRecord?.srcset as string | undefined}
+                      sizes="(max-width: 768px) 100vw, 50vw"
+                      loading="lazy"
+                      decoding="async"
+                      fetchPriority="low"
+                      alt={product?.title ?? 'Product image'}
+                      className={`relative w-full h-auto max-h-[70vh] object-contain rounded-lg shadow-md transition-opacity duration-500 ${imgLoaded ? 'opacity-100' : 'opacity-0'}`}
+                      onLoad={() => setImgLoaded(true)}
+                    />
+                  </picture>
+                </div>
               </div>
             </div>
 

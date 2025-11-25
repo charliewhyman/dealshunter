@@ -100,20 +100,72 @@ def process_variants(product, variant_types=None):
 def process_images(product):
     """Process product images into a standardized format."""
     images = product.get("images", [])
-    return [
-        {
-            "id": img.get("id"),
-            "product_id": img.get("product_id"),
-            "src": img.get("src"),
-            "alt": img.get("alt", ""),
-            "position": img.get("position"),
-            "updated_at": img.get("updated_at"),
-            "created_at": img.get("created_at"),
-            "width": img.get("width"),
-            "height": img.get("height"),
-        }
-        for img in images
-    ]
+    def build_image_variants(url):
+        """Build a small set of responsive variant URLs and a tiny webp placeholder.
+
+        This avoids local image processing by leveraging CDN URL params (e.g. Shopify CDN).
+        We produce URLs for widths 320, 640, 1024, 1600 and webp variants, plus a
+        `placeholder` (width=20, webp) that can be used as an LQIP/blur-up source.
+        """
+        from urllib.parse import urlparse, urlunparse, parse_qsl, urlencode
+
+        if not url:
+            return {}
+
+        try:
+            p = urlparse(url)
+            base = p.scheme + '://' + p.netloc + p.path
+            original_q = dict(parse_qsl(p.query))
+            sizes = [320, 640, 1024, 1600]
+            variants = {}
+
+            for w in sizes:
+                q = original_q.copy()
+                q['width'] = str(w)
+                variants[f'src_{w}'] = base + '?' + urlencode(q)
+
+                q_webp = original_q.copy()
+                q_webp['width'] = str(w)
+                q_webp['format'] = 'webp'
+                variants[f'src_webp_{w}'] = base + '?' + urlencode(q_webp)
+
+            # Tiny placeholder (webp) for blur-up LQIP
+            q_small = original_q.copy()
+            q_small['width'] = '20'
+            q_small['format'] = 'webp'
+            variants['placeholder'] = base + '?' + urlencode(q_small)
+
+            # Build srcset strings
+            variants['srcset'] = ', '.join(f"{variants['src_' + str(w)]} {w}w" for w in sizes)
+            variants['webp_srcset'] = ', '.join(f"{variants['src_webp_' + str(w)]} {w}w" for w in sizes)
+            variants['fallback'] = variants.get('src_640') or url
+            return variants
+        except Exception:
+            return {'fallback': url}
+
+    processed = []
+    for img in images:
+        src = img.get('src')
+        variants = build_image_variants(src)
+
+        processed.append({
+            'id': img.get('id'),
+            'product_id': img.get('product_id'),
+            'src': src,
+            'alt': img.get('alt', ''),
+            'position': img.get('position'),
+            'updated_at': img.get('updated_at'),
+            'created_at': img.get('created_at'),
+            'width': img.get('width'),
+            'height': img.get('height'),
+            # Responsive variants useful for srcset/picture in the frontend
+            'responsive_fallback': variants.get('fallback'),
+            'srcset': variants.get('srcset'),
+            'webp_srcset': variants.get('webp_srcset'),
+            'placeholder': variants.get('placeholder'),
+        })
+
+    return processed
 
 def process_offers(product):
     """Process product offers into a standardized format."""
