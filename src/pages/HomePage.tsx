@@ -64,6 +64,15 @@ export function HomePage() {
       : [...PRICE_RANGE];
   });
 
+  // UI-only price range used while dragging the slider to avoid frequent
+  // filter updates / network requests and forced layout reads during drag.
+  const [uiPriceRange, setUiPriceRange] = useState<[number, number]>(() => [...PRICE_RANGE]);
+
+  // Keep the UI slider in sync when the selectedPriceRange is changed programmatically
+  useEffect(() => {
+    setUiPriceRange(selectedPriceRange);
+  }, [selectedPriceRange]);
+
   const [selectedSizeGroups, setSelectedSizeGroups] = useState<string[]>(
     JSON.parse(localStorage.getItem('selectedSizeGroups') || '[]')
   );
@@ -724,20 +733,26 @@ export function HomePage() {
                         />
                       </div>
                     </div>
+                    {/**
+                     * Use a UI-only value during dragging (`uiPriceRange`) so we
+                     * don't update filters (and trigger fetches / reflows) on
+                     * every mousemove. Commit the change on `onFinalChange`.
+                     */}
                     <Range
                       step={1}
                       min={PRICE_RANGE[0]}
                       max={PRICE_RANGE[1]}
-                      values={selectedPriceRange}
-                      onChange={handleSliderChange}
-                      renderTrack={({ props, children }) => (
+                      values={uiPriceRange}
+                      onChange={(values) => setUiPriceRange([values[0], values[1]])}
+                      onFinalChange={(values) => handleSliderChange(values)}
+                      renderTrack={useCallback(({ props, children }) => (
                         <div {...props} className="h-1.5 sm:h-2 bg-gray-200 rounded-full">
                           {children}
                         </div>
-                      )}
-                      renderThumb={({ props }) => (
+                      ), [])}
+                      renderThumb={useCallback(({ props }) => (
                         <div {...props} className="h-3 w-3 sm:h-4 sm:w-4 bg-blue-600 rounded-full"/>
-                      )}
+                      ), [])}
                     />
                   </div>
                 </div>
