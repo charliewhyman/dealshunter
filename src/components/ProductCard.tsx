@@ -19,6 +19,46 @@ export function ProductCard({ product }: ProductCardProps) {
     product.images?.[0]?.src || null
   );
 
+  // Helper: build srcset strings for an image URL using common widths.
+  // For many CDNs (including Shopify's CDN) adding a `width` query param
+  // returns a resized image. We also build a WebP variant via `format=webp`.
+  const buildSrcSets = (url?: string) => {
+    if (!url) return { src: undefined as string | undefined, srcSet: undefined as string | undefined, webpSrcSet: undefined as string | undefined };
+    try {
+      const sizes = [320, 480, 640, 960, 1280, 1600];
+      const parsed = new URL(url);
+      const base = parsed.origin + parsed.pathname;
+      const originalParams = parsed.searchParams;
+
+      const srcSet = sizes
+        .map((w) => {
+          const p = new URLSearchParams(originalParams.toString());
+          p.set('width', String(w));
+          return `${base}?${p.toString()} ${w}w`;
+        })
+        .join(', ');
+
+      const webpSrcSet = sizes
+        .map((w) => {
+          const p = new URLSearchParams(originalParams.toString());
+          p.set('width', String(w));
+          p.set('format', 'webp');
+          return `${base}?${p.toString()} ${w}w`;
+        })
+        .join(', ');
+
+      const fallbackParams = new URLSearchParams(originalParams.toString());
+      fallbackParams.set('width', String(640));
+      const src = `${base}?${fallbackParams.toString()}`;
+
+      return { src, srcSet, webpSrcSet };
+    } catch (e) {
+      return { src: url, srcSet: undefined, webpSrcSet: undefined };
+    }
+  };
+
+  const { src: responsiveSrc, srcSet: responsiveSrcSet, webpSrcSet } = buildSrcSets(productImage || undefined);
+
   // Process variants from the product data
   const variants = useMemo(() => 
     (product.variants || [])
@@ -86,13 +126,24 @@ export function ProductCard({ product }: ProductCardProps) {
       {/* Image Container */}
       <div className="relative w-full pt-[100%] sm:pt-[70%] overflow-hidden">
         {productImage ? (
-          <img
-            src={productImage}
-            loading="lazy"
-            alt={product.title || 'Product image'}
-            className="absolute top-0 left-0 w-full h-full object-cover"
-            onError={() => setProductImage(null)}
-          />
+          <picture>
+            {webpSrcSet && (
+              <source type="image/webp" srcSet={webpSrcSet} />
+            )}
+            <img
+              src={responsiveSrc || productImage}
+              srcSet={responsiveSrcSet}
+              sizes="(max-width: 640px) 50vw, 25vw"
+              loading="lazy"
+              decoding="async"
+              fetchPriority="low"
+              alt={product.title || 'Product image'}
+              width={product.images?.[0]?.width}
+              height={product.images?.[0]?.height}
+              className="absolute top-0 left-0 w-full h-full object-cover"
+              onError={() => setProductImage(null)}
+            />
+          </picture>
         ) : (
           <div className="absolute top-0 left-0 w-full h-full bg-gray-200 dark:bg-gray-700 flex items-center justify-center">
             <span className="text-gray-400">No Image</span>
