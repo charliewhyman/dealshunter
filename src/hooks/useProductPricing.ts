@@ -7,12 +7,14 @@ interface ProductPricing {
   offerPrice: number | null;
 }
 
-export function useProductPricing(productId: number | string): ProductPricing {
+export function useProductPricing(productId: number | string, enabled = true): ProductPricing {
   const [variantPrice, setVariantPrice] = useState<number | null>(null);
   const [compareAtPrice, setCompareAtPrice] = useState<number | null>(null);
   const [offerPrice, setOfferPrice] = useState<number | null>(null);
 
   useEffect(() => {
+    if (!enabled) return;
+
     const fetchPricing = async () => {
       // Fetch prices from all variants
       const { data: variantData, error: variantError } = await supabase

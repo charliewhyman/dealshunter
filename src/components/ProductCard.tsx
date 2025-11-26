@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useMemo, useState, memo } from 'react';
 import { ExternalLink } from 'lucide-react';
 import { ProductWithDetails } from '../types';
 import { useNavigate } from 'react-router-dom';
@@ -7,12 +7,23 @@ import '../index.css';
 
 interface ProductCardProps {
   product: ProductWithDetails;
+  pricing?: {
+    variantPrice: number | null;
+    compareAtPrice: number | null;
+    offerPrice: number | null;
+  };
 }
 
-export function ProductCard({ product }: ProductCardProps) {
+function ProductCardComponent({ product, pricing }: ProductCardProps) {
   const [showAllVariants, setShowAllVariants] = useState(false);
   const navigate = useNavigate();
-  const { variantPrice, compareAtPrice, offerPrice } = useProductPricing(product.id);
+  // Use pricing passed from parent to avoid per-card network requests. Call
+  // the hook with `enabled=false` when pricing is provided so it doesn't
+  // execute network requests but keeps hook rules satisfied.
+  const pricingFromHook = useProductPricing(product.id, !pricing);
+  const variantPrice = pricing?.variantPrice ?? pricingFromHook.variantPrice;
+  const compareAtPrice = pricing?.compareAtPrice ?? pricingFromHook.compareAtPrice;
+  const offerPrice = pricing?.offerPrice ?? pricingFromHook.offerPrice;
 
   // Get the first image as the product image
   const [productImage, setProductImage] = useState(() => 
@@ -278,3 +289,5 @@ export function ProductCard({ product }: ProductCardProps) {
     </div>
   );
 }
+
+export const ProductCard = memo(ProductCardComponent);

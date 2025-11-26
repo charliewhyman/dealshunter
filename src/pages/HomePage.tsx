@@ -77,6 +77,71 @@ export function HomePage() {
     JSON.parse(localStorage.getItem('selectedSizeGroups') || '[]')
   );
 
+  // Batch pricing map to avoid per-card network requests
+  const [productPricings, setProductPricings] = useState<Record<string, {variantPrice: number | null; compareAtPrice: number | null; offerPrice: number | null;}>>({});
+
+  const fetchBatchPricingFor = useCallback(async (ids: Array<number | string>) => {
+    try {
+      const uniqueIds = Array.from(new Set(ids.map(String)));
+      if (uniqueIds.length === 0) return;
+
+      const today = new Date().toISOString().split('T')[0];
+
+      const vRes = await supabase
+        .from('variants')
+        .select('product_id, price, compare_at_price')
+        .in('product_id', uniqueIds);
+
+      const oRes = await supabase
+        .from('offers')
+        .select('product_id, price, price_valid_until')
+        .in('product_id', uniqueIds)
+        .gte('price_valid_until', today);
+
+      const vData = vRes.data as Array<{ product_id: number | string; price?: string | number; compare_at_price?: string | number; }> | null;
+      const oData = oRes.data as Array<{ product_id: number | string; price?: string | number; price_valid_until?: string; }> | null;
+
+      if (vRes.error) console.error('Variant batch fetch error', vRes.error);
+      if (oRes.error) console.error('Offer batch fetch error', oRes.error);
+
+      const pricingMap: Record<string, {variantPrice: number | null; compareAtPrice: number | null; offerPrice: number | null;}> = {};
+
+      if (vData) {
+        for (const row of vData) {
+          const pid = String(row.product_id);
+          const price = row.price != null ? parseFloat(String(row.price)) : null;
+          const compare = row.compare_at_price != null ? parseFloat(String(row.compare_at_price)) : null;
+          if (!pricingMap[pid]) pricingMap[pid] = { variantPrice: price, compareAtPrice: compare, offerPrice: null };
+          else {
+            const existing = pricingMap[pid];
+            if (price !== null && (existing.variantPrice === null || price < existing.variantPrice)) {
+              existing.variantPrice = price;
+              existing.compareAtPrice = compare ?? existing.compareAtPrice;
+            }
+          }
+        }
+      }
+
+      if (oData) {
+        for (const row of oData) {
+          const pid = String(row.product_id);
+          const price = row.price != null ? parseFloat(String(row.price)) : null;
+          if (!pricingMap[pid]) pricingMap[pid] = { variantPrice: null, compareAtPrice: null, offerPrice: price };
+          else {
+            const existing = pricingMap[pid];
+            if (price !== null && (existing.offerPrice === null || price < existing.offerPrice)) {
+              existing.offerPrice = price;
+            }
+          }
+        }
+      }
+
+      setProductPricings(prev => ({ ...prev, ...pricingMap }));
+    } catch (err) {
+      console.error('Error fetching batch pricing', err);
+    }
+  }, []);
+
   const [activeCategory, setActiveCategory] = useState('all');
   const [allSizeData, setAllSizeData] = useState<{size_group: string, type: string}[]>([]);
 
@@ -133,6 +198,15 @@ export function HomePage() {
             ? cached.data || [] 
             : [...prev, ...(cached.data || [])]
         );
+        // Batch-fetch pricing for cached page items (non-blocking)
+        (async () => {
+          try {
+            const ids = ((cached.data as ProductWithDetails[]) || []).map(p => p.id).filter(Boolean);
+            if (ids.length > 0) await fetchBatchPricingFor(ids);
+          } catch (e) {
+            console.error('Error fetching batch pricing for cached items', e);
+          }
+        })();
         setHasMore((page + 1) * ITEMS_PER_PAGE < (cached.count || 0));
         setInitialLoad(false);
         setError(null);
@@ -257,6 +331,15 @@ export function HomePage() {
           ? (data as ProductWithDetails[]) || [] 
           : [...prev, ...(data as ProductWithDetails[] || [])]
       );
+      // Batch-fetch pricing for this page's products (non-blocking)
+      (async () => {
+        try {
+          const ids = ((data as ProductWithDetails[]) || []).map(p => p.id).filter(Boolean);
+          if (ids.length > 0) await fetchBatchPricingFor(ids);
+        } catch (e) {
+          console.error('Error fetching batch pricing for page items', e);
+        }
+      })();
       setHasMore(moreAvailable);
       setInitialLoad(false);
       setError(null);
@@ -327,7 +410,7 @@ export function HomePage() {
       }
     }
   },
-  []
+  [fetchBatchPricingFor]
 );
 
   // Update shop names fetching to use the materialized view
@@ -976,7 +1059,7 @@ export function HomePage() {
                     )
                     .map((product) => (
                     <div key={`${product.id}-${product.shop_id}`} className="h-full">
-                      <ProductCard product={product} />
+                      <ProductCard product={product} pricing={productPricings[String(product.id)]} />
                     </div>
                   ))}
                   {loading && page > 0 && (
