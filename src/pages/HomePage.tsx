@@ -489,6 +489,33 @@ export function HomePage() {
     }
   }, [selectedShopName, inStockOnly, onSaleOnly, searchQuery, selectedPriceRange, sortOrder, page, selectedSizeGroups, fetchFilteredProducts, selectedCategories]);
 
+  // Preload the likely LCP image (first product on initial page) so the
+  // browser can discover it earlier. This inserts a `link rel=preload` for
+  // the first product's primary image when products load on page 0.
+  useEffect(() => {
+    if (page !== 0) return;
+    const first = products[0];
+    if (!first) return;
+
+    const imgSrc = first.images?.[0]?.src;
+    if (!imgSrc) return;
+
+    const link = document.createElement('link');
+    link.rel = 'preload';
+    link.as = 'image';
+    link.href = imgSrc;
+    link.setAttribute('fetchpriority', 'high');
+    document.head.appendChild(link);
+
+    return () => {
+      try {
+        document.head.removeChild(link);
+      } catch (err) {
+        void err;
+      }
+    };
+  }, [products, page]);
+
   // Local storage effects
   useEffect(() => {
     localStorage.setItem('selectedShopName', JSON.stringify(selectedShopName));

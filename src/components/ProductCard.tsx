@@ -12,9 +12,10 @@ interface ProductCardProps {
     compareAtPrice: number | null;
     offerPrice: number | null;
   };
+  isLcp?: boolean;
 }
 
-function ProductCardComponent({ product, pricing }: ProductCardProps) {
+function ProductCardComponent({ product, pricing, isLcp }: ProductCardProps) {
   const [showAllVariants, setShowAllVariants] = useState(false);
   const navigate = useNavigate();
   // Use pricing passed from parent to avoid per-card network requests. Call
@@ -187,9 +188,8 @@ function ProductCardComponent({ product, pricing }: ProductCardProps) {
               srcSet={finalSrcSet}
               // Hint that thumbnails are small; use an explicit fallback slot of ~200px
               sizes="(max-width: 640px) 50vw, 200px"
-              loading="lazy"
+              loading={isLcp ? 'eager' : 'lazy'}
               decoding="async"
-              fetchPriority="low"
               alt={product.title || 'Product image'}
               width={dbWidth}
               height={dbHeight}
@@ -199,6 +199,7 @@ function ProductCardComponent({ product, pricing }: ProductCardProps) {
                 setProductImage(null);
                 setImgLoaded(true);
               }}
+              {...(isLcp ? ({ fetchpriority: 'high' } as unknown as Record<string, string>) : ({ fetchpriority: 'low' } as unknown as Record<string, string>))}
             />
           </picture>
         ) : (
