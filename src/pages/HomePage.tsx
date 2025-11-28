@@ -581,7 +581,10 @@ export function HomePage() {
     }
   };
 
-  const handleSliderChange = (values: number[]) => {
+  // Called when the user finishes dragging / releases the slider handle.
+  // This commits the UI price range into the actual selected filters which
+  // will trigger the (debounced) product fetch.
+  const handleSliderChangeEnd = (values: number[]) => {
     const [minValue, maxValue] = values;
     setSelectedPriceRange([minValue, maxValue]);
   };
@@ -827,7 +830,7 @@ export function HomePage() {
                       max={PRICE_RANGE[1]}
                       values={uiPriceRange}
                       onChange={(values) => setUiPriceRange([values[0], values[1]])}
-                      onFinalChange={(values) => handleSliderChange(values)}
+                      onFinalChange={(values) => handleSliderChangeEnd(values)}
                       renderTrack={useCallback(({ props, children }) => (
                         <div {...props} className="h-1.5 sm:h-2 bg-gray-200 rounded-full">
                           {children}
@@ -1057,9 +1060,13 @@ export function HomePage() {
                     .filter((product, index, self) => 
                       index === self.findIndex(p => p.id === product.id)
                     )
-                    .map((product) => (
+                    .map((product, index) => (
                     <div key={`${product.id}-${product.shop_id}`} className="h-full">
-                      <ProductCard product={product} pricing={productPricings[String(product.id)]} />
+                      <ProductCard
+                        product={product}
+                        pricing={productPricings[String(product.id)]}
+                        isLcp={page === 0 && index === 0}
+                      />
                     </div>
                   ))}
                   {loading && page > 0 && (

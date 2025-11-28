@@ -126,14 +126,20 @@ function ProductCardComponent({ product, pricing }: ProductCardProps) {
   );
 
   // Limit displayed variants to 2 on mobile, 3 on desktop unless showAllVariants is true
-  const displayedVariants = useMemo(() => 
-    showAllVariants ? variants : variants.slice(0, window.innerWidth < 768 ? 2 : 3),
-    [variants, showAllVariants]
+  // Read the viewport width once (per card mount) to avoid repeated layout
+  // reads during render. This reduces the chance of forced synchronous
+  // layouts when many cards render simultaneously.
+  const initialViewportWidth = useMemo(() => (typeof window !== 'undefined' ? window.innerWidth : 1024), []);
+
+  // Limit displayed variants to 2 on mobile, 3 on desktop unless showAllVariants is true
+  const displayedVariants = useMemo(
+    () => (showAllVariants ? variants : variants.slice(0, initialViewportWidth < 768 ? 2 : 3)),
+    [variants, showAllVariants, initialViewportWidth]
   );
 
-  const hasHiddenVariants = useMemo(() =>
-    variants.length > (window.innerWidth < 768 ? 2 : 3) && !showAllVariants,
-    [variants, showAllVariants]
+  const hasHiddenVariants = useMemo(
+    () => variants.length > (initialViewportWidth < 768 ? 2 : 3) && !showAllVariants,
+    [variants, showAllVariants, initialViewportWidth]
   );
 
   return (
