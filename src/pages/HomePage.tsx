@@ -1,4 +1,4 @@
-import { ChangeEvent, FormEvent, useCallback, useEffect, useRef, useState, useMemo } from 'react';
+import { ChangeEvent, FormEvent, useCallback, useEffect, useRef, useState } from 'react';
 import { ProductWithDetails } from '../types';
 import { supabase } from '../lib/supabase';
 import { ChevronDown, ChevronUp, X } from 'lucide-react';
@@ -8,7 +8,6 @@ import { Header } from '../components/Header';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { debounce, isEqual } from 'lodash-es';
 import { Range } from 'react-range';
-import { FixedSizeList as List } from 'react-window';
 import { MultiSelectDropdown, SingleSelectDropdown } from '../components/Dropdowns';
 
 const ITEMS_PER_PAGE = 10;
@@ -78,27 +77,6 @@ export function HomePage() {
     JSON.parse(localStorage.getItem('selectedSizeGroups') || '[]')
   );
 
-  // Simple window size hook used to compute responsive column count and list height
-  const [windowSize, setWindowSize] = useState(() => ({
-    width: typeof window !== 'undefined' ? window.innerWidth : 1024,
-    height: typeof window !== 'undefined' ? window.innerHeight : 800,
-  }));
-
-  useEffect(() => {
-    if (typeof window === 'undefined') return;
-    const onResize = () => setWindowSize({ width: window.innerWidth, height: window.innerHeight });
-    window.addEventListener('resize', onResize);
-    return () => window.removeEventListener('resize', onResize);
-  }, []);
-
-  const columns = useMemo(() => {
-    const w = windowSize.width;
-    if (w >= 1280) return 5;
-    if (w >= 1024) return 4;
-    if (w >= 640) return 3;
-    return 2;
-  }, [windowSize.width]);
-
   // Batch pricing map to avoid per-card network requests
   const [productPricings, setProductPricings] = useState<Record<string, {variantPrice: number | null; compareAtPrice: number | null; offerPrice: number | null;}>>({});
 
@@ -163,23 +141,6 @@ export function HomePage() {
       console.error('Error fetching batch pricing', err);
     }
   }, []);
-
-  // Visible products deduped by id (same as prior rendering logic)
-  const visibleProducts = useMemo(() =>
-    products.filter((product, index, self) => index === self.findIndex(p => p.id === product.id)),
-  [products]
-  );
-
-  // Chunk products into rows where each row contains `columns` items
-  const CARD_HEIGHT = 420; // px, adjust if your card size changes
-  const ROW_GAP = 16;
-  const rows = useMemo(() => {
-    const r: ProductWithDetails[][] = [];
-    for (let i = 0; i < visibleProducts.length; i += columns) {
-      r.push(visibleProducts.slice(i, i + columns));
-    }
-    return r;
-  }, [visibleProducts, columns]);
 
   const [activeCategory, setActiveCategory] = useState('all');
   const [allSizeData, setAllSizeData] = useState<{size_group: string, type: string}[]>([]);
@@ -1052,8 +1013,8 @@ export function HomePage() {
             </div>
 
   
-            {/* Products List (virtualized) */}
-            <div className="min-h-[400px]">
+            {/* Products List */}
+            <div className="grid grid-cols-2 gap-x-3 gap-y-4 min-h-[400px] sm:grid-cols-3 sm:gap-x-4 sm:gap-y-6 lg:grid-cols-4 xl:grid-cols-5">
               {error ? (
                 <div className="col-span-full text-center py-6">
                   <p className="text-red-500 dark:text-red-400 mb-2 text-sm sm:text-base">{error}</p>
@@ -1072,7 +1033,7 @@ export function HomePage() {
                 Array.from({ length: 8 }).map((_, i) => (
                   <ProductCardSkeleton key={i} />
                 ))
-              ) : visibleProducts.length === 0 ? (
+              ) : products.length === 0 ? (
                 <div className="col-span-full flex flex-col items-center justify-center min-h-[150px] space-y-1 sm:min-h-[200px] sm:space-y-2">
                   <p className="text-gray-900 dark:text-gray-100 text-sm sm:text-base">
                     {searchQuery || selectedShopName.length > 0
@@ -1091,28 +1052,25 @@ export function HomePage() {
                   </button>
                 </div>
               ) : (
-                <List
-                  height={Math.min(windowSize.height - 200, 900)}
-                  itemCount={rows.length}
-                  itemSize={CARD_HEIGHT}
-                  width={'100%'}
-                >
-                  {(props: { index: number; style: React.CSSProperties }) => {
-                    const { index, style } = props;
-                    return (
-                      <div style={{ ...style, display: 'flex', gap: `${ROW_GAP}px`, padding: '0 6px', boxSizing: 'border-box' }}>
-                      {rows[index].map((product) => (
-                        <div key={`${product.id}-${product.shop_id}`} style={{ flex: `0 0 ${100 / columns}%`, padding: '0 6px', boxSizing: 'border-box' }}>
-                          <ProductCard product={product} pricing={productPricings[String(product.id)]} />
-                        </div>
-                      ))}
-                      {rows[index].length < columns && Array.from({ length: columns - rows[index].length }).map((_, i) => (
-                        <div key={`empty-${i}`} style={{ flex: `0 0 ${100 / columns}%`, padding: '0 6px', boxSizing: 'border-box' }} />
-                      ))}
+                <>
+                  {products
+                    .filter((product, index, self) => 
+                      index === self.findIndex(p => p.id === product.id)
+                    )
+                    .map((product) => (
+                    <div key={`${product.id}-${product.shop_id}`} className="h-full">
+                      <ProductCard product={product} pricing={productPricings[String(product.id)]} />
                     </div>
-                    );
-                  }}
-                </List>
+                  ))}
+                  {loading && page > 0 && (
+                    // show inline skeleton cards instead of a centered spinner
+                    Array.from({ length: ITEMS_PER_PAGE }).map((_, i) => (
+                      <div key={`skeleton-${page}-${i}`} className="h-full">
+                        <ProductCardSkeleton />
+                      </div>
+                    ))
+                  )}
+                </>
               )}
             </div>
             <div ref={observerRef} className="h-1" />
