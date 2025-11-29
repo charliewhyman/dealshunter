@@ -95,6 +95,32 @@ function ProductCardComponent({ product, pricing, isLcp }: ProductCardProps) {
   const finalSrcSet = dbThumbnail ? undefined : (dbSrcSet || responsiveSrcSet);
   const finalWebpSrcSet = dbThumbnailWebp ? undefined : (dbThumbnailWebp || dbWebpSrcSet || webpSrcSet);
 
+  // Synchronously insert a preload link for the LCP candidate so the
+  // browser can discover the image request before the <img> is parsed and
+  // starts fetching. We prefer to add `imagesrcset`/`imagesizes` when a
+  // responsive `srcset` is available to make the preload more accurate.
+  if (isLcp && typeof document !== 'undefined' && finalFallback) {
+    try {
+      const url = finalFallback;
+      const selector = `link[rel="preload"][href="${url}"]`;
+      const existing = document.head.querySelector(selector);
+      if (!existing) {
+        const link = document.createElement('link');
+        link.rel = 'preload';
+        link.as = 'image';
+        link.href = url;
+        if (finalSrcSet) {
+          link.setAttribute('imagesrcset', finalSrcSet);
+          link.setAttribute('imagesizes', '(max-width: 640px) 50vw, 200px');
+        }
+        link.setAttribute('fetchPriority', 'high');
+        document.head.appendChild(link);
+      }
+    } catch (err) {
+      void err;
+    }
+  }
+
   // Process variants from the product data
   const variants = useMemo(() => 
     (product.variants || [])
@@ -199,7 +225,7 @@ function ProductCardComponent({ product, pricing, isLcp }: ProductCardProps) {
                 setProductImage(null);
                 setImgLoaded(true);
               }}
-              {...(isLcp ? ({ fetchpriority: 'high' } as unknown as Record<string, string>) : ({ fetchpriority: 'low' } as unknown as Record<string, string>))}
+              {...(isLcp ? ({ fetchPriority: 'high' } as unknown as Record<string, string>) : ({ fetchPriority: 'low' } as unknown as Record<string, string>))}
             />
           </picture>
         ) : (

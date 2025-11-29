@@ -13,7 +13,16 @@ function ProductPage() {
   const [product, setProduct] = useState<Product | null>(null);
   const [loading, setLoading] = useState(true);
   const [productImage, setProductImage] = useState<string | undefined>(undefined);
-  const [imageRecord, setImageRecord] = useState<Record<string, unknown> | null>(null);
+  type ImageRecord = {
+    src?: string;
+    responsive_fallback?: string;
+    srcset?: string;
+    webp_srcset?: string;
+    placeholder?: string;
+    width?: number;
+    height?: number;
+  };
+  const [imageRecord, setImageRecord] = useState<ImageRecord | null>(null);
   const [imgLoaded, setImgLoaded] = useState(false);
   const [variants, setVariants] = useState<Array<{ title: string; available: boolean }>>([]);
   const { variantPrice, compareAtPrice, offerPrice } = useProductPricing(ProductId!);

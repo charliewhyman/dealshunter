@@ -7,8 +7,10 @@ import { SingleValue } from 'react-select';
 import { Header } from '../components/Header';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { debounce, isEqual } from 'lodash-es';
-import { Range } from 'react-range';
 import { MultiSelectDropdown, SingleSelectDropdown } from '../components/Dropdowns';
+import TransformSlider from '../components/TransformSlider';
+
+// Slider UI is provided by `TransformSlider` component in `src/components`.
 
 const ITEMS_PER_PAGE = 10;
 
@@ -66,12 +68,8 @@ export function HomePage() {
 
   // UI-only price range used while dragging the slider to avoid frequent
   // filter updates / network requests and forced layout reads during drag.
-  const [uiPriceRange, setUiPriceRange] = useState<[number, number]>(() => [...PRICE_RANGE]);
-
-  // Keep the UI slider in sync when the selectedPriceRange is changed programmatically
-  useEffect(() => {
-    setUiPriceRange(selectedPriceRange);
-  }, [selectedPriceRange]);
+  // Note: slider UI state is handled inside the `Slider` component to avoid
+  // re-rendering the entire `HomePage` while dragging.
 
   const [selectedSizeGroups, setSelectedSizeGroups] = useState<string[]>(
     JSON.parse(localStorage.getItem('selectedSizeGroups') || '[]')
@@ -489,32 +487,9 @@ export function HomePage() {
     }
   }, [selectedShopName, inStockOnly, onSaleOnly, searchQuery, selectedPriceRange, sortOrder, page, selectedSizeGroups, fetchFilteredProducts, selectedCategories]);
 
-  // Preload the likely LCP image (first product on initial page) so the
-  // browser can discover it earlier. This inserts a `link rel=preload` for
-  // the first product's primary image when products load on page 0.
-  useEffect(() => {
-    if (page !== 0) return;
-    const first = products[0];
-    if (!first) return;
-
-    const imgSrc = first.images?.[0]?.src;
-    if (!imgSrc) return;
-
-    const link = document.createElement('link');
-    link.rel = 'preload';
-    link.as = 'image';
-    link.href = imgSrc;
-    link.setAttribute('fetchpriority', 'high');
-    document.head.appendChild(link);
-
-    return () => {
-      try {
-        document.head.removeChild(link);
-      } catch (err) {
-        void err;
-      }
-    };
-  }, [products, page]);
+  // Preloading of the LCP candidate is handled inside `ProductCard` so the
+  // component can compute responsive srcsets and append a preload link
+  // synchronously when it is the designated LCP image.
 
   // Local storage effects
   useEffect(() => {
@@ -851,21 +826,12 @@ export function HomePage() {
                      * don't update filters (and trigger fetches / reflows) on
                      * every mousemove. Commit the change on `onFinalChange`.
                      */}
-                    <Range
+                    <TransformSlider
                       step={1}
                       min={PRICE_RANGE[0]}
                       max={PRICE_RANGE[1]}
-                      values={uiPriceRange}
-                      onChange={(values) => setUiPriceRange([values[0], values[1]])}
+                      value={selectedPriceRange}
                       onFinalChange={(values) => handleSliderChangeEnd(values)}
-                      renderTrack={useCallback(({ props, children }) => (
-                        <div {...props} className="h-1.5 sm:h-2 bg-gray-200 rounded-full">
-                          {children}
-                        </div>
-                      ), [])}
-                      renderThumb={useCallback(({ props }) => (
-                        <div {...props} className="h-3 w-3 sm:h-4 sm:w-4 bg-blue-600 rounded-full"/>
-                      ), [])}
                     />
                   </div>
                 </div>
