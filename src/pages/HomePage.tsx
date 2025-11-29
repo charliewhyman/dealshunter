@@ -106,33 +106,39 @@ export function HomePage() {
     setTimeout(() => { try { task(); } catch (e) { void e; } }, 200);
   }, []);
 
+  // Refs & state for per-card pricing via IntersectionObserver.
+  // We keep a map of card elements so we can observe them and only
+  // request pricing when cards are about to enter the viewport.
+  const cardRefs = useRef<Map<string, HTMLDivElement>>(new Map());
+  const pricedIdsRef = useRef<Set<string>>(new Set());
+  
   const fetchBatchPricingFor = useCallback(async (ids: Array<number | string>) => {
     try {
       const uniqueIds = Array.from(new Set(ids.map(String)));
       if (uniqueIds.length === 0) return;
-
+  
       const supabase = await getSupabase();
       const today = new Date().toISOString().split('T')[0];
-
+  
       const vRes = await supabase
         .from('variants')
         .select('product_id, price, compare_at_price')
         .in('product_id', uniqueIds);
-
+  
       const oRes = await supabase
         .from('offers')
         .select('product_id, price, price_valid_until')
         .in('product_id', uniqueIds)
         .gte('price_valid_until', today);
-
+  
       const vData = vRes.data as Array<{ product_id: number | string; price?: string | number; compare_at_price?: string | number; }> | null;
       const oData = oRes.data as Array<{ product_id: number | string; price?: string | number; price_valid_until?: string; }> | null;
-
+  
       if (vRes.error) console.error('Variant batch fetch error', vRes.error);
       if (oRes.error) console.error('Offer batch fetch error', oRes.error);
-
+  
       const pricingMap: Record<string, {variantPrice: number | null; compareAtPrice: number | null; offerPrice: number | null;}> = {};
-
+  
       if (vData) {
         for (const row of vData) {
           const pid = String(row.product_id);
@@ -148,7 +154,7 @@ export function HomePage() {
           }
         }
       }
-
+  
       if (oData) {
         for (const row of oData) {
           const pid = String(row.product_id);
@@ -162,12 +168,45 @@ export function HomePage() {
           }
         }
       }
-
+  
       setProductPricings(prev => ({ ...prev, ...pricingMap }));
     } catch (err) {
       console.error('Error fetching batch pricing', err);
     }
   }, []);
+  
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+  
+    const io = new IntersectionObserver(
+      (entries) => {
+        const idsToFetch: string[] = [];
+        for (const entry of entries) {
+          if (!entry.isIntersecting) continue;
+          const id = (entry.target as HTMLElement).getAttribute('data-prod-id');
+          if (!id) continue;
+          if (pricedIdsRef.current.has(id)) continue;
+          pricedIdsRef.current.add(id);
+          idsToFetch.push(id);
+        }
+  
+        if (idsToFetch.length > 0) {
+          // Batch up requests: schedule idle fetch for visible items
+          scheduleIdle(() => {
+            fetchBatchPricingFor(idsToFetch).catch(e => console.error('Error fetching per-card pricing', e));
+          });
+        }
+      },
+      { rootMargin: '300px', threshold: 0.05 }
+    );
+  
+    // Observe existing card elements
+    for (const el of cardRefs.current.values()) {
+      try { io.observe(el); } catch { /* ignore */ }
+    }
+  
+    return () => io.disconnect();
+  }, [products, fetchBatchPricingFor, scheduleIdle]);
 
   const [activeCategory, setActiveCategory] = useState('all');
   const [allSizeData, setAllSizeData] = useState<{size_group: string, type: string}[]>([]);
@@ -462,7 +501,8 @@ export function HomePage() {
         .order('shop_name', { ascending: true });
       
       if (shopData && !shopError) {
-        setShopNames(shopData.map(item => item.shop_name).filter(Boolean));
+        // Ensure TypeScript knows the shape returned by the view
+        setShopNames((shopData as Array<{ shop_name?: string }>).map(item => item.shop_name).filter(Boolean) as string[]);
       }
 
       // Fetch product categories
@@ -473,7 +513,9 @@ export function HomePage() {
 
       if (categoryData && !categoryError) {
         const uniqueCategories = Array.from(new Set(
-          categoryData.flatMap(item => item.categories).filter(Boolean)
+          (categoryData as Array<{ categories?: string[] }>)
+            .flatMap(item => item.categories || [])
+            .filter((c): c is string => !!c)
         )).sort();
         setCategories(uniqueCategories);
       }
@@ -1094,15 +1136,29 @@ export function HomePage() {
                     .filter((product, index, self) => 
                       index === self.findIndex(p => p.id === product.id)
                     )
-                    .map((product, index) => (
-                    <div key={`${product.id}-${product.shop_id}`} className="h-full">
-                      <ProductCard
-                        product={product}
-                        pricing={productPricings[String(product.id)]}
-                        isLcp={page === 0 && index === 0}
-                      />
-                    </div>
-                  ))}
+                    .map((product, index) => {
+                    const pid = String(product.id);
+                    return (
+                      <div
+                        key={`${product.id}-${product.shop_id}`}
+                        className="h-full"
+                        data-prod-id={pid}
+                        ref={(el) => {
+                          if (el) {
+                            cardRefs.current.set(pid, el);
+                          } else {
+                            cardRefs.current.delete(pid);
+                          }
+                        }}
+                      >
+                        <ProductCard
+                          product={product}
+                          pricing={productPricings[String(product.id)]}
+                          isLcp={page === 0 && index === 0}
+                        />
+                      </div>
+                    );
+                  })}
                   {loading && page > 0 && (
                     // show inline skeleton cards instead of a centered spinner
                     Array.from({ length: ITEMS_PER_PAGE }).map((_, i) => (
