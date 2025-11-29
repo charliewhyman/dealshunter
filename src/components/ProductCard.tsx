@@ -51,11 +51,10 @@ function ProductCardComponent({ product, pricing, isLcp }: ProductCardProps) {
   const buildSrcSets = (url?: string) => {
     if (!url) return { src: undefined as string | undefined, srcSet: undefined as string | undefined, webpSrcSet: undefined as string | undefined };
     try {
-      // Include variants up to 640px — our card displays ~316px, so 2x DPR
-      // can be satisfied with 640px. Avoid generating very large sizes
-      // (960/1280/1600) which can be selected by the browser and cause
-      // unnecessary large downloads for small card slots.
-      const sizes = [200, 320, 480, 640];
+      // Include variants that cover the card slot and common DPRs.
+      // Card renders ~316px on desktop; include ~1x and 2x variants and
+      // a slightly larger option so the browser can pick the best fit.
+      const sizes = [160, 316, 632, 960];
       const parsed = new URL(url);
       const base = parsed.origin + parsed.pathname;
       const originalParams = parsed.searchParams;
@@ -78,7 +77,9 @@ function ProductCardComponent({ product, pricing, isLcp }: ProductCardProps) {
         .join(', ');
 
       const fallbackParams = new URLSearchParams(originalParams.toString());
-      fallbackParams.set('width', String(640));
+      // Use a medium-large fallback so browsers that don't use srcset still
+      // get a reasonably sized image (covers high-DPR displays).
+      fallbackParams.set('width', String(632));
       const src = `${base}?${fallbackParams.toString()}`;
 
       return { src, srcSet, webpSrcSet };
@@ -105,6 +106,9 @@ function ProductCardComponent({ product, pricing, isLcp }: ProductCardProps) {
   const finalSrcSet = dbSrcSet || computedSrcSet || responsiveSrcSet;
   const finalWebpSrcSet = dbThumbnailWebp || dbWebpSrcSet || computedWebpSrcSet || webpSrcSet;
 
+  // Helpful sizes attribute to hint the browser about the image slot size.
+  const sizesAttr = '(max-width: 640px) 50vw, 316px';
+
   // Synchronously insert a preload link for the LCP candidate so the
   // browser can discover the image request before the <img> is parsed and
   // starts fetching. We prefer to add `imagesrcset`/`imagesizes` when a
@@ -123,7 +127,7 @@ function ProductCardComponent({ product, pricing, isLcp }: ProductCardProps) {
           // Prefer preloading the WebP srcset when available.
           link.setAttribute('imagesrcset', finalWebpSrcSet || finalSrcSet || '');
           // Match the <img> sizes hint so the preload is accurate.
-          link.setAttribute('imagesizes', '(max-width: 640px) 50vw, 316px');
+          link.setAttribute('imagesizes', sizesAttr);
         }
         link.setAttribute('fetchPriority', 'high');
         document.head.appendChild(link);
@@ -208,7 +212,11 @@ function ProductCardComponent({ product, pricing, isLcp }: ProductCardProps) {
         {productImage ? (
           <picture>
             {finalWebpSrcSet && (
-              <source type="image/webp" srcSet={finalWebpSrcSet} />
+              <source type="image/webp" srcSet={finalWebpSrcSet} sizes={sizesAttr} />
+            )}
+
+            {finalSrcSet && (
+              <source srcSet={finalSrcSet} sizes={sizesAttr} />
             )}
 
             {/* placeholder LQIP: low-res tiny image that stays blurred until main img loads */}
@@ -227,7 +235,7 @@ function ProductCardComponent({ product, pricing, isLcp }: ProductCardProps) {
               // The card displays at ~316px on desktop; give the browser a
               // realistic sizes hint so it picks a smaller image instead of
               // the 1600px original. On small viewports allow 50vw.
-              sizes="(max-width: 640px) 50vw, 316px"
+              sizes={sizesAttr}
               loading={isLcp ? 'eager' : 'lazy'}
               decoding="async"
               alt={product.title || 'Product image'}
