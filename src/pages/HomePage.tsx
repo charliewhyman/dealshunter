@@ -1,6 +1,6 @@
 import { ChangeEvent, FormEvent, useCallback, useEffect, useRef, useState } from 'react';
 import { ProductWithDetails } from '../types';
-import { supabase } from '../lib/supabase';
+import { getSupabase } from '../lib/supabase';
 import { ChevronDown, ChevronUp, X } from 'lucide-react';
 import { ProductCard } from '../components/ProductCard';
 import { SingleValue } from 'react-select';
@@ -78,11 +78,40 @@ export function HomePage() {
   // Batch pricing map to avoid per-card network requests
   const [productPricings, setProductPricings] = useState<Record<string, {variantPrice: number | null; compareAtPrice: number | null; offerPrice: number | null;}>>({});
 
+  // Schedule low-priority work off the main critical path. Use
+  // `requestIdleCallback` when available, otherwise fall back to a
+  // short `setTimeout`. This keeps non-essential network requests
+  // (like fetching offers) off the initial render critical path.
+  const scheduleIdle = useCallback((task: () => void) => {
+    if (typeof window === 'undefined') {
+      // No window (SSR) — run later via timeout
+      setTimeout(() => { try { task(); } catch (e) { void e; } }, 200);
+      return;
+    }
+
+    const w = (window as unknown as { requestIdleCallback?: (cb: () => void, opts?: { timeout?: number }) => number });
+    if (w.requestIdleCallback) {
+      try {
+        w.requestIdleCallback(() => {
+          try {
+            task();
+          } catch (e) { void e; }
+        }, { timeout: 2000 });
+        return;
+      } catch {
+        // fall through to timeout fallback
+      }
+    }
+
+    setTimeout(() => { try { task(); } catch (e) { void e; } }, 200);
+  }, []);
+
   const fetchBatchPricingFor = useCallback(async (ids: Array<number | string>) => {
     try {
       const uniqueIds = Array.from(new Set(ids.map(String)));
       if (uniqueIds.length === 0) return;
 
+      const supabase = await getSupabase();
       const today = new Date().toISOString().split('T')[0];
 
       const vRes = await supabase
@@ -196,15 +225,19 @@ export function HomePage() {
             ? cached.data || [] 
             : [...prev, ...(cached.data || [])]
         );
-        // Batch-fetch pricing for cached page items (non-blocking)
-        (async () => {
-          try {
-            const ids = ((cached.data as ProductWithDetails[]) || []).map(p => p.id).filter(Boolean);
-            if (ids.length > 0) await fetchBatchPricingFor(ids);
-          } catch (e) {
-            console.error('Error fetching batch pricing for cached items', e);
+        // Batch-fetch pricing for cached page items (non-blocking).
+        // Schedule this work off the critical path so it doesn't compete
+        // with higher-priority resources (LCP, fonts, etc.). Only fetch
+        // the most-likely visible subset for the first page.
+        {
+          const ids = ((cached.data as ProductWithDetails[]) || []).map(p => p.id).filter(Boolean);
+          const idsToFetch = page === 0 ? ids.slice(0, 12) : ids;
+          if (idsToFetch.length > 0) {
+            scheduleIdle(() => {
+              fetchBatchPricingFor(idsToFetch).catch(e => console.error('Error fetching batch pricing for cached items', e));
+            });
           }
-        })();
+        }
         setHasMore((page + 1) * ITEMS_PER_PAGE < (cached.count || 0));
         setInitialLoad(false);
         setError(null);
@@ -213,6 +246,7 @@ export function HomePage() {
         if ((page + 1) * ITEMS_PER_PAGE < (cached.count || 0)) {
           (async () => {
             try {
+              const supabase = await getSupabase();
               let prefetchQuery = supabase
                 .from('products_with_details')
                 .select('*', { count: 'exact', head: false })
@@ -245,6 +279,8 @@ export function HomePage() {
         if (!controller.signal.aborted) setLoading(false);
         return;
       }
+
+      const supabase = await getSupabase();
 
       let query = supabase
         .from('products_with_details')
@@ -329,15 +365,18 @@ export function HomePage() {
           ? (data as ProductWithDetails[]) || [] 
           : [...prev, ...(data as ProductWithDetails[] || [])]
       );
-      // Batch-fetch pricing for this page's products (non-blocking)
-      (async () => {
-        try {
-          const ids = ((data as ProductWithDetails[]) || []).map(p => p.id).filter(Boolean);
-          if (ids.length > 0) await fetchBatchPricingFor(ids);
-        } catch (e) {
-          console.error('Error fetching batch pricing for page items', e);
+      // Batch-fetch pricing for this page's products (non-blocking).
+      // Run as a low-priority task so offer/variant requests don't delay
+      // the critical rendering path.
+      {
+        const ids = ((data as ProductWithDetails[]) || []).map(p => p.id).filter(Boolean);
+        const idsToFetch = page === 0 ? ids.slice(0, 12) : ids;
+        if (idsToFetch.length > 0) {
+          scheduleIdle(() => {
+            fetchBatchPricingFor(idsToFetch).catch(e => console.error('Error fetching batch pricing for page items', e));
+          });
         }
-      })();
+      }
       setHasMore(moreAvailable);
       setInitialLoad(false);
       setError(null);
@@ -408,12 +447,14 @@ export function HomePage() {
       }
     }
   },
-  [fetchBatchPricingFor]
+  [fetchBatchPricingFor, scheduleIdle]
 );
 
   // Update shop names fetching to use the materialized view
   useEffect(() => {
     async function fetchInitialData() {
+      const supabase = await getSupabase();
+
       // Fetch shop names
       const { data: shopData, error: shopError } = await supabase
         .from('distinct_shop_names')

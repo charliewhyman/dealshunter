@@ -1,6 +1,6 @@
 import { ChangeEvent, FormEvent, useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { supabase } from '../lib/supabase';
+import { getSupabase } from '../lib/supabase';
 import { Product } from '../types';
 import { ExternalLink } from 'lucide-react';
 import { useProductPricing } from '../hooks/useProductPricing';
@@ -33,6 +33,7 @@ function ProductPage() {
     const fetchProductData = async () => {
       try {
         setLoading(true);
+        const supabase = await getSupabase();
         
         // Fetch product
         const { data: productData, error: productError } = await supabase

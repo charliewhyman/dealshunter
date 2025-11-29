@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { supabase } from '../lib/supabase';
+import { getSupabase } from '../lib/supabase';
 
 interface ProductPricing {
   variantPrice: number | null;
@@ -16,6 +16,8 @@ export function useProductPricing(productId: number | string, enabled = true): P
     if (!enabled) return;
 
     const fetchPricing = async () => {
+      const supabase = await getSupabase();
+
       // Fetch prices from all variants
       const { data: variantData, error: variantError } = await supabase
         .from('variants')
