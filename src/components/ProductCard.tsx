@@ -86,14 +86,21 @@ function ProductCardComponent({ product, pricing, isLcp }: ProductCardProps) {
 
   const { src: responsiveSrc, srcSet: responsiveSrcSet, webpSrcSet } = buildSrcSets(productImage || undefined);
 
+  // Decide the best candidate URL to use for building responsive srcsets.
+  // Prefer an explicit thumbnail if available, otherwise fallback to
+  // pipeline responsive fallback or the original image.
+  const sourceCandidate = dbThumbnail || dbFallback || productImage || undefined;
+
+  // Build a srcset/webp srcset for the chosen candidate so the browser
+  // can request appropriately sized images for the card slot.
+  const { src: computedSrc, srcSet: computedSrcSet, webpSrcSet: computedWebpSrcSet } = buildSrcSets(sourceCandidate || undefined);
+
   // Final sources we will use in the <picture>
-  // For list thumbnails prefer an explicit small thumbnail if available.
-  // If a thumbnail URL exists, force the card to use that URL (no large srcset)
-  // so browsers won't request a large 1280/1600 image for small card slots.
-  const finalFallback = dbThumbnail || dbFallback || responsiveSrc || productImage || undefined;
-  // If we have a dedicated thumbnail, avoid offering large srcset candidates
-  const finalSrcSet = dbThumbnail ? undefined : (dbSrcSet || responsiveSrcSet);
-  const finalWebpSrcSet = dbThumbnailWebp ? undefined : (dbThumbnailWebp || dbWebpSrcSet || webpSrcSet);
+  const finalFallback = computedSrc || sourceCandidate || responsiveSrc || productImage || undefined;
+  // Prefer any srcsets provided by the DB (pipeline-produced). If none,
+  // fall back to the computed srcset we just built from the candidate URL.
+  const finalSrcSet = dbSrcSet || computedSrcSet || responsiveSrcSet;
+  const finalWebpSrcSet = dbThumbnailWebp || dbWebpSrcSet || computedSrcSet ? (dbThumbnailWebp || dbWebpSrcSet || computedSrcSet) : (computedWebpSrcSet || webpSrcSet);
 
   // Synchronously insert a preload link for the LCP candidate so the
   // browser can discover the image request before the <img> is parsed and
@@ -212,8 +219,10 @@ function ProductCardComponent({ product, pricing, isLcp }: ProductCardProps) {
             <img
               src={finalFallback}
               srcSet={finalSrcSet}
-              // Hint that thumbnails are small; use an explicit fallback slot of ~200px
-              sizes="(max-width: 640px) 50vw, 200px"
+              // The card displays at ~316px on desktop; give the browser a
+              // realistic sizes hint so it picks a smaller image instead of
+              // the 1600px original. On small viewports allow 50vw.
+              sizes="(max-width: 640px) 50vw, 316px"
               loading={isLcp ? 'eager' : 'lazy'}
               decoding="async"
               alt={product.title || 'Product image'}
