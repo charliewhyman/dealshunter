@@ -51,8 +51,11 @@ function ProductCardComponent({ product, pricing, isLcp }: ProductCardProps) {
   const buildSrcSets = (url?: string) => {
     if (!url) return { src: undefined as string | undefined, srcSet: undefined as string | undefined, webpSrcSet: undefined as string | undefined };
     try {
-      // Include a small 200px variant so thumbnails can request a very small image.
-      const sizes = [200, 320, 480, 640, 960, 1280, 1600];
+      // Include variants up to 640px — our card displays ~316px, so 2x DPR
+      // can be satisfied with 640px. Avoid generating very large sizes
+      // (960/1280/1600) which can be selected by the browser and cause
+      // unnecessary large downloads for small card slots.
+      const sizes = [200, 320, 480, 640];
       const parsed = new URL(url);
       const base = parsed.origin + parsed.pathname;
       const originalParams = parsed.searchParams;
@@ -100,7 +103,7 @@ function ProductCardComponent({ product, pricing, isLcp }: ProductCardProps) {
   // Prefer any srcsets provided by the DB (pipeline-produced). If none,
   // fall back to the computed srcset we just built from the candidate URL.
   const finalSrcSet = dbSrcSet || computedSrcSet || responsiveSrcSet;
-  const finalWebpSrcSet = dbThumbnailWebp || dbWebpSrcSet || computedSrcSet ? (dbThumbnailWebp || dbWebpSrcSet || computedSrcSet) : (computedWebpSrcSet || webpSrcSet);
+  const finalWebpSrcSet = dbThumbnailWebp || dbWebpSrcSet || computedWebpSrcSet || webpSrcSet;
 
   // Synchronously insert a preload link for the LCP candidate so the
   // browser can discover the image request before the <img> is parsed and
@@ -116,9 +119,11 @@ function ProductCardComponent({ product, pricing, isLcp }: ProductCardProps) {
         link.rel = 'preload';
         link.as = 'image';
         link.href = url;
-        if (finalSrcSet) {
-          link.setAttribute('imagesrcset', finalSrcSet);
-          link.setAttribute('imagesizes', '(max-width: 640px) 50vw, 200px');
+        if (finalWebpSrcSet || finalSrcSet) {
+          // Prefer preloading the WebP srcset when available.
+          link.setAttribute('imagesrcset', finalWebpSrcSet || finalSrcSet || '');
+          // Match the <img> sizes hint so the preload is accurate.
+          link.setAttribute('imagesizes', '(max-width: 640px) 50vw, 316px');
         }
         link.setAttribute('fetchPriority', 'high');
         document.head.appendChild(link);
