@@ -77,9 +77,12 @@ function ProductCardComponent({ product, pricing, isLcp }: ProductCardProps) {
         .join(', ');
 
       const fallbackParams = new URLSearchParams(originalParams.toString());
-      // Use a medium-large fallback so browsers that don't use srcset still
-      // get a reasonably sized image (covers high-DPR displays).
-      fallbackParams.set('width', String(632));
+      // Use a medium fallback sized for the card slot. Previously this used
+      // 632 which causes browsers (or the preload) to request a 2x-sized
+      // image even when not necessary. Use the card slot width (316) as
+      // the fallback; DPR-aware browsers will pick the 632 candidate from
+      // the `srcset` when they need a 2x asset.
+      fallbackParams.set('width', String(316));
       const src = `${base}?${fallbackParams.toString()}`;
 
       return { src, srcSet, webpSrcSet };
