@@ -1,5 +1,5 @@
 import { useMemo, useState, memo } from 'react';
-import { ExternalLink } from 'lucide-react';
+import AsyncLucideIcon from './AsyncLucideIcon';
 import { ProductWithDetails } from '../types';
 import { useNavigate } from 'react-router-dom';
 import { useProductPricing } from '../hooks/useProductPricing';
@@ -284,7 +284,7 @@ function ProductCardComponent({ product, pricing, isLcp }: ProductCardProps) {
             onClick={(e) => e.stopPropagation()}
             title="View on original site"
           >
-            <ExternalLink className="w-3 h-3 sm:w-4 sm:h-4" />
+            <AsyncLucideIcon name="ExternalLink" className="w-3 h-3 sm:w-4 sm:h-4" />
           </a>
         </div>
 

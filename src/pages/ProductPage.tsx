@@ -2,7 +2,7 @@ import { ChangeEvent, FormEvent, useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { getSupabase } from '../lib/supabase';
 import { Product } from '../types';
-import { ExternalLink } from 'lucide-react';
+import AsyncLucideIcon from '../components/AsyncLucideIcon';
 import { useProductPricing } from '../hooks/useProductPricing';
 import '../index.css';
 import { format } from 'date-fns/format';
@@ -189,7 +189,7 @@ function ProductPage() {
                   className="inline-flex items-center justify-center gap-2 w-full sm:w-auto px-4 py-2 sm:px-6 sm:py-3 text-sm sm:text-base font-medium rounded-md text-white bg-blue-600 hover:bg-blue-700 dark:bg-blue-500 dark:hover:bg-blue-600 transition-colors duration-200"
                 >
                   <span>Get Product</span>
-                  <ExternalLink className="w-4 h-4 sm:w-5 sm:h-5 text-white" />
+                  <AsyncLucideIcon name="ExternalLink" className="w-4 h-4 sm:w-5 sm:h-5 text-white" />
                 </a>
               </div>
 

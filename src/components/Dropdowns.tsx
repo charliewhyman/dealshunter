@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { ChevronDown, X } from 'lucide-react';
+import AsyncLucideIcon from './AsyncLucideIcon';
 
 // Types
 interface Option {
@@ -63,7 +63,7 @@ const MultiSelectDropdown: React.FC<MultiSelectDropdownProps> = ({
         <div className="flex-1 flex flex-wrap gap-1">
           {selected.length > 0 ? (
             selected.map((item) => (
-              <span
+                <span
                 key={item}
                 className="inline-flex items-center gap-1 px-2 py-1 bg-gray-100 dark:bg-gray-700 text-gray-800 dark:text-gray-200 text-xs rounded-md"
               >
@@ -75,7 +75,7 @@ const MultiSelectDropdown: React.FC<MultiSelectDropdownProps> = ({
                   }}
                   className="hover:text-red-500 dark:hover:text-red-400"
                 >
-                  <X className="h-3 w-3" />
+                    <AsyncLucideIcon name="X" className="h-3 w-3" />
                 </button>
               </span>
             ))
@@ -85,10 +85,11 @@ const MultiSelectDropdown: React.FC<MultiSelectDropdownProps> = ({
             </span>
           )}
         </div>
-        <ChevronDown 
+        <AsyncLucideIcon
+          name="ChevronDown"
           className={`h-4 w-4 text-gray-500 dark:text-gray-400 transition-transform ${
             isOpen ? 'rotate-180' : ''
-          }`} 
+          }`}
         />
       </div>
 
@@ -165,10 +166,11 @@ const SingleSelectDropdown: React.FC<SingleSelectDropdownProps> = ({
         <span className="text-gray-900 dark:text-gray-100 text-sm">
           {selectedOption ? selectedOption.label : placeholder}
         </span>
-        <ChevronDown 
+        <AsyncLucideIcon
+          name="ChevronDown"
           className={`h-4 w-4 text-gray-500 dark:text-gray-400 transition-transform ${
             isOpen ? 'rotate-180' : ''
-          }`} 
+          }`}
         />
       </div>
 

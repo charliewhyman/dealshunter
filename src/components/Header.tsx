@@ -1,5 +1,5 @@
 import { Link } from 'react-router-dom';
-import { Tag, Search } from 'lucide-react';
+import AsyncLucideIcon from './AsyncLucideIcon';
 import { ChangeEvent, FormEvent } from 'react';
 import React from 'react';
 
@@ -16,7 +16,7 @@ export const Header = React.memo(({ searchQuery, handleSearchChange, handleSearc
       <div className="flex items-center justify-between h-full">
           {/* Logo */}
           <Link to="/" className="flex items-center space-x-2">
-            <Tag className="w-6 h-6 text-yellow-600 dark:text-yellow-500" />
+            <AsyncLucideIcon name="Tag" className="w-6 h-6 text-yellow-600 dark:text-yellow-500" />
             <span className="text-lg font-semibold text-gray-900 dark:text-gray-100">
               The Canadian Edit
             </span>
@@ -30,7 +30,7 @@ export const Header = React.memo(({ searchQuery, handleSearchChange, handleSearc
             aria-label="Search"
           >
             <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-              <Search className="h-4 w-4 text-gray-400 dark:text-gray-500" />
+              <AsyncLucideIcon name="Search" className="h-4 w-4 text-gray-400 dark:text-gray-500" />
             </div>
             <input
               type="text"

@@ -1,10 +1,18 @@
 import { StrictMode } from 'react'
-import { createRoot } from 'react-dom/client'
 import './index.css'
 import App from './App.tsx'
 
-createRoot(document.getElementById('root')!).render(
-  <StrictMode>
-    <App />
-  </StrictMode>,
-)
+// Dynamically import react-dom to keep it off the initial JS bundle
+// for slightly faster initial parse/download in some cases.
+async function mount() {
+  const rootEl = document.getElementById('root');
+  if (!rootEl) return;
+  const { createRoot } = await import('react-dom/client');
+  createRoot(rootEl).render(
+    <StrictMode>
+      <App />
+    </StrictMode>,
+  );
+}
+
+void mount();

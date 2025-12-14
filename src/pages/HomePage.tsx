@@ -1,12 +1,25 @@
 import { ChangeEvent, FormEvent, useCallback, useEffect, useRef, useState } from 'react';
 import { ProductWithDetails } from '../types';
 import { getSupabase } from '../lib/supabase';
-import { ChevronDown, ChevronUp, X } from 'lucide-react';
+import AsyncLucideIcon from '../components/AsyncLucideIcon';
 import { ProductCard } from '../components/ProductCard';
 import { SingleValue } from 'react-select';
 import { Header } from '../components/Header';
 import { useLocation, useNavigate } from 'react-router-dom';
-import { debounce, isEqual } from 'lodash-es';
+// Small local debounce utility to avoid importing the full lodash bundle
+function createDebounced<Args extends unknown[]>(fn: (...args: Args) => void, wait: number): ((...args: Args) => void) & { cancel?: () => void } {
+  let timer: number | undefined;
+  const debounced = ((...args: Args) => {
+    if (timer) window.clearTimeout(timer);
+    timer = window.setTimeout(() => fn(...args), wait) as unknown as number;
+  }) as ((...args: Args) => void) & { cancel?: () => void };
+  debounced.cancel = () => { if (timer) { window.clearTimeout(timer); timer = undefined; } };
+  return debounced;
+}
+
+function rangesEqual(a: [number, number], b: [number, number]) {
+  return a[0] === b[0] && a[1] === b[1];
+}
 import { MultiSelectDropdown, SingleSelectDropdown } from '../components/Dropdowns';
 import TransformSlider from '../components/TransformSlider';
 
@@ -557,15 +570,14 @@ export function HomePage() {
   }, []);
 
   // Create a stable reference for the debounced function
-  const debouncedFetchProducts = useRef(
-    debounce(
-      (filters: FilterOptions, page: number, sortOrder: 'asc' | 'desc') => {
-        fetchFilteredProducts(filters, page, sortOrder);
-      },
-      500,
-      { leading: false, trailing: true }
-    )
-  ).current;
+        const debouncedFetchProducts = useRef(
+          createDebounced(
+            (filters: FilterOptions, page: number, sortOrder: 'asc' | 'desc' | 'discount_desc') => {
+              fetchFilteredProducts(filters, page, sortOrder);
+            },
+            500
+          )
+        ).current as ((filters: FilterOptions, page: number, sortOrder: 'asc' | 'desc' | 'discount_desc') => void) & { cancel?: () => void };
 
   // Main effect for fetching data - simplified dependencies
   useEffect(() => {
@@ -656,7 +668,10 @@ export function HomePage() {
       if (currentRequestRef.current) {
         currentRequestRef.current.abort();
       }
-      debouncedFetchProducts.cancel();
+      // Safely invoke cancel if it exists to avoid "possibly undefined" errors
+      if (typeof debouncedFetchProducts?.cancel === 'function') {
+        debouncedFetchProducts.cancel();
+      }
     };
   }, [debouncedFetchProducts]);
 
@@ -842,16 +857,16 @@ export function HomePage() {
                     selectedCategories.length > 0 ||
                     inStockOnly !== false || 
                     onSaleOnly !== false || 
-                    !isEqual(selectedPriceRange, PRICE_RANGE) ? (
+                    !rangesEqual(selectedPriceRange, PRICE_RANGE) ? (
                       <span className="inline-flex items-center justify-center px-1.5 py-0.5 text-xs font-bold leading-none text-white bg-blue-600 rounded-full sm:px-2 sm:py-1">
                         Active
                       </span>
                   ) : null}
                 </div>
                 {showFilters ? (
-                  <ChevronUp className="h-4 w-4 text-gray-600 dark:text-gray-400 sm:h-5 sm:w-5" />
+                  <AsyncLucideIcon name="ChevronUp" className="h-4 w-4 text-gray-600 dark:text-gray-400 sm:h-5 sm:w-5" />
                 ) : (
-                  <ChevronDown className="h-4 w-4 text-gray-600 dark:text-gray-400 sm:h-5 sm:w-5" />
+                  <AsyncLucideIcon name="ChevronDown" className="h-4 w-4 text-gray-600 dark:text-gray-400 sm:h-5 sm:w-5" />
                 )}
               </button>
             </div>
@@ -981,7 +996,7 @@ export function HomePage() {
                 {(selectedShopName.length > 0 || 
                   inStockOnly !== false || 
                   onSaleOnly !== false || 
-                  !isEqual(selectedPriceRange, PRICE_RANGE)) && (
+                  !rangesEqual(selectedPriceRange, PRICE_RANGE)) && (
                   <div className="pt-3 border-t border-gray-200 dark:border-gray-700 sm:pt-4">
                     <div className="space-y-2 sm:space-y-3">
                       <h3 className="text-xs font-medium text-gray-700 dark:text-gray-300 sm:text-sm">
@@ -997,11 +1012,11 @@ export function HomePage() {
                                 className="inline-flex items-center rounded-md bg-blue-50 dark:bg-blue-900/30 px-1.5 py-0.5 text-xs font-medium text-blue-700 dark:text-blue-200 ring-1 ring-inset ring-blue-700/10 dark:ring-blue-500/30 sm:px-2 sm:py-1"
                               >
                                 {shop}
-                                <button 
+                                  <button 
                                   onClick={() => setSelectedShopName(prev => prev.filter(s => s !== shop))}
                                   className="ml-1 inline-flex text-blue-500 hover:text-blue-700 dark:text-blue-300 dark:hover:text-blue-100"
                                 >
-                                  <X className="h-2.5 w-2.5 sm:h-3 sm:w-3" />
+                                  <AsyncLucideIcon name="X" className="h-2.5 w-2.5 sm:h-3 sm:w-3" />
                                 </button>
                               </div>
                             ))}
@@ -1016,25 +1031,25 @@ export function HomePage() {
                                 className="inline-flex items-center rounded-md bg-blue-50 dark:bg-blue-900/30 px-1.5 py-0.5 text-xs font-medium text-blue-700 dark:text-blue-200 ring-1 ring-inset ring-blue-700/10 dark:ring-blue-500/30 sm:px-2 sm:py-1"
                               >
                                 {cat}
-                                <button 
+                                  <button 
                                   onClick={() => setSelectedCategories(prev => prev.filter(c => c !== cat))}
                                   className="ml-1 inline-flex text-blue-500 hover:text-blue-700 dark:text-blue-300 dark:hover:text-blue-100"
                                 >
-                                  <X className="h-2.5 w-2.5 sm:h-3 sm:w-3" />
+                                  <AsyncLucideIcon name="X" className="h-2.5 w-2.5 sm:h-3 sm:w-3" />
                                 </button>
                               </div>
                             ))}
                           </>
                         )}
                         
-                        {!isEqual(selectedPriceRange, PRICE_RANGE) && (
+                        {!rangesEqual(selectedPriceRange, PRICE_RANGE) && (
                           <div className="inline-flex items-center rounded-md bg-blue-50 dark:bg-blue-900/30 px-1.5 py-0.5 text-xs font-medium text-blue-700 dark:text-blue-200 ring-1 ring-inset ring-blue-700/10 dark:ring-blue-500/30 sm:px-2 sm:py-1">
                             ${selectedPriceRange[0]} - ${selectedPriceRange[1]}
-                            <button 
+                              <button 
                               onClick={() => setSelectedPriceRange([...PRICE_RANGE])}
                               className="ml-1 inline-flex text-blue-500 hover:text-blue-700 dark:text-blue-300 dark:hover:text-blue-100"
                             >
-                              <X className="h-2.5 w-2.5 sm:h-3 sm:w-3" />
+                              <AsyncLucideIcon name="X" className="h-2.5 w-2.5 sm:h-3 sm:w-3" />
                             </button>
                           </div>
                         )}
@@ -1051,7 +1066,7 @@ export function HomePage() {
                                   onClick={() => setSelectedSizeGroups(prev => prev.filter(s => s !== size))}
                                   className="ml-1 inline-flex text-blue-500 hover:text-blue-700 dark:text-blue-300 dark:hover:text-blue-100"
                                 >
-                                  <X className="h-2.5 w-2.5 sm:h-3 sm:w-3" />
+                                  <AsyncLucideIcon name="X" className="h-2.5 w-2.5 sm:h-3 sm:w-3" />
                                 </button>
                               </div>
                             ))}
@@ -1065,7 +1080,7 @@ export function HomePage() {
                               onClick={() => setInStockOnly(false)}
                               className="ml-1 inline-flex text-blue-500 hover:text-blue-700 dark:text-blue-300 dark:hover:text-blue-100"
                             >
-                              <X className="h-2.5 w-2.5 sm:h-3 sm:w-3" />
+                              <AsyncLucideIcon name="X" className="h-2.5 w-2.5 sm:h-3 sm:w-3" />
                             </button>
                           </div>
                         )}
@@ -1077,7 +1092,7 @@ export function HomePage() {
                               onClick={() => setOnSaleOnly(false)}
                               className="ml-1 inline-flex text-blue-500 hover:text-blue-700 dark:text-blue-300 dark:hover:text-blue-100"
                             >
-                              <X className="h-2.5 w-2.5 sm:h-3 sm:w-3" />
+                              <AsyncLucideIcon name="X" className="h-2.5 w-2.5 sm:h-3 sm:w-3" />
                             </button>
                           </div>
                         )}
