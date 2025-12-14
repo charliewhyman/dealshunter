@@ -5,7 +5,8 @@ type ViteEnv = {
 
 type ViteImportMeta = ImportMeta & { env: ViteEnv };
 
-let client: ReturnType<any> | null = null;
+let client: any = (typeof globalThis !== 'undefined' ? (globalThis as any).__supabase_client : null) ?? null;
+let initPromise: Promise<any> | null = null;
 
 function readEnv() {
   const importMetaEnv = (typeof import.meta !== 'undefined'
@@ -27,16 +28,27 @@ export async function getSupabase() {
     console.warn('Supabase URL or PUBLISHABLE KEY is not set. Provide via VITE_SUPABASE_URL / VITE_SUPABASE_PUBLISHABLE_KEY or process.env.');
   }
 
-  const mod = await import('@supabase/supabase-js');
-  const createClient = (mod as any).createClient as typeof import('@supabase/supabase-js').createClient;
+  if (initPromise) return await initPromise;
 
-  client = createClient(supabaseUrl, supabaseKey, {
-    auth: {
-      autoRefreshToken: true,
-      persistSession: true,
-      detectSessionInUrl: false,
-    },
-  });
+  initPromise = (async () => {
+    const mod = await import('@supabase/supabase-js');
+    const createClient = (mod as any).createClient as typeof import('@supabase/supabase-js').createClient;
 
-  return client;
+    client = createClient(supabaseUrl, supabaseKey, {
+      auth: {
+        autoRefreshToken: true,
+        persistSession: true,
+        detectSessionInUrl: false,
+      },
+    });
+
+    if (typeof globalThis !== 'undefined') {
+      (globalThis as any).__supabase_client = client;
+    }
+
+    initPromise = null;
+    return client;
+  })();
+
+  return await initPromise;
 }
