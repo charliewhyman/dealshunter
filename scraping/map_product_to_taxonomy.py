@@ -162,7 +162,79 @@ def map_products_to_taxonomy() -> None:
             )
         )
 
+# Add this test function after the helper functions
+def test_single_product(product_id: int) -> None:
+    """Test taxonomy mapping for a single product ID."""
+    supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
+    
+    # Download and prepare taxonomy
+    taxonomy_paths = download_and_cache_taxonomy()
+    model = SentenceTransformer("all-MiniLM-L6-v2")
+    embeddings = model.encode(taxonomy_paths)
+    
+    # Fetch the specific product
+    query = (
+        supabase.table("products_with_details")
+        .select("id, title, description, product_type, tags")
+        .eq("id", product_id)
+    )
+    
+    product = query.execute().data
+    if not product:
+        logger.error(f"Product ID {product_id} not found")
+        return
+    
+    product = product[0]
+    logger.info(f"Testing product: {product['title']}")
+    logger.info(f"Description: {product.get('description', '')[:100]}...")
+    logger.info(f"Product Type: {product.get('product_type', '')}")
+    logger.info(f"Tags: {product.get('tags', [])}")
+    
+    # Prepare and analyze
+    text = prepare_text(product)
+    logger.info(f"Prepared text: {text}")
+    
+    text_emb = model.encode([text])
+    sims = cosine_similarity(text_emb, embeddings)[0]
+    best_idx = int(np.argmax(sims))
+    score = float(sims[best_idx])
+    
+    logger.info(f"Best match score: {score:.4f}")
+    logger.info(f"Taxonomy path: {taxonomy_paths[best_idx]}")
+    
+    # Show top 5 matches
+    logger.info("\nTop 5 matches:")
+    top_indices = np.argsort(sims)[-5:][::-1]
+    for idx in top_indices:
+        logger.info(f"  Score: {sims[idx]:.4f} - {taxonomy_paths[idx]}")
+    
+    # Apply if good enough
+    if score >= MIN_SIMILARITY:
+        update_data = {
+            "id": product_id,
+            "taxonomy_path": taxonomy_paths[best_idx],
+            "taxonomy_mapped_at": datetime.now(timezone.utc).isoformat(),
+        }
+        supabase.table("products_with_details").upsert(update_data).execute()
+        logger.info(f"✓ Updated product {product_id} with taxonomy path")
+    else:
+        logger.warning(f"✗ Score below threshold ({MIN_SIMILARITY})")
 
+# Modify the entrypoint
+if __name__ == "__main__":
+    import sys
+    
+    # Check if testing a single product
+    if len(sys.argv) > 1 and sys.argv[1] == "--test":
+        product_id = int(sys.argv[2]) if len(sys.argv) > 2 else 1
+        logger.info(f"Testing single product ID: {product_id}")
+        test_single_product(product_id)
+    else:
+        try:
+            map_products_to_taxonomy()
+        except Exception:
+            logger.exception("Fatal error during taxonomy mapping")
+            
 # ----------------------------------------------
 # 5.  Entrypoint
 # ----------------------------------------------
