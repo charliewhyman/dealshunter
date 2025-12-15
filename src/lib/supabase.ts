@@ -1,14 +1,21 @@
 // src/lib/supabase.ts
+import type { SupabaseClient } from '@supabase/supabase-js';
+
 type ViteEnv = {
   VITE_SUPABASE_URL: string;
   VITE_SUPABASE_PUBLISHABLE_KEY: string;
+  PUBLIC_SUPABASE_URL?: string;
 };
 
 type ViteImportMeta = ImportMeta & { env: ViteEnv };
 
-let client: ReturnType<any> | null = null;
+// Define the specific return type for createClient
+type SupabaseClientType = SupabaseClient;
 
-function readEnv() {
+// Store the client with proper typing
+let client: SupabaseClientType | null = null;
+
+function readEnv(): { supabaseUrl: string; supabaseKey: string } {
   // Cloudflare Pages uses import.meta.env
   const importMetaEnv = (import.meta as ViteImportMeta).env;
 
@@ -20,12 +27,13 @@ function readEnv() {
 
   const supabaseKey = 
     importMetaEnv?.VITE_SUPABASE_PUBLISHABLE_KEY ||
+    importMetaEnv?.VITE_SUPABASE_ANON_KEY || // Alternative name
     '';
 
   return { supabaseUrl, supabaseKey };
 }
 
-export async function getSupabase() {
+export async function getSupabase(): Promise<SupabaseClientType> {
   if (client) return client;
 
   const { supabaseUrl, supabaseKey } = readEnv();
@@ -39,24 +47,24 @@ export async function getSupabase() {
 
   if (!supabaseUrl || !supabaseKey) {
     const errorMsg = `Supabase configuration missing. 
-      URL: ${supabaseUrl ? '✓' : '✗'} 
-      Key: ${supabaseKey ? '✓' : '✗'}
-      
-      Please ensure these environment variables are set in Cloudflare Pages:
-      1. VITE_SUPABASE_URL=https://your-project.supabase.co
-      2. VITE_SUPABASE_PUBLISHABLE_KEY=your-anon-key
-      
-      Current values:
-      VITE_SUPABASE_URL: ${import.meta.env.VITE_SUPABASE_URL ? 'Set' : 'Not set'}
-      VITE_SUPABASE_PUBLISHABLE_KEY: ${import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY ? 'Set' : 'Not set'}
-    `;
+        URL: ${supabaseUrl ? '✓' : '✗'} 
+        Key: ${supabaseKey ? '✓' : '✗'}
+        
+        Please ensure these environment variables are set in Cloudflare Pages:
+        1. VITE_SUPABASE_URL=https://your-project.supabase.co
+        2. VITE_SUPABASE_PUBLISHABLE_KEY=your-anon-key
+        
+        Current values:
+        VITE_SUPABASE_URL: ${((import.meta as ViteImportMeta).env.VITE_SUPABASE_URL) ? 'Set' : 'Not set'}
+        VITE_SUPABASE_PUBLISHABLE_KEY: ${((import.meta as ViteImportMeta).env.VITE_SUPABASE_PUBLISHABLE_KEY) ? 'Set' : 'Not set'}
+      `;
     
     console.error(errorMsg);
     throw new Error('Supabase configuration is missing. Check console for details.');
   }
 
-  const mod = await import('@supabase/supabase-js');
-  const createClient = (mod as any).createClient as typeof import('@supabase/supabase-js').createClient;
+  // Dynamic import with proper typing
+  const { createClient } = await import('@supabase/supabase-js');
 
   client = createClient(supabaseUrl, supabaseKey, {
     auth: {
