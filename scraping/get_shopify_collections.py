@@ -149,29 +149,28 @@ def scrape_collections_from_html(base_url, shop_id):
 
 def process_shop(shop_data):
     base_url = shop_data["url"]
-    category = shop_data.get("category", "Unknown")
     shop_id = get_shop_id(shop_data)
     output_file = f"output/{shop_id}_collections.json"
 
-    print(f"Processing shop: {shop_id} ({category})")
+    print(f"Processing shop: {shop_id}")
     if not is_shopify_store(base_url):
-        return [shop_id, base_url, category, "Failure: Not a Shopify store"]
+        return [shop_id, base_url, "Failure: Not a Shopify store"]
 
     try:
         collections = fetch_shopify_collections(base_url, shop_id, limit=250, max_pages=10)
         if collections:
             save_collections_to_file(collections, output_file)
-            return [shop_id, base_url, category, f"Success: {len(collections)} collections via API"]
+            return [shop_id, base_url, f"Success: {len(collections)} collections via API"]
 
         print("No collections via API – trying HTML fallback...")
         html_collections = scrape_collections_from_html(base_url, shop_id)
         if html_collections:
             save_collections_to_file(html_collections, output_file)
-            return [shop_id, base_url, category, f"Success: {len(html_collections)} collections via HTML"]
+            return [shop_id, base_url, f"Success: {len(html_collections)} collections via HTML"]
         else:
-            return [shop_id, base_url, category, "Failure: No collections found"]
+            return [shop_id, base_url, "Failure: No collections found"]
     except Exception as e:
-        return [shop_id, base_url, category, f"Failure: {e}"]
+        return [shop_id, base_url, f"Failure: {e}"]
 
 if __name__ == "__main__":
     with open("shop_urls.json", "r", encoding="utf-8") as f:
@@ -186,13 +185,13 @@ if __name__ == "__main__":
                 summary_log.append(future.result())
             except Exception as e:
                 summary_log.append(
-                    [shop.get("id"), shop["url"], shop.get("category", "Unknown"), f"Failure: {e}"]
+                    [shop.get("id"), shop["url"], f"Failure: {e}"]
                 )
 
     os.makedirs("output", exist_ok=True)
     with open("output/shopify_collections_summary.csv", "w", newline="", encoding="utf-8") as csv_file:
         writer = csv.writer(csv_file)
-        writer.writerow(["Shop ID", "URL", "Category", "Summary"])
+        writer.writerow(["Shop ID", "URL", "Summary"])
         writer.writerows(summary_log)
 
     print("Summary written to output/shopify_collections_summary.csv")

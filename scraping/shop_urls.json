@@ -1,4 +1,5 @@
 [
+    { "id": 60, "url": "https://www.goodnbr.com/", "category": "Clothing", "shop_name": "Good Neighbour" , "location": "Toronto, Ontario", "tags": [], "shipping": "", "returns": ""},
     { "id": 1, "url": "https://canadawestboots.com", "category": "Footwear", "shop_name": "Canada West Boots", "location": "", "tags": [], "shipping": "", "returns": ""},
     { "id": 2, "url": "https://lacanadienneshoes.com", "category": "Footwear", "shop_name": "La Canadienne Shoes", "location": "", "tags": [], "shipping": "", "returns": "" },
     { "id": 3, "url": "https://boutiquemartino.com", "category": "Footwear", "shop_name": "Boutique Martino", "location": "", "tags": [], "shipping": "", "returns": "" },
@@ -47,7 +48,6 @@
     { "id": 57, "url": "ca.bather.com", "category": "Men's Clothing", "shop_name": "Bather" , "location": "Toronto, Ontario", "tags": [], "shipping": "", "returns": ""},
     { "id": 58, "url": "https://knix.ca", "category": "Women's Clothing", "shop_name": "Knix" , "location": "Toronto, Ontario", "tags": [], "shipping": "", "returns": ""},
     { "id": 59, "url": "https://www.pranavidastyle.com/", "category": "Women's Clothing", "shop_name": "Prana Vida" , "location": "Winnipeg, Manitoba", "tags": [], "shipping": "", "returns": ""},
-    { "id": 60, "url": "https://www.goodnbr.com/", "category": "Clothing", "shop_name": "Good Neighbour" , "location": "Toronto, Ontario", "tags": [], "shipping": "", "returns": ""},
     { "id": 61, "url": "https://typebooks.ca/", "category": "Books", "shop_name": "Type Books" , "location": "Toronto, Ontario", "tags": [], "shipping": "", "returns": ""},
     { "id": 62, "url": "https://mosaicbooks.ca/", "category": "Books", "shop_name": "Mosaic Books" , "location": "Kelowna, British Columbia", "tags": [], "shipping": "", "returns": ""},
     { "id": 63, "url": "https://www.audreys.ca/", "category": "Books", "shop_name": "Audreys Books" , "location": "Edmonton, Alberta", "tags": [], "shipping": "", "returns": ""},
