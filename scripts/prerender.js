@@ -20,8 +20,8 @@ for (const a of argv) {
 }
 
 async function tryAutoDetectLcp() {
-  const SUPABASE_URL = process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL || '';
-  const SUPABASE_KEY = process.env.SUPABASE_KEY || process.env.VITE_SUPABASE_ANON_KEY || '';
+  const SUPABASE_URL = process.env.VITE_SUPABASE_URL || '';
+  const SUPABASE_KEY = process.env.VITE_SUPABASE_PUBLISHABLE_KEY || '';
   if (!SUPABASE_URL || !SUPABASE_KEY) {
     console.log('Supabase env vars not set; skipping auto-detect.');
     return '';

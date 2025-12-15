@@ -2,7 +2,6 @@
 type ViteEnv = {
   VITE_SUPABASE_URL: string;
   VITE_SUPABASE_PUBLISHABLE_KEY: string;
-  VITE_SUPABASE_ANON_KEY?: string; // Add this for backward compatibility
 };
 
 type ViteImportMeta = ImportMeta & { env: ViteEnv };
@@ -21,8 +20,6 @@ function readEnv() {
 
   const supabaseKey = 
     importMetaEnv?.VITE_SUPABASE_PUBLISHABLE_KEY ||
-    importMetaEnv?.VITE_SUPABASE_ANON_KEY || // Try alternative name
-    importMetaEnv?.PUBLIC_SUPABASE_ANON_KEY || // Another common pattern
     '';
 
   return { supabaseUrl, supabaseKey };
