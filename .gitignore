@@ -25,8 +25,9 @@ dist-ssr
 
 # Scraping files
 scraping/output/
+scraping/taxonomy_cache/
 scraping/shopify_summary.csv
 .vscode/
+
 venv/
-.vercel
 .env
