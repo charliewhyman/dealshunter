@@ -251,7 +251,7 @@ export function HomePage() {
   const currentRequestRef = useRef<AbortController | null>(null);
   // Request id to ignore stale responses and a cache for prefetched pages
   const requestIdRef = useRef(0);
-  const prefetchCacheRef = useRef<Record<number, { data: ProductWithDetails[]; count: number }>>({});
+  const prefetchCacheRef = useRef<Record<number, { key: string; data: ProductWithDetails[]; count: number }>>({});
   
 
 
@@ -290,8 +290,9 @@ export function HomePage() {
       await new Promise(resolve => setTimeout(resolve, 100));
 
       // If we already prefetched this page for the current filter set, use it
+      const cacheKey = JSON.stringify(filters);
       const cached = prefetchCacheRef.current[page];
-      if (cached) {
+      if (cached && cached.key === cacheKey) {
         // ignore if a newer request started
         if (myRequestId !== requestIdRef.current) return;
 
@@ -343,7 +344,7 @@ export function HomePage() {
 
               const { data: pData, count: pCount, error: pError } = await prefetchQuery.range((page + 1) * ITEMS_PER_PAGE, (page + 2) * ITEMS_PER_PAGE - 1);
               if (!pError && pData) {
-                prefetchCacheRef.current[page + 1] = { data: pData as ProductWithDetails[], count: pCount || 0 };
+                prefetchCacheRef.current[page + 1] = { key: cacheKey, data: pData as ProductWithDetails[], count: pCount || 0 };
               }
             } catch {
               // silent: prefetch failures are non-blocking
@@ -456,8 +457,9 @@ export function HomePage() {
       setInitialLoad(false);
       setError(null);
 
-      // store this page in prefetch cache
-      prefetchCacheRef.current[page] = { data: (data as ProductWithDetails[]) || [], count: totalItems };
+      // store this page in prefetch cache (keyed by current filters)
+      const cacheKeyCurrent = JSON.stringify(filters);
+      prefetchCacheRef.current[page] = { key: cacheKeyCurrent, data: (data as ProductWithDetails[]) || [], count: totalItems };
 
       // Prefetch the next page if there are more items
       if (moreAvailable) {
@@ -483,9 +485,9 @@ export function HomePage() {
             }
 
             const { data: pData, count: pCount, error: pError } = await prefetchQuery.range((page + 1) * ITEMS_PER_PAGE, (page + 2) * ITEMS_PER_PAGE - 1);
-            if (!pError && pData) {
-              prefetchCacheRef.current[page + 1] = { data: pData as ProductWithDetails[], count: pCount || 0 };
-            }
+              if (!pError && pData) {
+                prefetchCacheRef.current[page + 1] = { key: cacheKeyCurrent, data: pData as ProductWithDetails[], count: pCount || 0 };
+              }
           } catch {
             // silent
           }
