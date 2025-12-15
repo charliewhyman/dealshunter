@@ -6,7 +6,7 @@ import { ProductCard } from '../components/ProductCard';
 import { SingleValue } from 'react-select';
 import { Header } from '../components/Header';
 import { useLocation, useNavigate } from 'react-router-dom';
-// Small local debounce utility to avoid importing the full lodash bundle
+// Small local debounce utility to avoid importing the full lodash bundle 
 function createDebounced<Args extends unknown[]>(fn: (...args: Args) => void, wait: number): ((...args: Args) => void) & { cancel?: () => void } {
   let timer: number | undefined;
   const debounced = ((...args: Args) => {
