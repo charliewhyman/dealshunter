@@ -1,6 +1,8 @@
+// src/lib/supabase.ts
 type ViteEnv = {
   VITE_SUPABASE_URL: string;
   VITE_SUPABASE_PUBLISHABLE_KEY: string;
+  VITE_SUPABASE_ANON_KEY?: string; // Add this for backward compatibility
 };
 
 type ViteImportMeta = ImportMeta & { env: ViteEnv };
@@ -8,11 +10,20 @@ type ViteImportMeta = ImportMeta & { env: ViteEnv };
 let client: ReturnType<any> | null = null;
 
 function readEnv() {
-  // Cloudflare Pages only has import.meta.env, not process.env
+  // Cloudflare Pages uses import.meta.env
   const importMetaEnv = (import.meta as ViteImportMeta).env;
 
-  const supabaseUrl = importMetaEnv?.VITE_SUPABASE_URL ?? '';
-  const supabaseKey = importMetaEnv?.VITE_SUPABASE_PUBLISHABLE_KEY ?? '';
+  // Try multiple possible environment variable names
+  const supabaseUrl = 
+    importMetaEnv?.VITE_SUPABASE_URL || 
+    importMetaEnv?.PUBLIC_SUPABASE_URL || // Some projects use this
+    '';
+
+  const supabaseKey = 
+    importMetaEnv?.VITE_SUPABASE_PUBLISHABLE_KEY ||
+    importMetaEnv?.VITE_SUPABASE_ANON_KEY || // Try alternative name
+    importMetaEnv?.PUBLIC_SUPABASE_ANON_KEY || // Another common pattern
+    '';
 
   return { supabaseUrl, supabaseKey };
 }
@@ -22,13 +33,29 @@ export async function getSupabase() {
 
   const { supabaseUrl, supabaseKey } = readEnv();
 
+  console.log('Supabase Config Check:', {
+    hasUrl: !!supabaseUrl,
+    hasKey: !!supabaseKey,
+    url: supabaseUrl ? `${supabaseUrl.substring(0, 20)}...` : 'none',
+    key: supabaseKey ? `${supabaseKey.substring(0, 10)}...` : 'none',
+  });
+
   if (!supabaseUrl || !supabaseKey) {
-    const errorMsg = 'Supabase URL or PUBLISHABLE KEY is not set. ' +
-      'Provide via VITE_SUPABASE_URL / VITE_SUPABASE_PUBLISHABLE_KEY ' +
-      'in Cloudflare Pages environment variables.';
+    const errorMsg = `Supabase configuration missing. 
+      URL: ${supabaseUrl ? '✓' : '✗'} 
+      Key: ${supabaseKey ? '✓' : '✗'}
+      
+      Please ensure these environment variables are set in Cloudflare Pages:
+      1. VITE_SUPABASE_URL=https://your-project.supabase.co
+      2. VITE_SUPABASE_PUBLISHABLE_KEY=your-anon-key
+      
+      Current values:
+      VITE_SUPABASE_URL: ${import.meta.env.VITE_SUPABASE_URL ? 'Set' : 'Not set'}
+      VITE_SUPABASE_PUBLISHABLE_KEY: ${import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY ? 'Set' : 'Not set'}
+    `;
     
     console.error(errorMsg);
-    throw new Error(errorMsg);
+    throw new Error('Supabase configuration is missing. Check console for details.');
   }
 
   const mod = await import('@supabase/supabase-js');
