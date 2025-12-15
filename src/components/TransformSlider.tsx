@@ -10,12 +10,16 @@ type TransformSliderProps = {
 };
 
 export default function TransformSlider({ min, max, step = 1, value, onFinalChange }: TransformSliderProps) {
-  const [internalValues, setInternalValues] = useState<[number, number]>([value[0], value[1]]);
+  const minVal = value[0];
+  const maxVal = value[1];
+
+  const [internalValues, setInternalValues] = useState<[number, number]>([minVal, maxVal]);
 
   // Keep internal UI values in sync when parent value changes
+  // Depend on the extracted entries so the dependency array is statically checkable.
   useEffect(() => {
-    setInternalValues([value[0], value[1]]);
-  }, [value]);
+    setInternalValues([minVal, maxVal]);
+  }, [minVal, maxVal]);
 
   return (
     <div className="w-full px-1">
@@ -50,10 +54,11 @@ export default function TransformSlider({ min, max, step = 1, value, onFinalChan
           );
         }}
         renderThumb={({ props, index }) => {
-          const { style: thumbStyle, ...thumbProps } = props;
+          const { style: thumbStyle, key: thumbKey, ...thumbProps } = props;
           const valNow = index === 0 ? internalValues[0] : internalValues[1];
           return (
             <div
+              key={thumbKey}
               {...thumbProps}
               role="slider"
               aria-label={index === 0 ? 'Minimum price' : 'Maximum price'}
