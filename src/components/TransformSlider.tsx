@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Range } from 'react-range';
 
 type TransformSliderProps = {
@@ -15,7 +15,7 @@ export default function TransformSlider({ min, max, step = 1, value, onFinalChan
   // Keep internal UI values in sync when parent value changes
   useEffect(() => {
     setInternalValues([value[0], value[1]]);
-  }, [value[0], value[1]]);
+  }, [value]);
 
   return (
     <div className="w-full px-1">
@@ -30,10 +30,9 @@ export default function TransformSlider({ min, max, step = 1, value, onFinalChan
           onFinalChange(vals);
         }}
         renderTrack={({ props, children }) => {
-          const { key: trackKey, style: trackStyle, ...trackProps } = props as any;
+          const { style: trackStyle, ...trackProps } = props;
           return (
             <div
-              key={trackKey}
               {...trackProps}
               className="relative h-2 rounded-full bg-gray-200 w-full"
               style={{ ...trackStyle }}
@@ -51,11 +50,10 @@ export default function TransformSlider({ min, max, step = 1, value, onFinalChan
           );
         }}
         renderThumb={({ props, index }) => {
-          const { key: thumbKey, style: thumbStyle, ...thumbProps } = props as any;
+          const { style: thumbStyle, ...thumbProps } = props;
           const valNow = index === 0 ? internalValues[0] : internalValues[1];
           return (
             <div
-              key={thumbKey}
               {...thumbProps}
               role="slider"
               aria-label={index === 0 ? 'Minimum price' : 'Maximum price'}
@@ -65,7 +63,6 @@ export default function TransformSlider({ min, max, step = 1, value, onFinalChan
               className="w-4 h-4 bg-white border border-gray-300 rounded-full shadow-sm flex items-center justify-center"
               style={{ ...thumbStyle }}
             >
-              <div className="sr-only">{index === 0 ? `Min ${valNow}` : `Max ${valNow}`}</div>
             </div>
           );
         }}
