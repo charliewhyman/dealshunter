@@ -40,7 +40,6 @@ export default function TransformSlider({ min, max, step = 1, value, onFinalChan
               {...trackProps}
               className="relative h-2 rounded-full bg-gray-200 w-full"
               style={{ ...trackStyle }}
-              aria-hidden
             >
               <div
                 className="absolute h-full bg-blue-600 rounded-full"
