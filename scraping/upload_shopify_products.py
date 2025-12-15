@@ -11,6 +11,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from multiprocessing import cpu_count
 from supabase import create_client
 import requests
+from dotenv import load_dotenv, find_dotenv
 
 # ---------------- Logging Setup ---------------- #
 logging.basicConfig(
@@ -21,6 +22,26 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 # ---------------- Supabase Setup ---------------- #
+# Load environment variables from a dotenv file if present. Respect
+# the `UV_ENV_FILE` environment variable when set (used by `uv run`).
+env_file = os.environ.get("UV_ENV_FILE")
+loaded_env_path = None
+if env_file:
+    try:
+        load_dotenv(env_file)
+        loaded_env_path = env_file
+    except Exception:
+        logger.warning(f"Failed to load env from UV_ENV_FILE={env_file}")
+else:
+    # find_dotenv searches upwards for a .env file; fallback to local .env
+    dotenv_path = find_dotenv()
+    if dotenv_path:
+        load_dotenv(dotenv_path)
+        loaded_env_path = dotenv_path
+
+if loaded_env_path:
+    logger.info(f"Loaded environment variables from: {loaded_env_path}")
+
 SUPABASE_URL = os.environ.get("SUPABASE_URL")
 SUPABASE_KEY = os.environ.get("SUPABASE_SERVICE_ROLE_KEY")
 
