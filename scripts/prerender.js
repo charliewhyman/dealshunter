@@ -59,7 +59,6 @@ try {
 
   if (!lcpArg) {
     // attempt to auto-detect from Supabase
-    // eslint-disable-next-line no-await-in-loop
     lcpArg = await tryAutoDetectLcp();
   }
 
