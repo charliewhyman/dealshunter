@@ -74,16 +74,66 @@ def download_and_cache_taxonomy() -> list[str]:
 # 3.  Helpers
 # ----------------------------------------------
 def prepare_text(product: dict) -> str:
-    """Return cleaned-up searchable text for a product row."""
-    parts = [
-        product.get("title", ""),
-        product.get("description", ""),
-        product.get("product_type", ""),
-        " ".join(product.get("tags", [])),
-    ]
-    text = " ".join(filter(None, parts)).lower()
-    text = re.sub(r"[^\w\s]", " ", text)
-    return re.sub(r"\s+", " ", text).strip()
+    """Return enhanced searchable text for a product row."""
+    # Extract key information
+    title = product.get("title", "")
+    description = product.get("description", "")
+    product_type = product.get("product_type", "")
+    tags = product.get("tags", [])
+    
+    # Clean and structure the text better
+    parts = []
+    
+    # 1. Title - most important, keep it prominent
+    if title:
+        parts.append(title)
+        # Add title variations (remove brand names if needed)
+        title_lower = title.lower()
+        parts.append(title_lower)
+    
+    # 2. Product type - very important for taxonomy
+    if product_type:
+        parts.append(product_type)
+        # Add variations of product type
+        if " > " in product_type:
+            # If it's already a path-like structure, break it down
+            for segment in product_type.split(" > "):
+                parts.append(segment.strip())
+    
+    # 3. Tags - important keywords
+    if tags:
+        parts.extend(tags)
+        # Add tags as a string too
+        parts.append(" ".join(tags))
+    
+    # 4. Description - clean it properly
+    if description:
+        # Remove HTML tags and excessive whitespace
+        clean_desc = re.sub(r'<[^>]+>', ' ', description)
+        clean_desc = re.sub(r'\s+', ' ', clean_desc).strip()
+        # Take first 200 chars for key info
+        parts.append(clean_desc[:200])
+        # Also add keywords from description
+        if len(clean_desc) > 100:
+            # Extract potential keywords (longer words)
+            words = clean_desc.split()
+            keywords = [w for w in words if len(w) > 5][:10]
+            if keywords:
+                parts.append(" ".join(keywords))
+    
+    # 5. Add inferred categories based on keywords
+    text_lower = " ".join(parts).lower()
+    if any(word in text_lower for word in ['jacket', 'coat', 'outerwear', 'raincoat']):
+        parts.append('outerwear jacket coat')
+    if any(word in text_lower for word in ['mens', 'men', 'male']):
+        parts.append('mens clothing apparel')
+    if any(word in text_lower for word in ['waxed', 'cotton', 'water resistant']):
+        parts.append('waterproof outdoor clothing')
+    
+    # Combine and clean
+    text = " ".join(filter(None, parts))
+    text = re.sub(r'[^\w\s>]', ' ', text.lower())  # Keep '>' for path preservation
+    return re.sub(r'\s+', ' ', text).strip()
 
 
 # ----------------------------------------------
