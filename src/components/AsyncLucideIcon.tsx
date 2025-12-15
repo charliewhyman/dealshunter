@@ -10,7 +10,8 @@ export default function AsyncLucideIcon({ name, ...props }: IconProps) {
     // Dynamically import the lucide-react bundle and pick the requested icon
     import('lucide-react')
       .then((mod) => {
-        const C = (mod as any)[name];
+        const icons = mod as unknown as Record<string, React.ComponentType<React.SVGProps<SVGSVGElement>>>;
+        const C = icons[name];
         if (mounted && C) setIcon(() => C as React.ComponentType<React.SVGProps<SVGSVGElement>>);
       })
       .catch(() => {
