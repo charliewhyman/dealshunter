@@ -18,7 +18,7 @@ export const Header = React.memo(({ searchQuery, handleSearchChange, handleSearc
           <Link to="/" className="flex items-center space-x-2">
             <AsyncLucideIcon name="Tag" className="w-6 h-6 text-yellow-600 dark:text-yellow-500" />
             <span className="text-lg font-semibold text-gray-900 dark:text-gray-100">
-              The Canadian Edit
+              Curated Canada
             </span>
           </Link>
 
