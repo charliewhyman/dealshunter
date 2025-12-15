@@ -82,7 +82,7 @@ def is_shopify_store(base_url):
         pass
     return False
 
-def fetch_shopify_products(base_url, shop_id, limit=250, max_pages=None):
+def fetch_shopify_products(base_url, shop_id, limit=250, max_pages=None, category=None):
     products = []
     page = 1
     while True:
@@ -101,6 +101,8 @@ def fetch_shopify_products(base_url, shop_id, limit=250, max_pages=None):
                     product_url = f"{base_url}/products/{handle}"
                     product["product_url"] = product_url
                     product["shop_id"] = shop_id
+                    # Attach shop category (if provided by the shop list)
+                    product["category"] = category
                     parse_product_page(product_url, product, sess)
             products.extend(data["products"])
             print(f"Page {page}: {len(data['products'])} products")
@@ -170,7 +172,13 @@ if __name__ == "__main__":
             return [shop_id, base_url, category, "Failure: Not a Shopify store"]
 
         try:
-            prods = fetch_shopify_products(base_url, shop_id, limit=250, max_pages=args.max_pages or 5)
+            prods = fetch_shopify_products(
+                base_url,
+                shop_id,
+                limit=250,
+                max_pages=args.max_pages or 5,
+                category=category,
+            )
             if prods:
                 save_products_to_file(prods, output_file)
                 return [shop_id, base_url, category, f"Success: {len(prods)} products"]

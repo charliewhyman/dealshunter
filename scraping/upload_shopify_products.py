@@ -273,6 +273,7 @@ class ProductProcessor:
                 "title": product["title"],
                 "handle": product["handle"],
                 "vendor": product["vendor"],
+                "category": product.get("category") or product.get("product_type", ""),
                 "submitted_by": self.submitted_by,
                 "description": strip_html_tags(product.get("body_html", "")),
                 "created_at_external": product.get("created_at"),
