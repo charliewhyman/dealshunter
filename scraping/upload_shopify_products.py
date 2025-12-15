@@ -73,10 +73,12 @@ def process_variants(product, variant_types=None):
     """Process product variants into a standardized format."""
     variants = product.get("variants", [])
     
-    # In process_variants()
+    variant_types = variant_types or product.get("variant_types", {}) or {}
     if variant_types:
-        logger.debug(f"Found {len(variant_types)} variant types for product {product['id']}")
-        variant_types = product.get("variant_types", {})
+        try:
+            logger.debug(f"Found {len(variant_types)} variant types for product {product['id']}")
+        except Exception:
+            logger.debug(f"Found variant types for product {product.get('id')}")
         
     return [
         {
