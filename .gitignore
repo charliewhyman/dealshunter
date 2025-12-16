@@ -24,7 +24,7 @@ dist-ssr
 *.sw?
 
 # Scraping files
-scraping/output/
+scraping/data/*
 scraping/taxonomy_cache/
 scraping/shopify_summary.csv
 
@@ -33,7 +33,9 @@ scraping/shopify_summary.csv
 venv/
 .env
 .env.local
+.venv
 
 # Python cache
 __pycache__/
 *.py[cod]
+.cache
