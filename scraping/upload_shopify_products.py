@@ -256,13 +256,40 @@ def bulk_upsert_data(table_name, data, batch_size=100, retries=3, raise_on_empty
         batch = deduplicated_data[i:i + batch_size]
         for attempt in range(retries):
             try:
-                # Handle variant_type conflict resolution
+                # Handle variant_type conflict resolution by preferring a
+                # more specific composite conflict key where available, but
+                # gracefully fallback to a simpler key if the DB doesn't have
+                # the required unique constraint (Postgres 42P10).
                 on_conflict = "id"
                 if table_name == "variants":
-                    on_conflict = "id,variant_type"  # Include variant_type in conflict resolution
-                
-                response = supabase.table(table_name).upsert(batch, on_conflict=on_conflict).execute()
-                
+                    on_conflict = "id,variant_type"
+
+                try:
+                    response = supabase.table(table_name).upsert(batch, on_conflict=on_conflict).execute()
+                except Exception as e:
+                    err_str = str(e)
+                    # Detect Postgres error 42P10 or the common message text.
+                    if ("42P10" in err_str) or ("no unique or exclusion constraint" in err_str) or ("no unique" in err_str):
+                        # If we used a composite on_conflict, retry with the first
+                        # column only (commonly 'id'). This avoids failing when
+                        # the DB lacks the composite unique constraint.
+                        if "," in on_conflict:
+                            fallback = on_conflict.split(",")[0]
+                            logger.warning(
+                                f"ON CONFLICT {on_conflict} unsupported for {table_name}; retrying with {fallback}"
+                            )
+                            try:
+                                response = supabase.table(table_name).upsert(batch, on_conflict=fallback).execute()
+                            except Exception:
+                                # Re-raise the original exception if fallback fails
+                                raise
+                        else:
+                            # No sensible fallback, re-raise
+                            raise
+                    else:
+                        # Not a 42P10-like error: re-raise to be handled below
+                        raise
+
                 if response.data:
                     logger.info(f"Upserted batch {i // batch_size + 1} to {table_name}: {len(batch)} records")
                     break
