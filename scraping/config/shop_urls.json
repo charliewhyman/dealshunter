@@ -1,10 +1,8 @@
 [
     { "id": 60, "url": "https://www.goodnbr.com/", "category": "Clothing", "shop_name": "Good Neighbour" , "location": "Toronto, Ontario", "tags": [], "shipping": "", "returns": ""},
-    { "id": 1, "url": "https://canadawestboots.com", "category": "Footwear", "shop_name": "Canada West Boots", "location": "", "tags": [], "shipping": "", "returns": ""},
     { "id": 2, "url": "https://lacanadienneshoes.com", "category": "Footwear", "shop_name": "La Canadienne Shoes", "location": "", "tags": [], "shipping": "", "returns": "" },
     { "id": 3, "url": "https://boutiquemartino.com", "category": "Footwear", "shop_name": "Boutique Martino", "location": "", "tags": [], "shipping": "", "returns": "" },
     { "id": 4, "url": "https://padraigcottage.com", "category": "Footwear", "shop_name": "Padraig Cottage", "location": "", "tags": [], "shipping": "", "returns": "" },
-    { "id": 5, "url": "https://tatra.ca", "category": "Footwear", "shop_name": "Tatra Shoes", "location": "", "tags": [], "shipping": "", "returns": ""},
     { "id": 6, "url": "https://viberg.ca", "category": "Footwear", "shop_name": "Viberg", "location": "", "tags": [], "shipping": "", "returns": "" },
     { "id": 7, "url": "https://wohlford.ca", "category": "Footwear", "shop_name": "Wohlford", "location": "", "tags": [], "shipping": "", "returns": "" },
     { "id": 8, "url": "https://18waits.com", "category": "Men's Clothing", "shop_name": "18 Waits", "location": "", "tags": [], "shipping": "", "returns": "" },
@@ -20,7 +18,6 @@
     { "id": 18, "url": "https://freredunord.com", "category": "Clothing", "shop_name": "Frère du Nord", "location": "", "tags": [], "shipping": "", "returns": "" },
     { "id": 19, "url": "https://goodforsunday.com", "category": "Clothing", "shop_name": "Good for Sunday", "location": "", "tags": [], "shipping": "", "returns": "" },
     { "id": 20, "url": "https://happinessisinc.com", "category": "Clothing", "shop_name": "Happiness Is Inc.", "location": "", "tags": [], "shipping": "", "returns": "" },
-    { "id": 21, "url": "https://jerico.ca", "category": "Clothing", "shop_name": "Jerico", "location": "", "tags": [], "shipping": "", "returns": "" },
     { "id": 22, "url": "https://knockthrice.ca", "category": "Clothing", "shop_name": "Knock Thrice", "location": "", "tags": [], "shipping": "", "returns": "" },
     { "id": 23, "url": "https://littleandlively.com", "category": "Clothing", "shop_name": "Little & Lively", "location": "", "tags": [], "shipping": "", "returns": "" },
     { "id": 24, "url": "https://locallaundry.ca/", "category": "Clothing", "shop_name": "Local Laundry", "location": "", "tags": [], "shipping": "", "returns": "" },
@@ -45,13 +42,9 @@
     { "id": 54, "url": "https://rudsak.com", "category": "Clothing", "shop_name": "Rudsak" , "location": "Montreal, Quebec", "tags": [], "shipping": "Free shipping on all orders over $100. For orders under $100, there is a shipping fee of $7.95 + taxes.", "returns": "Free returns within 15 days. Exchange or store credit only."},
     { "id": 55, "url": "https://ecksand.com", "category": "Jewelry", "shop_name": "Ecksand" , "location": "Montreal, Quebec", "tags": [], "shipping": "", "returns": ""},
     { "id": 56, "url": "http://www.wheatandwildflower.ca", "category": "Children's Clothing", "shop_name": "Wheat and Wildflower" , "location": "Arnes, Manitoba", "tags": [], "shipping": "", "returns": ""},
-    { "id": 57, "url": "ca.bather.com", "category": "Men's Clothing", "shop_name": "Bather" , "location": "Toronto, Ontario", "tags": [], "shipping": "", "returns": ""},
     { "id": 58, "url": "https://knix.ca", "category": "Women's Clothing", "shop_name": "Knix" , "location": "Toronto, Ontario", "tags": [], "shipping": "", "returns": ""},
     { "id": 59, "url": "https://www.pranavidastyle.com/", "category": "Women's Clothing", "shop_name": "Prana Vida" , "location": "Winnipeg, Manitoba", "tags": [], "shipping": "", "returns": ""},
     { "id": 61, "url": "https://typebooks.ca/", "category": "Books", "shop_name": "Type Books" , "location": "Toronto, Ontario", "tags": [], "shipping": "", "returns": ""},
-    { "id": 62, "url": "https://mosaicbooks.ca/", "category": "Books", "shop_name": "Mosaic Books" , "location": "Kelowna, British Columbia", "tags": [], "shipping": "", "returns": ""},
-    { "id": 63, "url": "https://www.audreys.ca/", "category": "Books", "shop_name": "Audreys Books" , "location": "Edmonton, Alberta", "tags": [], "shipping": "", "returns": ""},
-    { "id": 64, "url": "https://bookoutlet.ca/", "category": "Books", "shop_name": "Book Outlet" , "location": "", "tags": [], "shipping": "", "returns": ""}
-
+    { "id": 62, "url": "https://mosaicbooks.ca/", "category": "Books", "shop_name": "Mosaic Books" , "location": "Kelowna, British Columbia", "tags": [], "shipping": "", "returns": ""}
 ]
  
