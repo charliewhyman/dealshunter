@@ -16,49 +16,15 @@ import concurrent.futures
 # --------------------------------------------------
 # 1. IP rotation: free list or commercial gateway
 # --------------------------------------------------
-FREE_PROXIES = [
-    # quick demo list – replace with your own or a commercial endpoint
-    "103.151.226.21:8080",
-    "103.151.226.22:8080",
-    "103.151.226.23:8080",
-    "8.219.97.215:8080",
-    "47.245.29.242:8080",
-]
-
-def get_proxy():
-    """
-    Returns {"http": ..., "https": ...} for requests.
-    Swap the body with your paid provider if desired:
-        return {"http": "http://API_KEY@proxy.scraperapi.com:8001",
-                "https": "http://API_KEY@proxy.scraperapi.com:8001"}
-    """
-    proxy_ip = random.choice(FREE_PROXIES)
-    proxy_url = f"http://{proxy_ip}"
-    return {"http": proxy_url, "https": proxy_url}
-
-# --------------------------------------------------
-# 2. Session factory – fresh proxy + headers every call
-# --------------------------------------------------
-USER_AGENTS = [
-    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123 Safari/537.36",
-    "Mozilla/5.0 (Macintosh; Intel Mac OS X 13_3) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123 Safari/537.36",
-    "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123 Safari/537.36",
-]
-
-def get_headers():
-    return {"User-Agent": random.choice(USER_AGENTS)}
+from session import create_session, get_headers
 
 # --------------------------------------------------
 # 3. Shopify helpers
 # --------------------------------------------------
 def is_shopify_store(base_url):
     try:
-        resp = requests.get(
-            f"{base_url}/products.json",
-            timeout=10,
-            headers=get_headers(),
-            proxies=get_proxy(),
-        )
+        sess = create_session()
+        resp = sess.get(f"{base_url}/products.json", timeout=10, headers=get_headers())
         if resp.status_code != 200:
             return False
         has_token = "X-Shopify-Storefront-Access-Token" in resp.headers
@@ -74,12 +40,8 @@ def fetch_shopify_collections(base_url, shop_id, limit=250, max_pages=None):
         url = f"{base_url}/collections.json?limit={limit}&page={page}"
         print(f"Fetching page {page} from {base_url} ...")
         try:
-            resp = requests.get(
-                url,
-                timeout=10,
-                headers=get_headers(),
-                proxies=get_proxy(),
-            )
+            sess = create_session()
+            resp = sess.get(url, timeout=10, headers=get_headers())
             if resp.status_code == 429:
                 retry = int(resp.headers.get("Retry-After", 5))
                 print(f"429 hit – sleeping {retry} s")
@@ -121,7 +83,8 @@ def get_shop_id(shop_data):
 def scrape_collections_from_html(base_url, shop_id):
     url = f"{base_url}/collections"
     try:
-        resp = requests.get(url, timeout=10, headers=get_headers(), proxies=get_proxy())
+        sess = create_session()
+        resp = sess.get(url, timeout=10, headers=get_headers())
         resp.raise_for_status()
     except Exception as e:
         print(f"Failed to fetch collections HTML for {base_url}: {e}")

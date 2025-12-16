@@ -14,59 +14,17 @@ from pathlib import Path
 from typing import Dict, List, Tuple, Optional
 
 import requests
-from requests.adapters import HTTPAdapter
-from urllib3.util import Retry
 from tqdm import tqdm
 import logging
 
-# --------------------------------------------------
-# 1. IP-rotation configuration
-# --------------------------------------------------
-FREE_PROXIES = [
-    # Replace with your own list or a paid gateway (see get_proxy())
-    "103.151.226.21:8080",
-    "103.151.226.22:8080",
-    "103.151.226.23:8080",
-    "8.219.97.215:8080",
-    "47.245.29.242:8080",
-]
-
-USER_AGENTS = [
-    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123 Safari/537.36",
-    "Mozilla/5.0 (Macintosh; Intel Mac OS X 13_3) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123 Safari/537.36",
-    "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123 Safari/537.36",
-]
-
-def get_proxy():
-    """
-    Returns dict for session.proxies.
-    Commercial gateway (ScraperAPI, Bright Data, Oxylabs, etc.) example:
-        api_key = "YOUR_API_KEY"
-        return {"http": f"http://scraperapi:{api_key}@proxy-server.scraperapi.com:8001",
-                "https": f"http://scraperapi:{api_key}@proxy-server.scraperapi.com:8001"}
-    """
-    proxy_ip = random.choice(FREE_PROXIES)
-    proxy_url = f"http://{proxy_ip}"
-    return {"http": proxy_url, "https": proxy_url}
+from session import create_session, get_headers
 
 # --------------------------------------------------
 # 2. Session factory – fresh proxy + headers every call
 # --------------------------------------------------
 def build_session() -> requests.Session:
-    session = requests.Session()
-    retry = Retry(
-        total=3,
-        backoff_factor=1.5,
-        status_forcelist=[429, 500, 502, 503, 504],
-        allowed_methods=["GET"],
-        raise_on_status=False,
-    )
-    adapter = HTTPAdapter(max_retries=retry)
-    session.mount("http://", adapter)
-    session.mount("https://", adapter)
-    session.headers.update({"User-Agent": random.choice(USER_AGENTS)})
-    session.proxies.update(get_proxy())
-    return session
+    # Wrap the shared create_session to keep the existing callsite name
+    return create_session(backoff_factor=1.5, total_retries=3)
 
 # --------------------------------------------------
 # 3. Rest of the original script – unchanged logic

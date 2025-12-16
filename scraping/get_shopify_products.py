@@ -13,31 +13,9 @@ import random
 import requests
 from bs4 import BeautifulSoup
 import concurrent.futures
-from requests.adapters import HTTPAdapter
-from requests.packages.urllib3.util.retry import Retry
+from session import create_session, get_headers
 
-# --------------------------------------------------
-# 1. Proxy function returns empty (no proxies)
-# --------------------------------------------------
-def get_proxy():
-    """
-    Return empty proxy dict for direct connection.
-    """
-    return {}
-
-# --------------------------------------------------
-# 2. Requests session with retries only (no proxies)
-# --------------------------------------------------
-def create_session():
-    """
-    Create session with retries but no proxy configuration.
-    """
-    sess = requests.Session()
-    retries = Retry(total=3, backoff_factor=1, status_forcelist=[429, 502, 503, 504])
-    adapter = HTTPAdapter(max_retries=retries)
-    sess.mount("https://", adapter)
-    sess.mount("http://", adapter)
-    return sess
+# Use shared `create_session` and `get_headers` from `session.py` (direct connection)
 
 # --------------------------------------------------
 # 3. Shopify scraping logic
@@ -47,10 +25,7 @@ def is_shopify_store(base_url):
     try:
         # Direct connection without proxy
         sess = create_session()
-        headers = {
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
-        }
-        response = sess.get(f"{base_url}/products.json", timeout=10, headers=headers)
+        response = sess.get(f"{base_url}/products.json", timeout=10, headers=get_headers())
         has_token = 'X-Shopify-Storefront-Access-Token' in response.headers
         has_products = 'products' in response.json()
         if response.status_code == 200 and (has_token or has_products):
@@ -67,14 +42,11 @@ def fetch_shopify_products(base_url, shop_id, limit=250, max_pages=None):
         url = f"{base_url}/products.json?limit={limit}&page={page}"
         print(f"Fetching page {page} from {base_url} ...")
         
-        # Create new session for each page (no proxy)
+        # Create new session for each page (direct connection)
         sess = create_session()
-        headers = {
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
-        }
         
         try:
-            response = sess.get(url, timeout=15, headers=headers)
+            response = sess.get(url, timeout=15, headers=get_headers())
             response.raise_for_status()
             data = response.json()
             
@@ -107,10 +79,7 @@ def fetch_shopify_products(base_url, shop_id, limit=250, max_pages=None):
 def parse_product_page(product_url, product, sess):
     """Parse extra data from the product page."""
     try:
-        headers = {
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
-        }
-        response = sess.get(product_url, timeout=10, headers=headers)
+        response = sess.get(product_url, timeout=10, headers=get_headers())
         response.raise_for_status()
         soup = BeautifulSoup(response.text, "html.parser")
         script_tag = soup.find("script", type="application/ld+json")
