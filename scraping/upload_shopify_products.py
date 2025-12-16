@@ -346,22 +346,27 @@ def process_products_file(filepath, user_id):
             if product_id:
                 product_ids.append(product_id)
 
-        # Upload all data in parallel
-        with ThreadPoolExecutor(max_workers=5) as executor:
-            futures = []
-            for table_name, data in processor.collections.items():
-                if data:
-                    futures.append(executor.submit(
-                        bulk_upsert_data, 
-                        table_name, 
-                        data
-                    ))
-            
-            for future in as_completed(futures):
-                try:
-                    future.result()
-                except Exception as e:
-                    logger.error(f"Error in parallel upload: {e}")
+        # Upsert products first to satisfy foreign key constraints, then
+        # upsert related tables (options, variants, images, offers) in parallel.
+        if processor.collections.get("products"):
+            try:
+                bulk_upsert_data("products", processor.collections["products"])
+            except Exception as e:
+                logger.error(f"Error upserting products: {e}")
+                # Abort subsequent uploads for this file if products fail.
+                return processor.get_stats()
+
+        # Upload the rest of the tables in parallel
+        other_tables = {k: v for k, v in processor.collections.items() if k != "products" and v}
+        if other_tables:
+            with ThreadPoolExecutor(max_workers=5) as executor:
+                futures = [executor.submit(bulk_upsert_data, table, data) for table, data in other_tables.items()]
+
+                for future in as_completed(futures):
+                    try:
+                        future.result()
+                    except Exception as e:
+                        logger.error(f"Error in parallel upload: {e}")
 
         # Clean up stale products if single shop
         shop_ids = {p["shop_id"] for p in processor.collections["products"]}
