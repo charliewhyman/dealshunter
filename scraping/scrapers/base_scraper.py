@@ -94,57 +94,50 @@ class BaseScraper(ABC):
         # Perform actual check
         try:
             session = SessionManager.get_session(shop_id)
-            response = session.get(
-                f"{base_url}/products.json", 
-                timeout=settings.SCRAPER_CONFIG['request_timeout']
-            )
-            self.rate_limiter.wait(shop_id, response)
-            
-            # If we got a 200, try several guarded checks rather than assuming JSON
-            if response.status_code == 200:
-                # 1) Check for Shopify-specific response headers
-                headers_lower = {k.lower(): v for k, v in response.headers.items()}
-                if any(k.startswith('x-shopify') for k in headers_lower.keys()):
-                    self.cache_manager.set_shop_verification(base_url, True)
-                    return True
 
-                # 2) If content-type indicates JSON, parse safely
-                content_type = response.headers.get('Content-Type', '')
-                if 'application/json' in content_type.lower():
-                    try:
-                        data = response.json()
-                        is_shopify = isinstance(data, dict) and 'products' in data
-                        if is_shopify:
-                            self.cache_manager.set_shop_verification(base_url, True)
-                            return True
-                    except (ValueError, JSONDecodeError):
-                        # Not valid JSON, fall through to HTML checks
-                        pass
+            endpoints_to_try = [
+                f"{base_url.rstrip('/')}/products.json",
+                f"{base_url.rstrip('/')}/shop.json",
+                f"{base_url.rstrip('/')}/api/shop",
+                f"{base_url.rstrip('/')}/"
+            ]
 
-                # 3) Fallback: inspect body for Shopify indicators
-                body = (response.text or '').lower()
-                if 'cdn.shopify.com' in body or 'shopify' in body:
-                    self.cache_manager.set_shop_verification(base_url, True)
-                    return True
+            for endpoint in endpoints_to_try:
+                try:
+                    response = session.get(endpoint, timeout=settings.SCRAPER_CONFIG['request_timeout'])
+                    self.rate_limiter.wait(shop_id, response)
 
-            # If products.json didn't prove it, try the root HTML for Shopify markers
-            response = session.get(
-                base_url,
-                timeout=settings.SCRAPER_CONFIG['request_timeout']
-            )
-            self.rate_limiter.wait(shop_id, response)
+                    # Check headers first for any Shopify-specific header or value
+                    headers_lower = {k.lower(): v for k, v in response.headers.items()}
+                    if any('shopify' in k or 'shopify' in str(v).lower() for k, v in response.headers.items()):
+                        self.cache_manager.set_shop_verification(base_url, True)
+                        return True
+                    # Also accept explicit Powered-By header indicating Shopify
+                    powered = headers_lower.get('powered-by') or headers_lower.get('x-powered-by')
+                    if powered and 'shopify' in str(powered).lower():
+                        self.cache_manager.set_shop_verification(base_url, True)
+                        return True
 
-            if response.status_code == 200:
-                headers_lower = {k.lower(): v for k, v in response.headers.items()}
-                if any(k.startswith('x-shopify') for k in headers_lower.keys()):
-                    self.cache_manager.set_shop_verification(base_url, True)
-                    return True
+                    # If JSON content, try to parse safely and look for known keys
+                    content_type = response.headers.get('Content-Type', '')
+                    if 'application/json' in content_type.lower():
+                        try:
+                            data = response.json()
+                            if isinstance(data, dict) and ('products' in data or 'shop' in data):
+                                self.cache_manager.set_shop_verification(base_url, True)
+                                return True
+                        except (ValueError, JSONDecodeError):
+                            # Could be compressed or non-JSON; fall through to body inspection
+                            pass
 
-                body = (response.text or '').lower()
-                # Look for common Shopify artifacts: CDN, asset paths, or generator/meta tags
-                if any(token in body for token in ('cdn.shopify.com', 'cdn.shopify', '/cdn/shopify', 'shopify.theme', 'shopify_design_mode', 'shopify')):
-                    self.cache_manager.set_shop_verification(base_url, True)
-                    return True
+                    # Inspect body text for common Shopify indicators
+                    body = (response.text or '').lower()
+                    if any(token in body for token in ('cdn.shopify.com', 'cdn.shopify', '/cdn/shopify', 'shopify.theme', 'shopify_design_mode', 'shopify')):
+                        self.cache_manager.set_shop_verification(base_url, True)
+                        return True
+                except Exception:
+                    # Try next endpoint on any error
+                    continue
         except Exception as e:
             self.logger.warning(f"Failed to verify Shopify store {base_url}: {e}")
         
