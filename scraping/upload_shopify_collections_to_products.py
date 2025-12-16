@@ -6,6 +6,7 @@ import time
 import logging
 import argparse
 from supabase import create_client
+import random
 import requests
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from multiprocessing import cpu_count
@@ -51,7 +52,35 @@ SUPABASE_KEY = os.environ.get("SUPABASE_SERVICE_ROLE_KEY")
 if not SUPABASE_URL or not SUPABASE_KEY:
     raise ValueError("SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY is not set in environment variables.")
 
-supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
+
+def get_fresh_client():
+    """Create and return a fresh Supabase client."""
+    return create_client(SUPABASE_URL, SUPABASE_KEY)
+
+
+def safe_execute(operation_fn, operation_name, max_retries=3):
+    """
+    Execute a Supabase operation with retries and a fresh client on connection errors.
+
+    operation_fn: callable that accepts a client and performs the operation.
+    operation_name: string for logging.
+    """
+    for attempt in range(max_retries):
+        try:
+            client = get_fresh_client()
+            return operation_fn(client)
+        except Exception as e:
+            error_msg = str(e)
+            is_last = (attempt == max_retries - 1)
+            if is_last:
+                logger.error(f"{operation_name} failed after {max_retries} attempts: {error_msg}")
+                return None
+            else:
+                logger.warning(f"{operation_name} failed (attempt {attempt + 1}/{max_retries}): {error_msg}")
+                wait = (2 ** attempt) + random.uniform(0, 1)
+                logger.info(f"   Retrying in {wait:.1f}s...")
+                time.sleep(wait)
+
 
 # ---------------- Functions ---------------- #
 
@@ -74,25 +103,30 @@ def bulk_upsert_data(table_name, data, batch_size=100, retries=3):
 
     for i in range(0, len(deduplicated_data), batch_size):
         batch = deduplicated_data[i:i + batch_size]
-        for attempt in range(retries):
-            try:
-                response = supabase.table(table_name).upsert(batch, on_conflict="collection_id, product_id").execute()
-                if response.data:
-                    logger.info(f"Upserted batch {i // batch_size + 1}: {len(batch)} records.")
-                    break
-                else:
-                    logger.warning(f"Unexpected response for batch {i // batch_size + 1}: {response}")
-            except (requests.exceptions.RequestException, json.JSONDecodeError) as e:
-                logger.error(f"Error on batch {i // batch_size + 1}, attempt {attempt + 1}: {e}")
-                if attempt == retries - 1:
-                    raise
-                time.sleep(5)
+        batch_num = (i // batch_size) + 1
+
+        def do_upsert(client):
+            return client.table(table_name).upsert(batch, on_conflict="collection_id, product_id").execute()
+
+        result = safe_execute(do_upsert, f"Upsert batch {batch_num} ({len(batch)} records)", max_retries=retries)
+
+        if result and getattr(result, "data", None):
+            logger.info(f"Upserted batch {batch_num}: {len(batch)} records.")
+        elif result is None:
+            logger.error(f"Failed to upsert batch {batch_num} after retries")
+        else:
+            logger.warning(f"Unexpected response for batch {batch_num}: {result}")
 
 def get_existing_product_ids():
     """Fetch all product IDs from Supabase."""
     try:
-        response = supabase.table("products").select("id").execute()
-        return set(row["id"] for row in response.data)
+        def do_select(client):
+            return client.table("products").select("id").execute()
+
+        response = safe_execute(do_select, "Fetch existing product IDs", max_retries=3)
+        if response and getattr(response, "data", None):
+            return set(row["id"] for row in response.data)
+        return set()
     except Exception as e:
         logger.error(f"Failed to fetch existing product IDs: {e}")
         return set()
@@ -146,8 +180,11 @@ def get_collection_product_json_files(output_folder):
 def remove_deleted_collection_product_links(current_links):
     """Remove stale product-collection links that are no longer present in the latest scrape."""
     try:
-        response = supabase.table("product_collections").select("product_id, collection_id").execute()
-        if not response.data:
+        def do_select(client):
+            return client.table("product_collections").select("product_id, collection_id").execute()
+
+        response = safe_execute(do_select, "Fetch existing product-collection links", max_retries=3)
+        if not response or not getattr(response, "data", None):
             logger.info("No existing product-collection links found.")
             return
 
@@ -164,8 +201,12 @@ def remove_deleted_collection_product_links(current_links):
 
         # Process deletions in parallel batches
         def delete_batch(batch):
-            for product_id, collection_id in batch:
-                supabase.table("product_collections").delete().eq("product_id", product_id).eq("collection_id", collection_id).execute()
+            def do_delete(client):
+                for product_id, collection_id in batch:
+                    client.table("product_collections").delete().eq("product_id", product_id).eq("collection_id", collection_id).execute()
+                return True
+
+            safe_execute(do_delete, f"Delete product_collections batch ({len(batch)} records)", max_retries=3)
 
         batch_size = 100
         with ThreadPoolExecutor(max_workers=4) as executor:
