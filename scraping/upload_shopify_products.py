@@ -223,8 +223,14 @@ def process_offers(product):
     ]
 
 # ---------------- Database Operations ---------------- #
-def bulk_upsert_data(table_name, data, batch_size=100, retries=3):
-    """Bulk upsert data to Supabase with deduplication and error handling."""
+def bulk_upsert_data(table_name, data, batch_size=100, retries=3, raise_on_empty=False):
+    """Bulk upsert data to Supabase with deduplication and error handling.
+
+    If `raise_on_empty` is True, this function will raise a RuntimeError when
+    the upsert completes without returning any data from the Supabase client.
+    This is useful for parent tables (like `products`) where downstream child
+    upserts must not proceed if the parent rows were not persisted.
+    """
     seen_ids = set()
     deduplicated_data = []
     duplicate_count = 0
@@ -261,7 +267,11 @@ def bulk_upsert_data(table_name, data, batch_size=100, retries=3):
                     logger.info(f"Upserted batch {i // batch_size + 1} to {table_name}: {len(batch)} records")
                     break
                 else:
+                    # No data returned — this can indicate a schema mismatch or
+                    # other server-side issue. Log it and optionally raise.
                     logger.warning(f"Unexpected response for batch {i // batch_size + 1} in {table_name}")
+                    if raise_on_empty and attempt == retries - 1:
+                        raise RuntimeError(f"Upsert to {table_name} returned no data for batch {i // batch_size + 1}")
             except (requests.exceptions.RequestException, json.JSONDecodeError) as e:
                 logger.error(f"Error in batch {i // batch_size + 1}, attempt {attempt + 1}: {e}")
                 # Special debug for variants
@@ -336,7 +346,7 @@ def process_products_file(filepath, user_id):
         with open(filepath, "r", encoding="utf-8") as file:
             products = json.load(file)
 
-        processor = ProductProcessor(user_id)
+        processor = ProductProcessor()
         product_ids = []
         
         for product in products:
@@ -348,7 +358,9 @@ def process_products_file(filepath, user_id):
         # upsert related tables (options, variants, images, offers) in parallel.
         if processor.collections.get("products"):
             try:
-                bulk_upsert_data("products", processor.collections["products"])
+                # Require that product upserts return data; if they don't, abort
+                # so child tables are not upserted and cause FK violations.
+                bulk_upsert_data("products", processor.collections["products"], raise_on_empty=True)
             except Exception as e:
                 logger.error(f"Error upserting products: {e}")
                 # Abort subsequent uploads for this file if products fail.
