@@ -7,17 +7,9 @@ from supabase import create_client
 import requests
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from multiprocessing import cpu_count
+from dotenv import load_dotenv, find_dotenv
 
-# Initialize Supabase client
-SUPABASE_URL = os.environ.get("SUPABASE_URL")
-SUPABASE_KEY = os.environ.get("SUPABASE_SERVICE_ROLE_KEY")
-
-if not SUPABASE_URL or not SUPABASE_KEY:
-    raise ValueError("SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY is not set in environment variables.")
-
-supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
-
-# Configure logging
+# Configure logging early so dotenv loading can report via logger
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s [%(levelname)s] %(message)s",
@@ -28,14 +20,60 @@ logging.basicConfig(
 
 logger = logging.getLogger(__name__)
 
-def bulk_upsert_data(table_name, data, batch_size=100, retries=3):
+# Load environment variables from a dotenv file if present. Respect
+# the `UV_ENV_FILE` environment variable when set (used by `uv run`).
+env_file = os.environ.get("UV_ENV_FILE")
+loaded_env_path = None
+if env_file:
+    try:
+        load_dotenv(env_file)
+        loaded_env_path = env_file
+    except Exception:
+        logger.warning(f"Failed to load env from UV_ENV_FILE={env_file}")
+else:
+    dotenv_path = find_dotenv()
+    if dotenv_path:
+        load_dotenv(dotenv_path)
+        loaded_env_path = dotenv_path
+
+if loaded_env_path:
+    logger.info(f"Loaded environment variables from: {loaded_env_path}")
+
+# Initialize Supabase client
+SUPABASE_URL = os.environ.get("SUPABASE_URL")
+SUPABASE_KEY = os.environ.get("SUPABASE_SERVICE_ROLE_KEY")
+
+if not SUPABASE_URL or not SUPABASE_KEY:
+    raise ValueError("SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY is not set in environment variables.")
+
+supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
+
+def bulk_upsert_data(table_name, data, batch_size=100, retries=3, raise_on_empty=False):
     """Bulk upsert data to Supabase with deduplication and error handling."""
+    # Filter out items that don't have a valid id (null/None/empty)
+    valid_data = []
+    invalid_count = 0
+    for item in data:
+        item_id = item.get("id") if isinstance(item, dict) else None
+        if item_id is None:
+            invalid_count += 1
+        else:
+            valid_data.append(item)
+
+    if invalid_count:
+        logger.warning(f"Skipping {invalid_count} items without a valid 'id' for table '{table_name}'.")
+
     seen_ids = set()
     deduplicated_data = []
-    for item in data:
+    for item in valid_data:
         if item["id"] not in seen_ids:
             seen_ids.add(item["id"])
             deduplicated_data.append(item)
+
+    if not deduplicated_data:
+        if raise_on_empty:
+            raise RuntimeError(f"No valid data to upsert for table '{table_name}' after required-field filtering")
+        logger.info(f"No valid data to upsert for table '{table_name}' after filtering; skipping.")
     
     # Process batches
     for i in range(0, len(deduplicated_data), batch_size):
@@ -58,7 +96,6 @@ class CollectionProcessor:
     """Helper class to process and upload collection data."""
     def __init__(self):
         self.collections = []
-        self.images = []
 
     def process_collection(self, collection, shop_id):
         """Process a single collection and its related data."""
@@ -67,8 +104,13 @@ class CollectionProcessor:
             return
 
         try:
+            collection_id = collection.get("id")
+            if collection_id is None:
+                logger.warning(f"Skipping collection without 'id' for shop {shop_id}: {collection.get('handle') or collection.get('collection_url')}")
+                return
+
             fields = {
-                "id": collection.get("id"),
+                "id": collection_id,
                 "title": collection.get("title"),
                 "handle": collection.get("handle"),
                 "description": collection.get("description"),
@@ -81,25 +123,17 @@ class CollectionProcessor:
 
             self.collections.append(fields)
 
-            if "image" in collection and collection["image"]:
-                image = collection["image"]
-                self.images.append({
-                    "id": image.get("id"),
-                    "collection_id": collection["id"],
-                    "src": image.get("src"),
-                    "alt": image.get("alt", ""),
-                    "created_at_external": image.get("created_at")
-                })
+            # collection images are not used by the app; skip collecting them
         except Exception as e:
             logger.error(f"Error processing collection {collection.get('id', 'unknown')}: {e}")
 
-def process_collections_file(filepath, user_id, shop_id):
+def process_collections_file(filepath, shop_id):
     """Process a JSON file containing collection data and upload to Supabase."""
     try:
         with open(filepath, "r", encoding="utf-8") as file:
             collections = json.load(file)
 
-        processor = CollectionProcessor(user_id)
+        processor = CollectionProcessor()
         for collection in collections:
             processor.process_collection(collection, shop_id)
 
@@ -107,9 +141,8 @@ def process_collections_file(filepath, user_id, shop_id):
             logger.info(f"Upserting {len(processor.collections)} collections...")
             bulk_upsert_data("collections", processor.collections)
 
-        if processor.images:
-            logger.info(f"Upserting {len(processor.images)} images...")
-            bulk_upsert_data("images", processor.images)
+        # Images are not used in the app; do not upload collection images to avoid
+        # FK constraint errors and unnecessary data storage.
 
         # 🧹 Remove stale collections (and images) no longer in the file
         current_ids = [c["id"] for c in processor.collections if "id" in c]
@@ -141,37 +174,53 @@ def remove_deleted_collections(current_collection_ids, shop_id):
 
         logger.info(f"Removing {len(to_delete)} stale collections for shop {shop_id}...")
 
-        # Delete from images first to avoid FK constraint errors
-        for i in range(0, len(to_delete), 100):
-            batch = to_delete[i:i+100]
-            supabase.table("images").delete().in_("collection_id", batch).execute()
-            supabase.table("collections").delete().in_("id", batch).execute()
+        # Images are no longer used by the app; only delete collections.
+        # Perform deletions in reasonably small batches with retries and
+        # exponential backoff to handle transient network errors (e.g.
+        # Broken pipe) from the Supabase client.
+        delete_batch_size = 50
+        max_delete_retries = 5
+
+        for i in range(0, len(to_delete), delete_batch_size):
+            batch = to_delete[i:i + delete_batch_size]
+            backoff = 1
+            for attempt in range(1, max_delete_retries + 1):
+                try:
+                    supabase.table("collections").delete().in_("id", batch).execute()
+                    logger.info(f"Deleted collections batch {i // delete_batch_size + 1}: {len(batch)} records")
+                    break
+                except (requests.exceptions.RequestException, OSError) as e:
+                    # Broken pipe shows as OSError Errno 32; handle similarly
+                    logger.error(f"Error deleting collections batch (attempt {attempt}): {e}")
+                    if attempt == max_delete_retries:
+                        logger.error(f"Failed to delete collections batch after {max_delete_retries} attempts: {batch}")
+                    else:
+                        time.sleep(backoff)
+                        backoff = min(backoff * 2, 30)
 
     except Exception as e:
         logger.error(f"Error deleting stale collections for shop {shop_id}: {e}")
 
-def process_shop_data(shop_data, user_id):
+def process_shop_data(shop_data):
     """Process collections for a single shop."""
     shop_id = shop_data.get("id")
     logger.info(f"Processing collections for shop: {shop_id}")
     for json_file in get_collection_json_files("output"):
-        process_collections_file(json_file, user_id, shop_id)
+        process_collections_file(json_file, shop_id)
 
 if __name__ == "__main__":
-    USER_UUID = "691aedc4-1055-4b57-adb7-7480febba4c8"
-    
     with open("shop_urls.json", "r", encoding="utf-8") as json_file:
         shop_data_list = json.load(json_file)
-    
+
     # Determine the number of workers (use 2x CPU cores as a starting point)
     num_workers = min(cpu_count() * 2, len(shop_data_list))
-    
+
     # Process shops in parallel
     with ThreadPoolExecutor(max_workers=num_workers) as executor:
         futures = []
         for shop_data in shop_data_list:
-            futures.append(executor.submit(process_shop_data, shop_data, USER_UUID))
-        
+            futures.append(executor.submit(process_shop_data, shop_data))
+
         # Wait for all tasks to complete and handle any exceptions
         for future in as_completed(futures):
             try:
