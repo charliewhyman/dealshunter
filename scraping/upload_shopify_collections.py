@@ -56,8 +56,7 @@ def bulk_upsert_data(table_name, data, batch_size=100, retries=3):
 
 class CollectionProcessor:
     """Helper class to process and upload collection data."""
-    def __init__(self, submitted_by):
-        self.submitted_by = submitted_by
+    def __init__(self):
         self.collections = []
         self.images = []
 
@@ -76,7 +75,6 @@ class CollectionProcessor:
                 "products_count": collection.get("products_count"),
                 "shop_id": shop_id,
                 "collection_url": collection.get("collection_url"),
-                "submitted_by": self.submitted_by,
                 "published_at_external": collection.get("published_at"),
                 "updated_at_external": collection.get("updated_at"),
             }

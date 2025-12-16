@@ -273,8 +273,7 @@ def bulk_upsert_data(table_name, data, batch_size=100, retries=3):
                 
 class ProductProcessor:
     """Helper class to process and upload product data."""
-    def __init__(self, submitted_by):
-        self.submitted_by = submitted_by
+    def __init__(self):
         self.collections = {
             'products': [],
             'options': [],
@@ -296,7 +295,6 @@ class ProductProcessor:
                 "title": product["title"],
                 "handle": product["handle"],
                 "vendor": product["vendor"],
-                "submitted_by": self.submitted_by,
                 "description": strip_html_tags(product.get("body_html", "")),
                 "created_at_external": product.get("created_at"),
                 "updated_at_external": product.get("updated_at"),

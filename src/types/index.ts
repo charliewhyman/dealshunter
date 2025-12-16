@@ -134,7 +134,6 @@ export type Database = {
           products_count: number | null
           published_at_external: string | null
           shop_id: number | null
-          submitted_by: string
           title: string | null
           updated_at: string | null
           updated_at_external: string | null
@@ -150,7 +149,6 @@ export type Database = {
           products_count?: number | null
           published_at_external?: string | null
           shop_id?: number | null
-          submitted_by: string
           title?: string | null
           updated_at?: string | null
           updated_at_external?: string | null
@@ -166,7 +164,6 @@ export type Database = {
           products_count?: number | null
           published_at_external?: string | null
           shop_id?: number | null
-          submitted_by?: string
           title?: string | null
           updated_at?: string | null
           updated_at_external?: string | null
@@ -178,14 +175,7 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "shops"
             referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "collections_submitted_by_fkey"
-            columns: ["submitted_by"]
-            isOneToOne: false
-            referencedRelation: "profiles"
-            referencedColumns: ["id"]
-          },
+          }
         ]
       }
       comments: {
@@ -521,7 +511,6 @@ export type Database = {
           product_type: string | null
           published_at_external: string | null
           shop_id: number | null
-          submitted_by: string
           tags: string[] | null
           title: string | null
           title_search: unknown | null
@@ -544,7 +533,6 @@ export type Database = {
           product_type?: string | null
           published_at_external?: string | null
           shop_id?: number | null
-          submitted_by: string
           tags?: string[] | null
           title?: string | null
           title_search?: unknown | null
@@ -567,7 +555,6 @@ export type Database = {
           product_type?: string | null
           published_at_external?: string | null
           shop_id?: number | null
-          submitted_by?: string
           tags?: string[] | null
           title?: string | null
           title_search?: unknown | null
