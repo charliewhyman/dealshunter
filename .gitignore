@@ -27,7 +27,13 @@ dist-ssr
 scraping/output/
 scraping/taxonomy_cache/
 scraping/shopify_summary.csv
-.vscode/
 
+
+# Virtual environment
 venv/
 .env
+.env.local
+
+# Python cache
+__pycache__/
+*.py[cod]
