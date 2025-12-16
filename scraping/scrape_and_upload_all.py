@@ -31,7 +31,7 @@ SCRIPTS: List[str] = [
     "upload_shopify_collections.py",
     "upload_shopify_products.py",
     "upload_shopify_collections_to_products.py",
-    "taxonomy_mapper.py",  # Updated from map_product_to_taxonomy.py
+    "map_product_to_taxonomy.py"
 ]
 
 # Load environment variables from .env
