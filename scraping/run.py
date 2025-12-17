@@ -107,7 +107,6 @@ def run_scraping_only(args):
                 ]
         else:
             # Load from processed collections files if available
-            from pathlib import Path
             import json as _json
             processed_dir = settings.PROCESSED_DATA_DIR / 'collections'
             collections_for_mapping = {}
