@@ -117,14 +117,6 @@ class SizeGroupProcessor:
             "total_processed": total_processed,
             "batches_processed": batch_count
         }
-                # Continue with next batch
-        
-        processor_logger.info(f"Completed! Total variants processed: {total_processed}")
-        
-        return {
-            "total_processed": total_processed,
-            "batches_processed": batch_count
-        }
     
     def run(self) -> Dict[str, int]:
         """Run the complete size group processing."""
