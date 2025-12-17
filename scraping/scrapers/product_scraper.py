@@ -53,7 +53,9 @@ class ProductScraper(BaseScraper):
                     continue
                 
                 response.raise_for_status()
-                data = response.json()
+                data = self._safe_parse_json(response)
+                if data is None:
+                    raise ValueError('Failed to parse JSON response')
                 
                 if "products" not in data or not data["products"]:
                     break
