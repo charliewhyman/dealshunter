@@ -15,7 +15,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 from orchestrator.main import PipelineOrchestrator
 from processors.size_group_processor import SizeGroupProcessor
-from processors.taxonomy_processor import run_taxonomy_mapping
+import processors.taxonomy_processor as taxonomy_processor
 import config.settings as settings
 
 def setup_environment():
@@ -211,7 +211,7 @@ def run_processing_only(args):
 
         if process_taxonomy:
             print("\nStep: Processing taxonomy mapping...")
-            taxonomy_results = run_taxonomy_mapping(**taxonomy_config)
+            taxonomy_results = taxonomy_processor.run_taxonomy_mapping(**taxonomy_config)
             results['steps']['taxonomy'] = taxonomy_results
 
         print("\nProcessing finished")
