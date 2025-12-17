@@ -26,10 +26,15 @@ class CollectionUploader(BaseUploader):
     
     def transform_data(self, raw_data: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
         """Transform raw collection data, resolving shop_id by querying DB for shop url."""
-        # Collect all unique shop URLs from collections
+        # Collect all unique shop URLs from collections that are missing shop_id
         shop_urls = set()
         for collection in raw_data:
-            url = collection.get("shop_url") or collection.get("url")
+            # Prefer an existing shop_id if present
+            existing_shop_id = collection.get('shop_id')
+            if existing_shop_id is not None and (isinstance(existing_shop_id, int) or (isinstance(existing_shop_id, str) and existing_shop_id.isdigit())):
+                # already have shop id; skip URL collection for this item
+                continue
+            url = collection.get("shop_url") or collection.get("url") or None
             if url:
                 shop_urls.add(url)
         # Query DB for shop url -> id mapping
@@ -43,13 +48,20 @@ class CollectionUploader(BaseUploader):
                     url_to_id[row['url']] = row['id']
         transformed = []
         for collection in raw_data:
-            url = collection.get("shop_url") or collection.get("url")
-            db_id = url_to_id.get(url)
-            if db_id:
-                collection["shop_id"] = db_id
+            # Use existing shop_id when available
+            raw_shop_id = collection.get('shop_id')
+            db_id = None
+            if raw_shop_id is not None and (isinstance(raw_shop_id, int) or (isinstance(raw_shop_id, str) and str(raw_shop_id).isdigit())):
+                db_id = int(raw_shop_id)
             else:
-                self.logger.warning(f"No shop id found for url {url} in collection {collection.get('id')}")
+                url = collection.get("shop_url") or collection.get("url") or None
+                db_id = url_to_id.get(url)
+
+            if not db_id:
+                self.logger.warning(f"No shop id found for url {collection.get('shop_url') or collection.get('url')} in collection {collection.get('id')}")
                 continue
+            # Ensure we set shop_id for downstream processing
+            collection["shop_id"] = db_id
             safe_item = {
                 'title': collection.get('title', ''),
                 'handle': collection.get('handle', ''),

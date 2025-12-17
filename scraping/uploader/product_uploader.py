@@ -178,9 +178,13 @@ class ProductUploader(BaseUploader):
             with open(filepath, 'r', encoding='utf-8') as f:
                 products = json.load(f)
             product_ids = []
-            # Collect all unique shop URLs from products
+            # Collect all unique shop URLs from products that are missing shop_id
             shop_urls = set()
             for product in products:
+                # Prefer existing shop_id if present
+                existing_shop_id = product.get('shop_id')
+                if existing_shop_id is not None and (isinstance(existing_shop_id, int) or (isinstance(existing_shop_id, str) and str(existing_shop_id).isdigit())):
+                    continue
                 url = product.get("product_url") or product.get("shop_url") or product.get("url")
                 if url:
                     shop_urls.add(url)
@@ -196,13 +200,19 @@ class ProductUploader(BaseUploader):
             # Process all products, replacing shop_id with DB id
             self.processor.collections = {k: [] for k in self.processor.collections}
             for product in products:
-                url = product.get("product_url") or product.get("shop_url") or product.get("url")
-                db_id = url_to_id.get(url)
-                if db_id:
-                    product["shop_id"] = db_id
+                # Use existing shop_id when available
+                raw_shop_id = product.get('shop_id')
+                db_id = None
+                if raw_shop_id is not None and (isinstance(raw_shop_id, int) or (isinstance(raw_shop_id, str) and str(raw_shop_id).isdigit())):
+                    db_id = int(raw_shop_id)
                 else:
-                    self.logger.warning(f"No shop id found for url {url} in product {product.get('id')}")
+                    url = product.get("product_url") or product.get("shop_url") or product.get("url")
+                    db_id = url_to_id.get(url)
+
+                if not db_id:
+                    self.logger.warning(f"No shop id found for url {product.get('product_url') or product.get('shop_url') or product.get('url')} in product {product.get('id')}")
                     continue
+                product["shop_id"] = db_id
                 product_id = self.processor.process_product(product)
                 if product_id:
                     product_ids.append(product_id)
