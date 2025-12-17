@@ -17,4 +17,5 @@ dependencies = [
     "tqdm>=4.67.1",
     "transformers==4.35.2",
     "urllib3>=2.5.0",
+    "brotli>=1.0.9"
 ]

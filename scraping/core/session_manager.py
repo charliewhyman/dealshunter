@@ -46,6 +46,12 @@ class SessionManager:
             # Set headers
             headers = settings.DEFAULT_HEADERS.copy()
             headers["User-Agent"] = random.choice(USER_AGENTS)
+            # Avoid advertising brotli to servers if the runtime may not support it
+            ae = headers.get('Accept-Encoding', '')
+            if 'br' in ae:
+                parts = [p.strip() for p in ae.split(',') if p.strip() and p.strip() != 'br']
+                headers['Accept-Encoding'] = ', '.join(parts) if parts else 'gzip, deflate'
+
             session.headers.update(headers)
             
             cls._sessions[shop_id] = session
