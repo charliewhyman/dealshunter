@@ -20,9 +20,30 @@ class FileManager:
             'archive': settings.ARCHIVE_DIR
         }
         
-        # Create subdirectories for each entity type
-        for entity_type in ['shops', 'collections', 'products', 'collection_products']:
+        # Create subdirectories for each entity type under raw and processed.
+        # Also reorganize any existing files in processed root into the
+        # corresponding processed/<entity>/ folder (pattern: *_<entity>_*.json)
+        entity_types = ['shops', 'collections', 'products', 'collection_products']
+        for entity_type in entity_types:
             (self.data_dirs['raw'] / entity_type).mkdir(exist_ok=True, parents=True)
+            (self.data_dirs['processed'] / entity_type).mkdir(exist_ok=True, parents=True)
+
+        # Reorganize files currently sitting in processed/ root into subfolders
+        try:
+            processed_root = self.data_dirs['processed']
+            for entity_type in entity_types:
+                pattern = f"*_{entity_type}_*.json"
+                for p in sorted(processed_root.glob(pattern)):
+                    try:
+                        target = self.data_dirs['processed'] / entity_type / p.name
+                        if not target.exists():
+                            shutil.move(str(p), str(target))
+                            uploader_logger.info(f"Reorganized processed file {p.name} -> processed/{entity_type}/")
+                    except Exception as e:
+                        uploader_logger.error(f"Failed to reorganize {p}: {e}")
+        except Exception:
+            # Non-fatal; proceed
+            pass
     
     def save_raw_data(self, data: List[Dict[str, Any]], shop_id: str, 
                      data_type: str, timestamp: Optional[str] = None) -> Path:
@@ -68,11 +89,31 @@ class FileManager:
         try:
             if not filepath.exists():
                 return False
-            
-            processed_path = self.data_dirs['processed'] / filepath.name
+            # Determine entity subdirectory to preserve structure.
+            entity_dir = None
+            try:
+                parent_name = filepath.parent.name
+                if parent_name in ['shops', 'collections', 'products', 'collection_products']:
+                    entity_dir = parent_name
+            except Exception:
+                entity_dir = None
+
+            # If not under a known parent, try to infer from filename pattern
+            if not entity_dir:
+                parts = filepath.name.split('_')
+                if len(parts) >= 2 and parts[1] in ['shops', 'collections', 'products', 'collection_products']:
+                    entity_dir = parts[1]
+
+            if entity_dir:
+                target_dir = self.data_dirs['processed'] / entity_dir
+            else:
+                target_dir = self.data_dirs['processed']
+
+            target_dir.mkdir(parents=True, exist_ok=True)
+            processed_path = target_dir / filepath.name
             shutil.move(str(filepath), str(processed_path))
-            
-            uploader_logger.info(f"Moved {filepath.name} to processed")
+
+            uploader_logger.info(f"Moved {filepath.name} to processed/{entity_dir or ''}".rstrip('/'))
             return True
             
         except Exception as e:
@@ -97,6 +138,48 @@ class FileManager:
         except Exception as e:
             uploader_logger.error(f"Failed to archive {filepath}: {e}")
             return False
+
+    def restore_processed_to_raw(self, data_type: str) -> int:
+        """Restore files matching the data_type from processed into raw.
+
+        This moves files named like `<shop>_{data_type}_<timestamp>.json` from
+        either `processed/` root or `processed/<data_type>/` into
+        `raw/<data_type>/` so uploaders can pick them up where scrapers write.
+
+        Returns the number of files moved.
+        """
+        moved = 0
+        raw_dir = self.data_dirs['raw'] / data_type
+        processed_dir = self.data_dirs['processed']
+        processed_subdir = processed_dir / data_type
+
+        raw_dir.mkdir(parents=True, exist_ok=True)
+
+        # Helper to move files from a source directory matching pattern
+        def _move_from(src_dir: Path):
+            nonlocal moved
+            if not src_dir.exists():
+                return
+            pattern = f"*_{data_type}_*.json"
+            for p in sorted(src_dir.glob(pattern)):
+                target = raw_dir / p.name
+                if target.exists():
+                    uploader_logger.info(f"Skipping move; target already exists: {target}")
+                    continue
+                try:
+                    shutil.move(str(p), str(target))
+                    moved += 1
+                    uploader_logger.info(f"Restored {p.name} -> {target}")
+                except Exception as e:
+                    uploader_logger.error(f"Failed to restore {p}: {e}")
+
+        # Move from processed/<data_type>/ first
+        _move_from(processed_subdir)
+
+        # Then move matching files from processed/ root
+        _move_from(processed_dir)
+
+        return moved
     
     def clean_old_files(self, data_type: str, keep_last: int = 3):
         """Clean old files, keeping only the most recent ones."""

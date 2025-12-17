@@ -20,34 +20,27 @@ class ShopUploader(BaseUploader):
         return "shops"
 
     def get_on_conflict(self) -> str:
-        """Use `url` as the ON CONFLICT target."""
+        """Use `url` as the ON CONFLICT target so shops are keyed by URL."""
         return "url"
     
     def transform_data(self, raw_data: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
-        """Normalize shop entries into DB column names."""
+        """Normalize shop entries into DB column names, using url as unique key. Ignore id from JSON."""
         transformed: List[Dict[str, Any]] = []
-
         for shop in raw_data:
             safe_shop = {
                 'shop_name': shop.get('shop_name') or shop.get('name') or 'Unknown',
                 'url': shop.get('url', ''),
             }
-
             if shop.get('category') is not None:
                 safe_shop['category'] = shop.get('category')
-
             tags = shop.get('tags')
             if tags is not None:
                 safe_shop['tags'] = tags if isinstance(tags, list) else [t.strip() for t in str(tags).split(',') if t.strip()]
-
             if 'is_shopify' in shop:
                 safe_shop['is_shopify'] = None if shop.get('is_shopify') is None else bool(shop.get('is_shopify'))
-
             if shop.get('updated_at'):
                 safe_shop['updated_at'] = shop.get('updated_at')
-
             transformed.append(safe_shop)
-
         return transformed
     
     def process_all(self) -> Dict[str, Any]:

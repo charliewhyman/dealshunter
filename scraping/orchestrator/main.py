@@ -21,6 +21,7 @@ from processors.taxonomy_processor import run_taxonomy_mapping
 
 from core.logger import scraper_logger, uploader_logger, processor_logger
 import config.settings as settings
+from uploader.supabase_client import SupabaseClient
 
 class PipelineOrchestrator:
     """Orchestrates the complete scraping and upload pipeline."""
@@ -59,6 +60,35 @@ class PipelineOrchestrator:
                 return []
             
             self.logger.info(f"Loaded {len(shops)} shops from configuration")
+
+            # Resolve database IDs for configured shop URLs so scrapers and
+            # uploaders can consistently use the DB-generated `shops.id`.
+            try:
+                urls = [s.get('url') for s in shops if s.get('url')]
+                if urls:
+                    def do_select(client):
+                        return client.table('shops').select('id,url').in_('url', urls).execute()
+
+                    sup = SupabaseClient()
+                    result = sup.safe_execute(do_select, 'Fetch shop ids by url', max_retries=3)
+                    url_to_id = {}
+                    if result and hasattr(result, 'data'):
+                        for row in result.data:
+                            url_to_id[row.get('url')] = row.get('id')
+
+                    resolved = 0
+                    for shop in shops:
+                        url = shop.get('url')
+                        if url and url in url_to_id and url_to_id[url] is not None:
+                            shop['id'] = url_to_id[url]
+                            resolved += 1
+
+                    self.logger.info(f"Resolved {resolved}/{len(urls)} shop ids from DB")
+                else:
+                    self.logger.debug('No shop urls found to resolve')
+            except Exception as e:
+                self.logger.warning(f"Failed to resolve shop ids from DB: {e}")
+
             return shops
             
         except Exception as e:

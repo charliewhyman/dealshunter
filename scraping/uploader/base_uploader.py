@@ -40,7 +40,24 @@ class BaseUploader(ABC):
         return "id"
     
     def find_data_files(self) -> List[Path]:
-        """Find JSON files for this entity type."""
+        """Find JSON files for this entity type.
+
+        Ensure uploaders read from the same `raw/<entity>` folders that
+        scrapers write to. If raw is empty but matching files exist in
+        `processed/<entity>` or `processed/`, attempt to restore them
+        back into `raw/<entity>` so they can be uploaded.
+        """
+        try:
+            # If there are no raw files, attempt to restore any processed files
+            raw_files = self.file_manager.get_raw_files(self.entity_type)
+            if not raw_files:
+                restored = self.file_manager.restore_processed_to_raw(self.entity_type)
+                if restored:
+                    self.logger.info(f"Restored {restored} {self.entity_type} files from processed to raw")
+        except Exception:
+            # Non-fatal; fall back to returning whatever get_raw_files returns
+            pass
+
         return self.file_manager.get_raw_files(self.entity_type)
     
     def process_file(self, filepath: Path) -> bool:

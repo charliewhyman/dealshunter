@@ -11,6 +11,7 @@ from uploader.base_uploader import BaseUploader
 from uploader.data_processor import DataProcessor
 from uploader.supabase_client import SupabaseClient
 from core.logger import uploader_logger
+import config.settings as settings
 
 class ProductProcessor:
     """Helper class to process product data."""
@@ -160,6 +161,10 @@ class ProductUploader(BaseUploader):
     
     def get_table_name(self) -> str:
         return "products"
+
+    def get_on_conflict(self) -> str:
+        """Use id as the ON CONFLICT target for products."""
+        return "id"
     
     def transform_data(self, raw_data: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
         """Transform raw product data."""
@@ -169,28 +174,94 @@ class ProductUploader(BaseUploader):
     def process_file(self, filepath: Path) -> bool:
         """Process a single product file with full processing."""
         self.logger.info(f"Processing product file: {filepath.name}")
-        
         try:
             with open(filepath, 'r', encoding='utf-8') as f:
                 products = json.load(f)
-            
             product_ids = []
-            
-            # Process all products
+            # Collect all unique shop URLs from products
+            shop_urls = set()
             for product in products:
+                url = product.get("product_url") or product.get("shop_url") or product.get("url")
+                if url:
+                    shop_urls.add(url)
+            # Query DB for shop url -> id mapping
+            url_to_id = {}
+            if shop_urls:
+                def do_select(client):
+                    return client.table('shops').select('id,url').in_('url', list(shop_urls)).execute()
+                result = self.supabase.safe_execute(do_select, 'Fetch shop ids by url', max_retries=3)
+                if result and hasattr(result, 'data'):
+                    for row in result.data:
+                        url_to_id[row['url']] = row['id']
+            # Process all products, replacing shop_id with DB id
+            self.processor.collections = {k: [] for k in self.processor.collections}
+            for product in products:
+                url = product.get("product_url") or product.get("shop_url") or product.get("url")
+                db_id = url_to_id.get(url)
+                if db_id:
+                    product["shop_id"] = db_id
+                else:
+                    self.logger.warning(f"No shop id found for url {url} in product {product.get('id')}")
+                    continue
                 product_id = self.processor.process_product(product)
                 if product_id:
                     product_ids.append(product_id)
-            
-            # Upload products first (required for foreign keys)
             if self.processor.collections.get("products"):
-                success = self.supabase.bulk_upsert(
-                    "products", 
-                    self.processor.collections["products"]
-                )
-                if not success:
+                if self.supabase.bulk_upsert(
+                    "products",
+                    self.processor.collections["products"],
+                    on_conflict="id"
+                ):
+                    self.logger.info(f"Uploaded products from {filepath.name}")
+                else:
                     self.logger.error(f"Failed to upload products from {filepath.name}")
                     return False
+            else:
+                self.logger.warning(f"No products to upload from {filepath.name}")
+                return True
+            # Upload related tables in parallel
+            related_tables = ['options', 'variants', 'images', 'offers']
+            def upload_table(table_name: str, data: List[Dict]) -> bool:
+                if data:
+                    on_conflict = "id"
+                    if table_name == "variants":
+                        on_conflict = "id,variant_type"
+                    return self.supabase.bulk_upsert(
+                        table_name=table_name,
+                        data=data,
+                        on_conflict=on_conflict
+                    )
+                return True
+            with ThreadPoolExecutor(max_workers=4) as executor:
+                futures = []
+                for table in related_tables:
+                    if self.processor.collections.get(table):
+                        futures.append(
+                            executor.submit(
+                                upload_table,
+                                table,
+                                self.processor.collections[table]
+                            )
+                        )
+                for future in as_completed(futures):
+                    try:
+                        if not future.result():
+                            self.logger.error("Failed to upload related table")
+                            return False
+                    except Exception as e:
+                        self.logger.error(f"Error in parallel upload: {e}")
+                        return False
+            # Clean up stale products for this shop
+            shop_ids = {p["shop_id"] for p in self.processor.collections["products"]}
+            if len(shop_ids) == 1:
+                shop_id = list(shop_ids)[0]
+                self.cleanup_stale_records(product_ids, shop_id)
+            self.file_manager.move_to_processed(filepath)
+            self.logger.info(f"Successfully processed {filepath.name}")
+            return True
+        except Exception as e:
+            self.logger.error(f"Error processing {filepath.name}: {e}")
+            return False
             
             # Upload related tables in parallel
             related_tables = ['options', 'variants', 'images', 'offers']
