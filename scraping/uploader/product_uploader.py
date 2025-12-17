@@ -166,7 +166,7 @@ class ProductUploader(BaseUploader):
         return "id"
     
     def transform_data(self, raw_data: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
-        """Transform raw product data."""
+        """Transform raw product data (not used because processing is done in process_file)."""
         # This is handled in process_file with full processing
         return []
     
@@ -268,60 +268,6 @@ class ProductUploader(BaseUploader):
             self.file_manager.move_to_processed(filepath)
             self.logger.info(f"Successfully processed {filepath.name}")
             return True
-        except Exception as e:
-            self.logger.error(f"Error processing {filepath.name}: {e}")
-            return False
-            
-            # Upload related tables in parallel
-            related_tables = ['options', 'variants', 'images', 'offers']
-            
-            def upload_table(table_name: str, data: List[Dict]) -> bool:
-                if data:
-                    on_conflict = "id"
-                    if table_name == "variants":
-                        on_conflict = "id,variant_type"
-                    
-                    return self.supabase.bulk_upsert(
-                        table_name=table_name,
-                        data=data,
-                        on_conflict=on_conflict
-                    )
-                return True
-            
-            with ThreadPoolExecutor(max_workers=4) as executor:
-                futures = []
-                for table in related_tables:
-                    if self.processor.collections.get(table):
-                        futures.append(
-                            executor.submit(
-                                upload_table, 
-                                table, 
-                                self.processor.collections[table]
-                            )
-                        )
-                
-                # Wait for all uploads to complete
-                for future in as_completed(futures):
-                    try:
-                        if not future.result():
-                            self.logger.error("Failed to upload related table")
-                            return False
-                    except Exception as e:
-                        self.logger.error(f"Error in parallel upload: {e}")
-                        return False
-            
-            # Clean up stale products for this shop
-            shop_ids = {p["shop_id"] for p in self.processor.collections["products"]}
-            if len(shop_ids) == 1:
-                shop_id = list(shop_ids)[0]
-                self.cleanup_stale_records(product_ids, shop_id)
-            
-            # Move file to processed
-            self.file_manager.move_to_processed(filepath)
-            self.logger.info(f"Successfully processed {filepath.name}")
-            
-            return True
-            
         except Exception as e:
             self.logger.error(f"Error processing {filepath.name}: {e}")
             return False
