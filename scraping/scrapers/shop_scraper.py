@@ -69,7 +69,6 @@ class ShopScraper(BaseScraper):
         
         # Try to get shop info from various endpoints
         endpoints_to_try = [
-            f"{base_url}/admin/api/2023-10/shop.json",
             f"{base_url}/shop.json",
             f"{base_url}/api/shop"
         ]
