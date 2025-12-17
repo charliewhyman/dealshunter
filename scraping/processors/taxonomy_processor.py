@@ -408,6 +408,10 @@ class BatchTaxonomyMapper:
             # Guard against unexpected return types from the client (None, bool, dict, etc.)
             if not isinstance(products, list):
                 processor_logger.warning(f"Unexpected products response type: {type(products)}")
+            
+            # initialize updates for this batch
+            updates: List[Dict[str, Any]] = []
+            
             for product in products:
                 # ensure the product is a mapping and has a usable id
                 if not isinstance(product, dict):
@@ -417,6 +421,11 @@ class BatchTaxonomyMapper:
                 pid = product.get("id")
                 if pid is None:
                     processor_logger.warning("Skipping product without id")
+                    continue
+
+                # Only attempt int() on types that are convertible to int to avoid type checker errors
+                if not isinstance(pid, (int, str, float, bool)):
+                    processor_logger.warning(f"Invalid product id type: {type(pid)}")
                     continue
 
                 try:
@@ -454,6 +463,7 @@ class BatchTaxonomyMapper:
                 )
             
             self._save_progress()
+            batch_count += 1
         
         elapsed = (datetime.now(timezone.utc) - start_time).total_seconds()
         
