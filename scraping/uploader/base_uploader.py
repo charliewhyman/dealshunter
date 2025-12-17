@@ -32,8 +32,11 @@ class BaseUploader(ABC):
         """Get the target table name. Must be implemented."""
         pass
     
-    def get_on_conflict(self) -> str:
-        """Get the ON CONFLICT clause. Override if needed."""
+    def get_on_conflict(self) -> Optional[str]:
+        """Get the ON CONFLICT clause. Override if needed.
+
+        Return None to perform plain inserts (no ON CONFLICT target).
+        """
         return "id"
     
     def find_data_files(self) -> List[Path]:
