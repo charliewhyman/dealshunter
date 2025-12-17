@@ -74,7 +74,7 @@ class SupabaseClient:
         return None
     
     def bulk_upsert(self, table_name: str, data: List[Dict[str, Any]], 
-                   batch_size: int = 100, on_conflict: str = "id", 
+                   batch_size: int = 100, on_conflict: Optional[str] = "id", 
                    retries: int = 3) -> bool:
         """
         Bulk upsert with batch processing.
@@ -88,9 +88,35 @@ class SupabaseClient:
         for i in range(0, len(data), batch_size):
             batch = data[i:i + batch_size]
             batch_num = (i // batch_size) + 1
+            # If an ON CONFLICT target is provided, deduplicate records within
+            # the batch by those key(s) to avoid Postgres error 21000 where
+            # multiple rows in the same insert share the same constrained
+            # value and would cause the same row to be affected more than
+            # once during ON CONFLICT DO UPDATE.
+            deduped_batch = batch
+            if on_conflict:
+                try:
+                    keys = [k.strip() for k in str(on_conflict).split(',') if k.strip()]
+                    seen = {}
+                    for rec in batch:
+                        key = tuple(rec.get(k) for k in keys)
+                        # keep the last occurrence for this key
+                        seen[key] = rec
+
+                    if len(seen) != len(batch):
+                        deduped_batch = list(seen.values())
+                        uploader_logger.info(f"Deduplicated batch {batch_num}: removed {len(batch)-len(deduped_batch)} duplicate(s) based on {keys}")
+                except Exception:
+                    # If anything goes wrong with dedupe, fall back to original batch
+                    deduped_batch = batch
             
             def do_upsert(client):
-                return client.table(table_name).upsert(batch, on_conflict=on_conflict).execute()
+                # Only pass an ON CONFLICT target when it's provided. Some tables
+                # (like `shops`) may not have a unique constraint on the chosen
+                # column, so callers can return None to do plain inserts.
+                if on_conflict:
+                    return client.table(table_name).upsert(deduped_batch, on_conflict=on_conflict).execute()
+                return client.table(table_name).upsert(deduped_batch).execute()
             
             result = self.safe_execute(
                 do_upsert,
