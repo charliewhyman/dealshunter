@@ -29,10 +29,114 @@ def setup_environment():
     print(f"{'='*60}")
 
 def run_scraping_only(args):
-    """Run only scraping."""
+    """Run only scraping. Supports per-scraper flags in `args`.
+
+    If no per-scraper flags are provided, the full scraping pipeline
+    is executed (same as before).
+    """
     print("\nRunning scraping only...")
     orchestrator = PipelineOrchestrator()
-    results = orchestrator.run_scraping_pipeline()
+
+    # Load shops (resolves DB ids when possible)
+    shops = orchestrator.load_shops()
+    if not shops:
+        orchestrator.logger.error("No shops to process")
+        return {}
+
+    # If no specific scraper flags provided, run the full scraping pipeline
+    flags = [getattr(args, 'scrape_shops', False), getattr(args, 'scrape_collections', False),
+             getattr(args, 'scrape_products', False), getattr(args, 'scrape_collection_products', False)]
+    if not any(flags):
+        return orchestrator.run_scraping_pipeline(shops)
+
+    results = {
+        'total_shops': len(shops),
+        'timestamp': datetime.now().strftime('%Y%m%d_%H%M%S'),
+        'steps': {}
+    }
+
+    collection_results = {}
+
+    # Shops
+    if getattr(args, 'scrape_shops', False):
+        print("\nStep: Scraping shops...")
+        shop_results = orchestrator.shop_scraper.scrape_multiple(shops)
+        results['steps']['shops'] = {
+            'shops_scraped': len(shop_results),
+            'total_records': sum(len(data) for data in shop_results.values())
+        }
+        for shop_id, data in shop_results.items():
+            if data:
+                orchestrator.shop_scraper.save_results(shop_id, data, results['timestamp'])
+
+    # Collections
+    if getattr(args, 'scrape_collections', False):
+        print("\nStep: Scraping collections...")
+        collection_results = orchestrator.collection_scraper.scrape_multiple(shops)
+        results['steps']['collections'] = {
+            'shops_scraped': len(collection_results),
+            'total_records': sum(len(data) for data in collection_results.values())
+        }
+        for shop_id, data in collection_results.items():
+            if data:
+                orchestrator.collection_scraper.save_results(shop_id, data, results['timestamp'])
+
+    # Products
+    if getattr(args, 'scrape_products', False):
+        print("\nStep: Scraping products...")
+        product_results = orchestrator.product_scraper.scrape_multiple(shops)
+        results['steps']['products'] = {
+            'shops_scraped': len(product_results),
+            'total_records': sum(len(data) for data in product_results.values())
+        }
+        for shop_id, data in product_results.items():
+            if data:
+                orchestrator.product_scraper.save_results(shop_id, data, results['timestamp'])
+
+    # Collection -> Product mappings
+    if getattr(args, 'scrape_collection_products', False):
+        print("\nStep: Scraping collection->product mappings...")
+
+        # Prefer using collections scraped in this run; otherwise load from processed collections files
+        if collection_results:
+            collections_for_mapping = {}
+            for shop_id, collections in collection_results.items():
+                collections_for_mapping[shop_id] = [
+                    {'id': coll.get('id'), 'handle': coll.get('handle')}
+                    for coll in collections
+                ]
+        else:
+            # Load from processed collections files if available
+            from pathlib import Path
+            import json as _json
+            processed_dir = settings.PROCESSED_DATA_DIR / 'collections'
+            collections_for_mapping = {}
+            if processed_dir.exists():
+                for f in sorted(processed_dir.glob('*.json')):
+                    try:
+                        with open(f, 'r', encoding='utf-8') as fh:
+                            arr = _json.load(fh)
+                            for coll in arr:
+                                sid = str(coll.get('shop_id') or coll.get('shop'))
+                                if not sid:
+                                    continue
+                                collections_for_mapping.setdefault(sid, []).append({
+                                    'id': coll.get('id'), 'handle': coll.get('handle')
+                                })
+                    except Exception:
+                        continue
+
+        orchestrator.collection_products_scraper.set_collections_data(collections_for_mapping)
+        mapping_results = orchestrator.collection_products_scraper.scrape_multiple(shops)
+        results['steps']['collection_products'] = {
+            'shops_scraped': len(mapping_results),
+            'total_records': sum(len(data) for data in mapping_results.values())
+        }
+        for shop_id, data in mapping_results.items():
+            if data:
+                orchestrator.collection_products_scraper.save_results(shop_id, data, results['timestamp'])
+
+    print("\nScraping finished")
     return results
 
 def run_upload_only(args):
@@ -97,6 +201,15 @@ def main():
     parser.add_argument("--shops-file", type=str, 
                        default=str(settings.SHOP_URLS_FILE),
                        help="Path to shops JSON file")
+    # Per-scraper flags (used when --mode scrape)
+    parser.add_argument("--scrape-shops", action="store_true",
+                       help="Run only the shops scraper")
+    parser.add_argument("--scrape-collections", action="store_true",
+                       help="Run only the collections scraper")
+    parser.add_argument("--scrape-products", action="store_true",
+                       help="Run only the products scraper")
+    parser.add_argument("--scrape-collection-products", action="store_true",
+                       help="Run only the collection->product mapping scraper")
     
     # Processing options
     parser.add_argument("--skip-size-groups", action="store_true",
