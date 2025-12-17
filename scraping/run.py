@@ -142,7 +142,39 @@ def run_upload_only(args):
     """Run only uploading."""
     print("\nRunning upload only...")
     orchestrator = PipelineOrchestrator()
-    results = orchestrator.run_upload_pipeline()
+
+    # If no per-entity upload flags provided, run full upload pipeline
+    flags = [getattr(args, 'upload_shops', False), getattr(args, 'upload_collections', False),
+             getattr(args, 'upload_products', False), getattr(args, 'upload_collection_products', False)]
+    if not any(flags):
+        return orchestrator.run_upload_pipeline()
+
+    results = {
+        'timestamp': orchestrator.timestamp,
+        'steps': {}
+    }
+
+    if getattr(args, 'upload_shops', False):
+        print("\nStep: Uploading shops...")
+        shop_results = orchestrator.shop_uploader.process_all()
+        results['steps']['shops'] = shop_results
+
+    if getattr(args, 'upload_collections', False):
+        print("\nStep: Uploading collections...")
+        collection_results = orchestrator.collection_uploader.process_all()
+        results['steps']['collections'] = collection_results
+
+    if getattr(args, 'upload_products', False):
+        print("\nStep: Uploading products...")
+        product_results = orchestrator.product_uploader.process_all()
+        results['steps']['products'] = product_results
+
+    if getattr(args, 'upload_collection_products', False):
+        print("\nStep: Uploading collection->product mappings...")
+        mapping_results = orchestrator.collection_product_uploader.process_all()
+        results['steps']['collection_products'] = mapping_results
+
+    print("\nUpload finished")
     return results
 
 def run_processing_only(args):
@@ -159,10 +191,40 @@ def run_processing_only(args):
         'reset': args.reset
     }
     
+    # Determine whether explicit process-only flags were provided.
+    explicit = getattr(args, 'process_size_groups', False) or getattr(args, 'process_taxonomy', False)
+
+    if explicit:
+        process_size_groups = getattr(args, 'process_size_groups', False)
+        process_taxonomy = getattr(args, 'process_taxonomy', False)
+
+        results = {
+            'timestamp': datetime.now().strftime('%Y%m%d_%H%M%S'),
+            'steps': {}
+        }
+
+        if process_size_groups:
+            print("\nStep: Processing size groups...")
+            size_group_processor = SizeGroupProcessor()
+            size_group_results = size_group_processor.run()
+            results['steps']['size_groups'] = size_group_results
+
+        if process_taxonomy:
+            print("\nStep: Processing taxonomy mapping...")
+            taxonomy_results = run_taxonomy_mapping(**taxonomy_config)
+            results['steps']['taxonomy'] = taxonomy_results
+
+        print("\nProcessing finished")
+        return results
+
+    # No explicit flags — fall back to skip flags and orchestrator behavior
+    process_size_groups = not getattr(args, 'skip_size_groups', False)
+    process_taxonomy = not getattr(args, 'skip_taxonomy', False)
+
     results = orchestrator.run_processing_pipeline(
-        process_size_groups=not args.skip_size_groups,
-        process_taxonomy=not args.skip_taxonomy,
-        taxonomy_config=taxonomy_config if not args.skip_taxonomy else None
+        process_size_groups=process_size_groups,
+        process_taxonomy=process_taxonomy,
+        taxonomy_config=taxonomy_config if process_taxonomy else None
     )
     return results
 
@@ -209,12 +271,28 @@ def main():
                        help="Run only the products scraper")
     parser.add_argument("--scrape-collection-products", action="store_true",
                        help="Run only the collection->product mapping scraper")
+
+    # Per-entity upload flags (used when --mode upload)
+    parser.add_argument("--upload-shops", action="store_true",
+                       help="Upload only shops to the target (skip other entities)")
+    parser.add_argument("--upload-collections", action="store_true",
+                       help="Upload only collections to the target (skip other entities)")
+    parser.add_argument("--upload-products", action="store_true",
+                       help="Upload only products to the target (skip other entities)")
+    parser.add_argument("--upload-collection-products", action="store_true",
+                       help="Upload only collection->product mappings to the target")
     
     # Processing options
     parser.add_argument("--skip-size-groups", action="store_true",
                        help="Skip size group processing")
     parser.add_argument("--skip-taxonomy", action="store_true",
                        help="Skip taxonomy mapping")
+    
+    # Explicit processing-only flags (used when --mode process)
+    parser.add_argument("--process-size-groups", action="store_true",
+                       help="Run only size group processing (ignores taxonomy unless also specified)")
+    parser.add_argument("--process-taxonomy", action="store_true",
+                       help="Run only taxonomy mapping (ignores size groups unless also specified)")
     
     # Taxonomy options
     parser.add_argument("--max-depth", type=int,
