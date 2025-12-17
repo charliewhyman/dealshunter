@@ -19,13 +19,7 @@ class ShopData(BaseEntity):
     """Shop information."""
     id: str
     name: str
-    domain: str
     url: str
-    currency: Optional[str] = None
-    country: Optional[str] = None
-    phone: Optional[str] = None
-    email: Optional[str] = None
-    description: Optional[str] = None
     is_shopify: bool = True
     scrape_status: str = "success"
 
@@ -77,13 +71,7 @@ class DbShop:
     """Shop schema for database."""
     id: str
     name: str
-    domain: str
     url: str
-    currency: Optional[str] = None
-    country: Optional[str] = None
-    phone: Optional[str] = None
-    email: Optional[str] = None
-    description: Optional[str] = None
     is_shopify: bool = True
     scrape_status: str = "success"
     
