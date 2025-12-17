@@ -35,7 +35,6 @@ class ShopScraper(BaseScraper):
                 scraped_at=datetime.now().isoformat(),
                 id=shop_id,
                 name=shop_data.get('name', 'Unknown'),
-                domain=base_url,
                 url=base_url,
                 is_shopify=False,
                 scrape_status="failed_not_shopify"
@@ -50,13 +49,7 @@ class ShopScraper(BaseScraper):
             scraped_at=datetime.now().isoformat(),
             id=shop_info.get('id', shop_id),
             name=shop_info.get('name', shop_data.get('name', 'Unknown')),
-            domain=shop_info.get('domain', base_url),
             url=base_url,
-            currency=shop_info.get('currency'),
-            country=shop_info.get('country'),
-            phone=shop_info.get('phone'),
-            email=shop_info.get('email'),
-            description=shop_info.get('description'),
             is_shopify=True,
             scrape_status="success"
         )
@@ -105,7 +98,6 @@ class ShopScraper(BaseScraper):
                 return {
                     'id': shop_id,
                     'name': shop_name,
-                    'domain': base_url
                 }
         except Exception as e:
             self.logger.error(f"HTML fallback failed for {shop_id}: {e}")
