@@ -44,7 +44,5 @@
     { "id": 56, "url": "http://www.wheatandwildflower.ca", "category": "Children's Clothing", "shop_name": "Wheat and Wildflower" , "location": "Arnes, Manitoba", "tags": [], "shipping": "", "returns": ""},
     { "id": 58, "url": "https://knix.ca", "category": "Women's Clothing", "shop_name": "Knix" , "location": "Toronto, Ontario", "tags": [], "shipping": "", "returns": ""},
     { "id": 59, "url": "https://www.pranavidastyle.com/", "category": "Women's Clothing", "shop_name": "Prana Vida" , "location": "Winnipeg, Manitoba", "tags": [], "shipping": "", "returns": ""},
-    { "id": 61, "url": "https://typebooks.ca/", "category": "Books", "shop_name": "Type Books" , "location": "Toronto, Ontario", "tags": [], "shipping": "", "returns": ""},
-    { "id": 62, "url": "https://mosaicbooks.ca/", "category": "Books", "shop_name": "Mosaic Books" , "location": "Kelowna, British Columbia", "tags": [], "shipping": "", "returns": ""}
+    { "id": 61, "url": "https://typebooks.ca/", "category": "Books", "shop_name": "Type Books" , "location": "Toronto, Ontario", "tags": [], "shipping": "", "returns": ""}
 ]
- 
