@@ -27,6 +27,7 @@ dist-ssr
 scraping/data/*
 scraping/taxonomy_cache/
 scraping/shopify_summary.csv
+scraping/data/
 
 
 # Virtual environment
