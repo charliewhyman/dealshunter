@@ -33,18 +33,27 @@ class CollectionUploader(BaseUploader):
                     filename = Path(self.current_file).stem
                     shop_id = filename.split('_')[0]
             
-            collection_data = DbCollection(
-                id=collection.get('id', ''),
-                title=collection.get('title', ''),
-                handle=collection.get('handle', ''),
-                description=collection.get('description'),
-                products_count=collection.get('products_count'),
-                shop_id=shop_id,
-                collection_url=collection.get('collection_url', ''),
-                published_at_external=collection.get('published_at'),
-                updated_at_external=collection.get('updated_at')
-            )
-            transformed.append(collection_data.to_dict())
+            # Build a safe mapping for DB insertion. The DB `id` column is a
+            # bigint primary key; scraped `id` values are sometimes textual
+            # (e.g. 'html_all') and would cause a type error. Only include
+            # `id` when it's numeric.
+            safe_item = {
+                'title': collection.get('title', ''),
+                'handle': collection.get('handle', ''),
+                'description': collection.get('description'),
+                'products_count': collection.get('products_count'),
+                'shop_id': shop_id,
+                'collection_url': collection.get('collection_url', ''),
+                'published_at_external': collection.get('published_at'),
+                'updated_at_external': collection.get('updated_at')
+            }
+
+            raw_id = collection.get('id')
+            # Accept integers or digit-strings as valid IDs
+            if isinstance(raw_id, int) or (isinstance(raw_id, str) and raw_id.isdigit()):
+                safe_item['id'] = int(raw_id)
+
+            transformed.append(safe_item)
         
         return transformed
     
