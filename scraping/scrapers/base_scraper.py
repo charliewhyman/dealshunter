@@ -15,6 +15,8 @@ from core.cache_manager import CacheManager
 from core.file_manager import FileManager
 from core.logger import scraper_logger
 from json import JSONDecodeError
+import gzip
+import zlib
 
 class BaseScraper(ABC):
     """Abstract base class for all Shopify scrapers."""
@@ -160,3 +162,50 @@ class BaseScraper(ABC):
         except Exception as e:
             self.logger.error(f"Failed to load shops: {e}")
             return []
+
+    def _safe_parse_json(self, response) -> Any:
+        """Safely parse JSON from a requests Response.
+
+        Tries response.json() first, and falls back to handling compressed
+        content (brotli/gzip/zlib) or decoding bytes if necessary.
+        Returns parsed JSON object, or None if parsing failed.
+        """
+        try:
+            return response.json()
+        except (ValueError, JSONDecodeError):
+            encoding = (response.headers.get('Content-Encoding') or '').lower()
+            raw = response.content
+
+            # brotli may not be installed; attempt dynamic import if needed
+            if 'br' in encoding:
+                try:
+                    import brotli
+                    try:
+                        decompressed = brotli.decompress(raw)
+                        return json.loads(decompressed.decode('utf-8', errors='replace'))
+                    except Exception:
+                        pass
+                except Exception:
+                    self.logger.warning('Response encoded with brotli but brotli package is not installed')
+
+            if 'gzip' in encoding or raw.startswith(b'\x1f\x8b'):
+                try:
+                    decompressed = gzip.decompress(raw)
+                    return json.loads(decompressed.decode('utf-8', errors='replace'))
+                except Exception:
+                    pass
+
+            # Try zlib
+            try:
+                decompressed = zlib.decompress(raw)
+                return json.loads(decompressed.decode('utf-8', errors='replace'))
+            except Exception:
+                pass
+
+            # Last resort: decode as text and try json.loads
+            try:
+                text = raw.decode('utf-8', errors='replace')
+                return json.loads(text)
+            except Exception:
+                self.logger.debug('Failed to parse response content as JSON')
+                return None
