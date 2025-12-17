@@ -11,7 +11,6 @@ from uploader.base_uploader import BaseUploader
 from uploader.data_processor import DataProcessor
 from uploader.supabase_client import SupabaseClient
 from core.logger import uploader_logger
-import config.settings as settings
 
 class ProductProcessor:
     """Helper class to process product data."""

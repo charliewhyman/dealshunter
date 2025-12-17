@@ -5,8 +5,8 @@ Data processing utilities for product uploader.
 import re
 import uuid
 from html import unescape
-from typing import Dict, Any, List, Optional
-from urllib.parse import urlparse, urlunparse, parse_qsl, urlencode
+from typing import Dict, Any,  Optional
+from urllib.parse import urlparse, parse_qsl, urlencode
 
 from core.logger import uploader_logger
 

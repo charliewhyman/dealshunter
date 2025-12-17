@@ -31,14 +31,21 @@ class FileManager:
         # Reorganize files currently sitting in processed/ root into subfolders
         try:
             processed_root = self.data_dirs['processed']
-            for entity_type in entity_types:
-                pattern = f"*_{entity_type}_*.json"
-                for p in sorted(processed_root.glob(pattern)):
+            # Only move files whose filename follows the convention
+            # <shop>_<entity>_<timestamp>.json where the second token
+            # exactly equals the entity_type. This avoids substring
+            # collisions (e.g. 'collection_products' matching 'products').
+            for p in sorted(processed_root.glob("*.json")):
+                parts = p.name.split("_")
+                if len(parts) < 3:
+                    continue
+                token = parts[1]
+                if token in entity_types:
                     try:
-                        target = self.data_dirs['processed'] / entity_type / p.name
+                        target = self.data_dirs['processed'] / token / p.name
                         if not target.exists():
                             shutil.move(str(p), str(target))
-                            uploader_logger.info(f"Reorganized processed file {p.name} -> processed/{entity_type}/")
+                            uploader_logger.info(f"Reorganized processed file {p.name} -> processed/{token}/")
                     except Exception as e:
                         uploader_logger.error(f"Failed to reorganize {p}: {e}")
         except Exception:
@@ -160,8 +167,16 @@ class FileManager:
             nonlocal moved
             if not src_dir.exists():
                 return
-            pattern = f"*_{data_type}_*.json"
-            for p in sorted(src_dir.glob(pattern)):
+            # Iterate all json files and only move those where the
+            # second underscore-separated token exactly matches
+            # the requested data_type. This avoids accidental
+            # matches like 'collection_products' for 'products'.
+            for p in sorted(src_dir.glob("*.json")):
+                parts = p.name.split("_")
+                if len(parts) < 3:
+                    continue
+                if parts[1] != data_type:
+                    continue
                 target = raw_dir / p.name
                 if target.exists():
                     uploader_logger.info(f"Skipping move; target already exists: {target}")

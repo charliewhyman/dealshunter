@@ -3,7 +3,6 @@ Base class for all uploaders.
 """
 
 import json
-import os
 from abc import ABC, abstractmethod
 from typing import List, Dict, Any, Optional
 from pathlib import Path
@@ -11,7 +10,6 @@ from pathlib import Path
 from uploader.supabase_client import SupabaseClient
 from core.file_manager import FileManager
 from core.logger import uploader_logger
-import config.settings as settings
 
 class BaseUploader(ABC):
     """Base class for all entity uploaders."""

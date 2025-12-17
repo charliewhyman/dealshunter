@@ -2,7 +2,6 @@
 Scraper for collections.
 """
 
-import json
 from datetime import datetime
 from typing import List, Dict, Any
 from bs4 import BeautifulSoup

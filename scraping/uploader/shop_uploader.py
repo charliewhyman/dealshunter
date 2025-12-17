@@ -4,10 +4,8 @@ Shop uploader.
 
 import json
 from typing import List, Dict, Any
-from pathlib import Path
 
 from uploader.base_uploader import BaseUploader
-from config.schemas import DbShop
 import config.settings as settings
 
 class ShopUploader(BaseUploader):

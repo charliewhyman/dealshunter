@@ -2,14 +2,11 @@
 Collection uploader.
 """
 
-import json
-from typing import List, Dict, Any, Optional, Set
+from typing import List, Dict, Any
 from pathlib import Path
 
 from uploader.base_uploader import BaseUploader
-from config.schemas import DbCollection
 from uploader.data_processor import DataProcessor
-import config.settings as settings
 
 class CollectionUploader(BaseUploader):
     """Uploader for collection data."""
