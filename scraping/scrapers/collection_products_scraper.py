@@ -15,12 +15,14 @@ class CollectionProductsScraper(BaseScraper):
     
     def __init__(self, collections_data: Optional[Dict[str, List[Dict]]] = None):
         super().__init__('collection_products')
-        self.collections_data = collections_data or {}
+        # normalize keys to strings to avoid int/str mismatch when looking up by shop id
+        self.collections_data = {str(k): v for k, v in (collections_data or {}).items()}
         self.max_pages = settings.SCRAPER_CONFIG['max_pages']['collection_products']
     
     def set_collections_data(self, collections_data: Dict[str, List[Dict]]):
         """Set collections data to map against."""
-        self.collections_data = collections_data
+        # Normalize keys to strings so lookups are consistent regardless of id type
+        self.collections_data = {str(k): v for k, v in (collections_data or {}).items()}
     
     def scrape_single(self, shop_data: Dict[str, Any]) -> List[Dict[str, Any]]:
         """Scrape collection-product relationships for a single shop."""
@@ -31,13 +33,14 @@ class CollectionProductsScraper(BaseScraper):
             self.logger.error(f"Invalid shop data: {shop_data}")
             return []
         
-        if shop_id not in self.collections_data or not self.collections_data[shop_id]:
+        sid = str(shop_id)
+        if sid not in self.collections_data or not self.collections_data[sid]:
             self.logger.warning(f"No collections data available for {shop_id}")
             return []
         
         mappings = []
         
-        for collection in self.collections_data[shop_id]:
+        for collection in self.collections_data[sid]:
             collection_id = collection.get('id')
             handle = collection.get('handle')
             
@@ -48,7 +51,7 @@ class CollectionProductsScraper(BaseScraper):
                 continue
             
             collection_mappings = self._fetch_collection_products(
-                base_url, shop_id, str(collection_id), handle
+                base_url, sid, str(collection_id), handle
             )
             mappings.extend(collection_mappings)
         
