@@ -55,13 +55,53 @@ class SizeGroupProcessor:
                 id_val = unknown_group[0].get("id")
                 if id_val is not None:
                     self.unknown_size_group_id = str(id_val)
+        # Build a cached, sorted list of (size_lower, id) tuples for matching
+        try:
+            cleaned = []
+            for sg in self.size_groups:
+                size_val = sg.get('size')
+                sid = sg.get('id')
+                if size_val and sid is not None:
+                    s = str(size_val).strip()
+                    if s:
+                        cleaned.append((s.lower(), str(sid)))
+
+            # Sort by length descending so longer (more specific) sizes match first
+            self._sorted_size_groups = sorted(cleaned, key=lambda x: len(x[0]), reverse=True)
+            processor_logger.info(f"Cached {len(self._sorted_size_groups)} size groups for matching")
+            if self._sorted_size_groups:
+                sample_count = min(10, len(self._sorted_size_groups))
+                sample = ", ".join([f"'{s}'->{i}" for s, i in self._sorted_size_groups[:sample_count]])
+                processor_logger.debug(f"Sample size groups: {sample}")
+        except Exception:
+            self._sorted_size_groups = []
     def match_size_group(self, variant_title: Optional[str]) -> Optional[str]:
         """Match variant title to size group."""
         title = (variant_title or "").strip()
         if not title:
             return self.unknown_size_group_id
-        
-        # Sort size groups by length (longest first) for more specific matches
+        import re
+
+        title_lower = title.lower()
+
+        # If no size groups loaded, return Unknown
+        if not getattr(self, '_sorted_size_groups', None):
+            return self.unknown_size_group_id
+
+        # Try to match each size group using word boundaries to avoid partial matches
+        for size_str, sid in self._sorted_size_groups:
+            # exact word match (case-insensitive)
+            try:
+                pattern = r"\b" + re.escape(size_str) + r"\b"
+                if re.search(pattern, title_lower):
+                    return sid
+            except re.error:
+                # fallback to substring match if regex invalid for some reason
+                if size_str in title_lower:
+                    return sid
+
+        # No match — use Unknown group id
+        return self.unknown_size_group_id
     def process_variants(self, batch_size: int = 100) -> Dict[str, int]:
         """Process variants in batches and assign size_group_id when matched."""
         total_processed = 0
@@ -79,8 +119,26 @@ class SizeGroupProcessor:
             if not variants:
                 processor_logger.info("No more variants to process")
                 break
-
             batch_count += 1
+            processor_logger.info(f"Processing batch {batch_count}: fetched {len(variants)} variants")
+
+            # Log a sample of variants and the computed size_group mapping for quick debugging
+            try:
+                sample_n = min(10, len(variants))
+                for v in variants[:sample_n]:
+                    if not isinstance(v, dict):
+                        continue
+                    raw_title = v.get('title')
+                    title = str(raw_title) if raw_title is not None else ""
+                    try:
+                        mapped = self.match_size_group(title)
+                    except Exception as e:
+                        mapped = None
+                        processor_logger.debug(f"Error matching variant id={v.get('id')}: {e}")
+                    processor_logger.debug(f"Sample variant id={v.get('id')} title='{title}' => size_group_id={mapped}")
+            except Exception:
+                # Don't fail processing due to logging
+                pass
             updates = []
 
             for variant in variants:
