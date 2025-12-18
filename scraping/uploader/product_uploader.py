@@ -176,18 +176,22 @@ class ProductUploader(BaseUploader):
         try:
             with open(filepath, 'r', encoding='utf-8') as f:
                 products = json.load(f)
+            
             product_ids = []
-            # Collect all unique shop URLs from products that are missing shop_id
+            
+            # Collect shop URLs only for products missing numeric shop_id
             shop_urls = set()
             for product in products:
-                # Prefer existing shop_id if present
-                existing_shop_id = product.get('shop_id')
-                if existing_shop_id is not None and (isinstance(existing_shop_id, int) or (isinstance(existing_shop_id, str) and str(existing_shop_id).isdigit())):
+                raw_shop_id = product.get('shop_id')
+                # Skip if already has valid numeric shop_id
+                if raw_shop_id is not None and (isinstance(raw_shop_id, int) or (isinstance(raw_shop_id, str) and str(raw_shop_id).strip().isdigit())):
                     continue
+                # Need to look up shop_id by URL
                 url = product.get("product_url") or product.get("shop_url") or product.get("url")
                 if url:
                     shop_urls.add(url)
-            # Query DB for shop url -> id mapping
+            
+            # Query DB for shop url -> id mapping (only if needed)
             url_to_id = {}
             if shop_urls:
                 def do_select(client):
@@ -196,40 +200,61 @@ class ProductUploader(BaseUploader):
                 if result and hasattr(result, 'data'):
                     for row in result.data:
                         url_to_id[row['url']] = row['id']
-            # Process all products, replacing shop_id with DB id
+            
+            # Process all products
             self.processor.collections = {k: [] for k in self.processor.collections}
+            
             for product in products:
-                # Use existing shop_id when available
                 raw_shop_id = product.get('shop_id')
                 db_id = None
-                if raw_shop_id is not None and (isinstance(raw_shop_id, int) or (isinstance(raw_shop_id, str) and str(raw_shop_id).isdigit())):
+                
+                # Trust numeric shop_id if present
+                if raw_shop_id is not None and (isinstance(raw_shop_id, int) or (isinstance(raw_shop_id, str) and str(raw_shop_id).strip().isdigit())):
                     db_id = int(raw_shop_id)
+                    self.logger.debug(f"Using numeric shop_id={db_id} for product {product.get('id')}")
                 else:
+                    # Fall back to URL lookup
                     url = product.get("product_url") or product.get("shop_url") or product.get("url")
                     db_id = url_to_id.get(url)
+                    if db_id:
+                        self.logger.debug(f"Resolved shop_id={db_id} from URL for product {product.get('id')}")
 
                 if not db_id:
-                    self.logger.warning(f"No shop id found for url {product.get('product_url') or product.get('shop_url') or product.get('url')} in product {product.get('id')}")
+                    self.logger.warning(f"No valid shop_id found for product {product.get('id')} (raw_shop_id={raw_shop_id})")
                     continue
+                
                 product["shop_id"] = db_id
                 product_id = self.processor.process_product(product)
                 if product_id:
                     product_ids.append(product_id)
+            
             if self.processor.collections.get("products"):
+                # Debug: log count and a small sample before attempting upsert
+                try:
+                    sample_count = min(3, len(self.processor.collections.get("products", [])))
+                    self.logger.info(
+                        f"Preparing to upsert {len(self.processor.collections['products'])} products. Sample ids: {[p.get('id') for p in self.processor.collections['products'][:sample_count]]}"
+                    )
+                except Exception:
+                    # don't fail processing for logging issues
+                    pass
+
                 if self.supabase.bulk_upsert(
                     "products",
                     self.processor.collections["products"],
                     on_conflict="id"
                 ):
-                    self.logger.info(f"Uploaded products from {filepath.name}")
+                    self.logger.info(f"Uploaded {len(self.processor.collections['products'])} products from {filepath.name}")
                 else:
                     self.logger.error(f"Failed to upload products from {filepath.name}")
                     return False
             else:
                 self.logger.warning(f"No products to upload from {filepath.name}")
                 return True
+            
             # Upload related tables in parallel
             related_tables = ['options', 'variants', 'images', 'offers']
+            
             def upload_table(table_name: str, data: List[Dict]) -> bool:
                 if data:
                     on_conflict = "id"
@@ -241,6 +266,7 @@ class ProductUploader(BaseUploader):
                         on_conflict=on_conflict
                     )
                 return True
+            
             with ThreadPoolExecutor(max_workers=4) as executor:
                 futures = []
                 for table in related_tables:
@@ -252,6 +278,7 @@ class ProductUploader(BaseUploader):
                                 self.processor.collections[table]
                             )
                         )
+                
                 for future in as_completed(futures):
                     try:
                         if not future.result():
@@ -260,14 +287,17 @@ class ProductUploader(BaseUploader):
                     except Exception as e:
                         self.logger.error(f"Error in parallel upload: {e}")
                         return False
+            
             # Clean up stale products for this shop
             shop_ids = {p["shop_id"] for p in self.processor.collections["products"]}
             if len(shop_ids) == 1:
                 shop_id = list(shop_ids)[0]
                 self.cleanup_stale_records(product_ids, shop_id)
+            
             self.file_manager.move_to_processed(filepath)
             self.logger.info(f"Successfully processed {filepath.name}")
             return True
+            
         except Exception as e:
             self.logger.error(f"Error processing {filepath.name}: {e}")
             return False
