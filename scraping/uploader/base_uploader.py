@@ -65,12 +65,29 @@ class BaseUploader(ABC):
         try:
             with open(filepath, 'r', encoding='utf-8') as f:
                 raw_data = json.load(f)
-            
             # Transform data
             transformed_data = self.transform_data(raw_data)
+
+            # Determine which raw records were processed (by id when available)
+            processed_ids = set()
+            for rec in transformed_data:
+                rid = rec.get('id') if isinstance(rec, dict) else None
+                if rid is not None:
+                    processed_ids.add(str(rid).strip())
+
+            def _is_processed(raw_rec: Any) -> bool:
+                # Prefer matching by explicit id when possible
+                rid = raw_rec.get('id') if isinstance(raw_rec, dict) else None
+                if rid is not None:
+                    return str(rid).strip() in processed_ids
+                # If original record lacks id, conservatively treat it as unprocessed
+                return False
+
+            unprocessed = [r for r in raw_data if not _is_processed(r)]
+
+            # If no records were transformed, keep file in raw so it can be retried
             if not transformed_data:
-                self.logger.warning(f"No valid data in {filepath.name}")
-                self.file_manager.move_to_processed(filepath)
+                self.logger.warning(f"No valid data in {filepath.name}; leaving file in raw for retry")
                 return False
 
             # Debug: log count and a small sample before attempting upsert
@@ -104,13 +121,41 @@ class BaseUploader(ABC):
                 data=transformed_data,
                 on_conflict=on_conflict
             )
-            
+
             if success:
-                self.file_manager.move_to_processed(filepath)
-                self.logger.info(f"Successfully processed {filepath.name}")
+                # Write processed subset to processed/<entity>/<filename>
+                try:
+                    processed_root = self.file_manager.data_dirs['processed']
+                    target_dir = processed_root / (self.entity_type or self.get_table_name())
+                    target_dir.mkdir(parents=True, exist_ok=True)
+                    processed_path = target_dir / filepath.name
+                    with open(processed_path, 'w', encoding='utf-8') as pf:
+                        json.dump(transformed_data, pf, indent=2, ensure_ascii=False)
+                except Exception as e:
+                    self.logger.error(f"Failed to write processed file for {filepath.name}: {e}")
+
+                # If there are unprocessed records, overwrite the raw file so they remain for retry
+                try:
+                    if unprocessed:
+                        with open(filepath, 'w', encoding='utf-8') as rf:
+                            json.dump(unprocessed, rf, indent=2, ensure_ascii=False)
+                        self.logger.info(f"Left {len(unprocessed)} unprocessed records in {filepath.name} for retry")
+                    else:
+                        # All records processed; remove original raw file
+                        try:
+                            filepath.unlink()
+                        except Exception:
+                            # Fallback to moving if unlink fails
+                            self.file_manager.move_to_processed(filepath)
+
+                except Exception as e:
+                    self.logger.error(f"Failed while updating raw/processed files for {filepath.name}: {e}")
+
+                self.logger.info(f"Successfully processed {len(transformed_data)} records from {filepath.name}")
                 return True
             else:
                 self.logger.error(f"Failed to upload {filepath.name}")
+                # Leave raw file untouched so it can be retried
                 return False
                 
         except Exception as e:
