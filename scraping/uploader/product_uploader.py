@@ -263,9 +263,10 @@ class ProductUploader(BaseUploader):
             
             def upload_table(table_name: str, data: List[Dict]) -> bool:
                 if data:
+                    # Use primary key `id` for conflict target. Avoid multi-column
+                    # ON CONFLICT targets that don't have a unique constraint
+                    # in the DB (the `variants` table only has PK on `id`).
                     on_conflict = "id"
-                    if table_name == "variants":
-                        on_conflict = "id,variant_type"
                     return self.supabase.bulk_upsert(
                         table_name=table_name,
                         data=data,
