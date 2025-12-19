@@ -216,6 +216,22 @@ class PipelineOrchestrator:
         mapping_upload_results = self.collection_product_uploader.process_all()
         self.results['uploading']['steps']['collection_products'] = mapping_upload_results
         
+        # After uploading all entity data, refresh the products_with_details
+        # aggregated view/table in Supabase so any derived fields are up-to-date.
+        try:
+            def do_refresh(client):
+                # Call the Postgres RPC function; it may return null or a result row
+                return client.rpc('refresh_products_with_details').execute()
+
+            sup = SupabaseClient()
+            rpc_result = sup.safe_execute(do_refresh, 'Refresh products_with_details', max_retries=3)
+            if rpc_result and hasattr(rpc_result, 'data'):
+                uploader_logger.info('Called RPC `refresh_products_with_details` successfully')
+            else:
+                uploader_logger.warning('RPC `refresh_products_with_details` did not return expected data or failed')
+        except Exception as e:
+            uploader_logger.error(f'Error calling RPC refresh_products_with_details: {e}')
+
         uploader_logger.info("\n" + "="*60)
         uploader_logger.info("UPLOAD PIPELINE COMPLETE")
         uploader_logger.info("="*60)
