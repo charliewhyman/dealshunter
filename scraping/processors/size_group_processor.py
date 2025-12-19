@@ -9,6 +9,7 @@ from dotenv import load_dotenv
 
 from core.logger import processor_logger
 import config.settings as settings
+from uploader.supabase_client import SupabaseClient
 
 class SizeGroupProcessor:
     """Process size groups for variants."""
@@ -152,22 +153,37 @@ class SizeGroupProcessor:
                     "size_group_id": size_group_id
                 })
 
-            # Update variants in batch
-            try:
-                for update in updates:
-                    self.supabase.table("variants")\
-                        .update({"size_group_id": update["size_group_id"]})\
-                        .eq("id", update["id"]).execute()
+            # Update variants in batch using bulk upsert to avoid many small HTTP/2 requests
+            if updates:
+                try:
+                    sup = SupabaseClient()
+                    # Use bulk_upsert which will perform batched upserts using a fresh client per attempt
+                    success = sup.bulk_upsert("variants", updates, batch_size=len(updates), on_conflict="id", retries=3)
 
-                total_processed += len(updates)
-                processor_logger.info(
-                    f"Batch {batch_count}: Updated {len(updates)} variants. "
-                    f"Total: {total_processed}"
-                )
+                    if success:
+                        total_processed += len(updates)
+                        processor_logger.info(
+                            f"Batch {batch_count}: Updated {len(updates)} variants. "
+                            f"Total: {total_processed}"
+                        )
+                    else:
+                        # Fallback: attempt per-record update with fresh client per request
+                        processor_logger.error(f"Batch {batch_count}: bulk_upsert failed; falling back to individual updates")
+                        try:
+                            for update in updates:
+                                client = sup.get_fresh_client()
+                                client.table("variants").update({"size_group_id": update["size_group_id"]}).eq("id", update["id"]).execute()
 
-            except Exception as e:
-                processor_logger.error(f"Error updating batch {batch_count}: {e}")
-                # Continue with next batch
+                            total_processed += len(updates)
+                            processor_logger.info(
+                                f"Batch {batch_count}: Updated {len(updates)} variants (fallback). Total: {total_processed}"
+                            )
+                        except Exception as e:
+                            processor_logger.error(f"Fallback per-record update also failed for batch {batch_count}: {e}")
+
+                except Exception as e:
+                    processor_logger.error(f"Error updating batch {batch_count}: {e}")
+                    # Continue with next batch
 
         processor_logger.info(f"Completed! Total variants processed: {total_processed}")
 
