@@ -72,11 +72,33 @@ class BaseUploader(ABC):
                 self.logger.warning(f"No valid data in {filepath.name}")
                 self.file_manager.move_to_processed(filepath)
                 return False
-            
+
+            # Debug: log count and a small sample before attempting upsert
+            try:
+                sample_count = min(3, len(transformed_data))
+                # Build a small sample representation depending on record shape
+                sample_items = []
+                for rec in transformed_data[:sample_count]:
+                    if isinstance(rec, dict):
+                        # Prefer id, else first two keys
+                        if 'id' in rec:
+                            sample_items.append(rec.get('id'))
+                        else:
+                            keys = list(rec.keys())[:2]
+                            sample_items.append({k: rec.get(k) for k in keys})
+                    else:
+                        sample_items.append(str(rec))
+
+                self.logger.info(
+                    f"Preparing to upsert {len(transformed_data)} records to {self.get_table_name()}. Sample: {sample_items}"
+                )
+            except Exception:
+                pass
+
             # Upload to database
             table_name = self.get_table_name()
             on_conflict = self.get_on_conflict()
-            
+
             success = self.supabase.bulk_upsert(
                 table_name=table_name,
                 data=transformed_data,
@@ -118,14 +140,21 @@ class BaseUploader(ABC):
                 self.logger.warning(f"Could not fetch existing {self.entity_type}")
                 return False
             
-            existing_ids = {item['id'] for item in result.data}
-            to_delete = list(existing_ids - set(current_ids))
+            # Normalize IDs from DB and current_ids to strings to avoid
+            # int/str mismatches that can cause unintended deletions.
+            existing_ids = {str(item.get('id')).strip() for item in result.data if item.get('id') is not None}
+            current_ids_str = {str(cid).strip() for cid in current_ids}
+            to_delete = list(existing_ids - current_ids_str)
             
             if not to_delete:
                 self.logger.info(f"No stale {self.entity_type} to delete")
                 return True
-            
-            self.logger.info(f"Deleting {len(to_delete)} stale {self.entity_type}")
+            # Log a small sample of IDs to be deleted for diagnostics
+            try:
+                sample_del = to_delete[:5]
+                self.logger.info(f"Deleting {len(to_delete)} stale {self.entity_type}. Sample: {sample_del}")
+            except Exception:
+                self.logger.info(f"Deleting {len(to_delete)} stale {self.entity_type}")
             
             # Delete stale records
             return self.supabase.bulk_delete(table_name, to_delete)

@@ -23,18 +23,19 @@ class CollectionUploader(BaseUploader):
     
     def transform_data(self, raw_data: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
         """Transform raw collection data, resolving shop_id by querying DB for shop url."""
-        # Collect all unique shop URLs from collections that are missing shop_id
+        # Collect all unique shop URLs from collections that are missing numeric shop_id
         shop_urls = set()
         for collection in raw_data:
             # Prefer an existing shop_id if present
             existing_shop_id = collection.get('shop_id')
-            if existing_shop_id is not None and (isinstance(existing_shop_id, int) or (isinstance(existing_shop_id, str) and existing_shop_id.isdigit())):
-                # already have shop id; skip URL collection for this item
+            if existing_shop_id is not None and (isinstance(existing_shop_id, int) or (isinstance(existing_shop_id, str) and str(existing_shop_id).strip().isdigit())):
+                # Already have valid numeric shop_id; skip URL collection for this item
                 continue
             url = collection.get("shop_url") or collection.get("url") or None
             if url:
                 shop_urls.add(url)
-        # Query DB for shop url -> id mapping
+        
+        # Query DB for shop url -> id mapping (only if needed)
         url_to_id = {}
         if shop_urls:
             def do_select(client):
@@ -43,22 +44,30 @@ class CollectionUploader(BaseUploader):
             if result and hasattr(result, 'data'):
                 for row in result.data:
                     url_to_id[row['url']] = row['id']
+        
         transformed = []
         for collection in raw_data:
-            # Use existing shop_id when available
             raw_shop_id = collection.get('shop_id')
             db_id = None
-            if raw_shop_id is not None and (isinstance(raw_shop_id, int) or (isinstance(raw_shop_id, str) and str(raw_shop_id).isdigit())):
+            
+            # Trust numeric shop_id if present
+            if raw_shop_id is not None and (isinstance(raw_shop_id, int) or (isinstance(raw_shop_id, str) and str(raw_shop_id).strip().isdigit())):
                 db_id = int(raw_shop_id)
+                self.logger.debug(f"Using numeric shop_id={db_id} for collection {collection.get('id')}")
             else:
+                # Fall back to URL lookup
                 url = collection.get("shop_url") or collection.get("url") or None
                 db_id = url_to_id.get(url)
+                if db_id:
+                    self.logger.debug(f"Resolved shop_id={db_id} from URL for collection {collection.get('id')}")
 
             if not db_id:
-                self.logger.warning(f"No shop id found for url {collection.get('shop_url') or collection.get('url')} in collection {collection.get('id')}")
+                self.logger.warning(f"No valid shop_id found for collection {collection.get('id')} (raw_shop_id={raw_shop_id})")
                 continue
+            
             # Ensure we set shop_id for downstream processing
             collection["shop_id"] = db_id
+            
             safe_item = {
                 'title': collection.get('title', ''),
                 'handle': collection.get('handle', ''),
@@ -69,13 +78,14 @@ class CollectionUploader(BaseUploader):
                 'published_at_external': collection.get('published_at'),
                 'updated_at_external': collection.get('updated_at')
             }
+            
             raw_id = collection.get('id')
-            if isinstance(raw_id, int) or (isinstance(raw_id, str) and raw_id.isdigit()):
-                safe_item['id'] = int(raw_id)
+            if isinstance(raw_id, int) or (isinstance(raw_id, str) and str(raw_id).strip().isdigit()):
+                safe_item['id'] = str(raw_id).strip()
+            
             transformed.append(safe_item)
+        
         return transformed
-
-    # _build_shop_id_mapping is no longer needed; mapping is direct by id
     
     def process_all(self) -> Dict[str, Any]:
         """Process all collection files."""

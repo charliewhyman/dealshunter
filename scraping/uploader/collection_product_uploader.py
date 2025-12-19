@@ -3,7 +3,7 @@ Collection-product uploader.
 """
 
 import json
-from typing import List, Dict, Any, Set, Tuple, Optional
+from typing import List, Dict, Any, Tuple, Optional
 from pathlib import Path
 
 from uploader.base_uploader import BaseUploader
@@ -17,7 +17,6 @@ class CollectionProductUploader(BaseUploader):
     def __init__(self):
         super().__init__('collection_products')
         self.supabase = SupabaseClient()
-        self.valid_product_ids = self._fetch_existing_product_ids()
         self.current_links = []
     
     def get_table_name(self) -> str:
@@ -31,38 +30,20 @@ class CollectionProductUploader(BaseUploader):
         transformed = []
         
         for item in raw_data:
-            product_id = str(item.get('product_id', ''))
-            collection_id = str(item.get('collection_id', ''))
+            product_id = str(item.get('product_id', '')).strip()
+            collection_id = str(item.get('collection_id', '')).strip()
             
-            if product_id and collection_id and product_id in self.valid_product_ids:
-                mapping = DbCollectionProduct(
-                    product_id=product_id,
-                    collection_id=collection_id
-                )
-                transformed.append(mapping.to_dict())
-                self.current_links.append((product_id, collection_id))
+            if not product_id or not collection_id:
+                continue
+            
+            mapping = DbCollectionProduct(
+                product_id=product_id,
+                collection_id=collection_id
+            )
+            transformed.append(mapping.to_dict())
+            self.current_links.append((product_id, collection_id))
         
         return transformed
-    
-    def _fetch_existing_product_ids(self) -> Set[str]:
-        """Fetch valid product IDs from database."""
-        try:
-            def do_select(client):
-                return client.table("products").select("id").execute()
-            
-            result = self.supabase.safe_execute(
-                do_select,
-                "Fetch existing product IDs",
-                max_retries=3
-            )
-            
-            if result and hasattr(result, 'data'):
-                return {row["id"] for row in result.data}
-            return set()
-            
-        except Exception as e:
-            uploader_logger.error(f"Failed to fetch product IDs: {e}")
-            return set()
     
     def process_file(self, filepath: Path) -> bool:
         """Process a single collection-product file."""
@@ -71,17 +52,26 @@ class CollectionProductUploader(BaseUploader):
         try:
             with open(filepath, 'r', encoding='utf-8') as f:
                 raw_data = json.load(f)
-            
+
             # Reset current links for this file
             self.current_links = []
             transformed_data = self.transform_data(raw_data)
-            
+
             if not transformed_data:
                 self.logger.warning(f"No valid data in {filepath.name}")
-                self.file_manager.move_to_processed(filepath)
                 return False
             
-            # Upload to database
+            # Diagnostic: log count and sample of mappings before upload
+            try:
+                sample_count = min(3, len(transformed_data))
+                sample = transformed_data[:sample_count]
+                self.logger.info(
+                    f"Preparing to upsert {len(transformed_data)} links to {self.get_table_name()}. Sample: {sample}"
+                )
+            except Exception:
+                pass
+
+            # Upload to database - let foreign key constraints handle validation
             success = self.supabase.bulk_upsert(
                 table_name=self.get_table_name(),
                 data=transformed_data,
@@ -90,7 +80,7 @@ class CollectionProductUploader(BaseUploader):
             
             if success:
                 self.file_manager.move_to_processed(filepath)
-                self.logger.info(f"Successfully processed {filepath.name}")
+                self.logger.info(f"Successfully processed {filepath.name} ({len(transformed_data)} links)")
                 return True
             else:
                 self.logger.error(f"Failed to upload {filepath.name}")
@@ -119,14 +109,35 @@ class CollectionProductUploader(BaseUploader):
                 "Fetch existing collection-product links",
                 max_retries=3
             )
-            
-            if not result or not hasattr(result, 'data'):
+            if not result:
                 self.logger.warning("Could not fetch existing links")
                 return False
-            
-            existing_links = {(row["product_id"], row["collection_id"]) for row in result.data}
-            current_links_set = set(current_links)
+
+            data = None
+            if isinstance(result, dict):
+                data = result.get('data')
+            elif hasattr(result, 'data'):
+                data = result.data
+
+            if not data:
+                self.logger.warning("Could not fetch existing links")
+                return False
+
+            # Normalize to string tuples to match `current_links` format
+            existing_links = {(str(row["product_id"]).strip(), str(row["collection_id"]).strip()) for row in data}
+            # Ensure current_links are normalized to string tuples as well
+            current_links_set = {(str(prod).strip(), str(col).strip()) for prod, col in current_links}
             to_delete = list(existing_links - current_links_set)
+
+            # Diagnostic: if there are deletions, log a small sample to aid debugging
+            if to_delete:
+                try:
+                    sample_del = to_delete[:5]
+                    self.logger.info(
+                        f"Collection-product cleanup: {len(to_delete)} links to delete. Sample: {sample_del}"
+                    )
+                except Exception:
+                    pass
             
             if not to_delete:
                 self.logger.info("No stale links to delete")
