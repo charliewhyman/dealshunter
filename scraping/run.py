@@ -17,6 +17,7 @@ from orchestrator.main import PipelineOrchestrator
 from processors.size_group_processor import SizeGroupProcessor
 import processors.taxonomy_processor as taxonomy_processor
 import config.settings as settings
+from uploader.supabase_client import SupabaseClient
 
 def setup_environment():
     """Setup environment and logging."""
@@ -353,6 +354,10 @@ def main():
                        help="Skip size group processing")
     parser.add_argument("--skip-taxonomy", action="store_true",
                        help="Skip taxonomy mapping")
+
+    # RPC helper: refresh aggregated products view/table
+    parser.add_argument("--refresh-products-with-details", action="store_true",
+                       help="Run only the RPC `refresh_products_with_details` and exit")
     
     # Explicit processing-only flags (used when --mode process)
     parser.add_argument("--process-size-groups", action="store_true",
@@ -393,6 +398,35 @@ def main():
     
     # Setup environment
     setup_environment()
+
+    # If requested, run only the RPC to refresh the `products_with_details`
+    # aggregated table/view and exit immediately.
+    if getattr(args, 'refresh_products_with_details', False):
+        print("\nRefreshing `products_with_details` via RPC...")
+        try:
+            sup = SupabaseClient()
+
+            def do_refresh(client):
+                return client.rpc('refresh_products_with_details').execute()
+
+            rpc_result = sup.safe_execute(do_refresh, 'Refresh products_with_details', max_retries=3)
+            if rpc_result and hasattr(rpc_result, 'data'):
+                print("RPC `refresh_products_with_details` completed successfully.")
+                # Save a simple result file for visibility in DATA_DIR
+                try:
+                    out = settings.DATA_DIR / f"rpc_refresh_products_with_details_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json"
+                    with open(out, 'w', encoding='utf-8') as fh:
+                        json.dump({'status': 'success', 'data': getattr(rpc_result, 'data')}, fh, indent=2, ensure_ascii=False)
+                    print(f"Result saved to: {out}")
+                except Exception:
+                    pass
+                sys.exit(0)
+            else:
+                print("RPC `refresh_products_with_details` failed or returned unexpected result. Check logs.")
+                sys.exit(1)
+        except Exception as e:
+            print(f"Error calling RPC: {e}")
+            sys.exit(1)
     
     # Run based on mode
     if args.mode == "scrape":
