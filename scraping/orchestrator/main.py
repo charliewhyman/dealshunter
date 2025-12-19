@@ -221,7 +221,7 @@ class PipelineOrchestrator:
         try:
             def do_refresh(client):
                 # Call the Postgres RPC function; it may return null or a result row
-                return client.rpc('refresh_products_with_details').execute()
+                return client.rpc('refresh_products_with_details_incremental').execute()
 
             sup = SupabaseClient()
             rpc_result = sup.safe_execute(do_refresh, 'Refresh products_with_details', max_retries=3)
