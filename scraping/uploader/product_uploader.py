@@ -72,17 +72,23 @@ class ProductProcessor:
                 variant_data = {
                     "id": str(variant.get("id", "")),
                     "product_id": product_id,
-                    "variant_type": variant.get("variant_type"),
                     "title": variant.get("title", ""),
-                    "price": self.processor.clean_numeric(variant.get("price")),
-                    "compare_at_price": self.processor.clean_numeric(variant.get("compare_at_price")),
+                    "option1": variant.get("option1"),
+                    "option2": variant.get("option2"),
+                    "option3": variant.get("option3"),
                     "sku": variant.get("sku", ""),
-                    "inventory_quantity": variant.get("inventory_quantity"),
                     "requires_shipping": variant.get("requires_shipping"),
                     "taxable": variant.get("taxable"),
+                    "featured_image": (variant.get("featured_image") or (variant.get("image") and variant.get("image").get("src"))),
                     "available": self.processor.clean_boolean(variant.get("available")),
+                    "price": self.processor.clean_numeric(variant.get("price")),
+                    "grams": variant.get("grams"),
+                    "compare_at_price": self.processor.clean_numeric(variant.get("compare_at_price")),
+                    "position": variant.get("position"),
+                    "inventory_quantity": variant.get("inventory_quantity"),
                     "created_at_external": variant.get("created_at"),
-                    "updated_at": variant.get("updated_at"),
+                    "updated_at_external": variant.get("updated_at"),
+                    "variant_type": variant.get("variant_type")
                 }
                 self.collections['variants'].append(variant_data)
             

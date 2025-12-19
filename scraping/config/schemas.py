@@ -52,10 +52,16 @@ class ProductData(BaseEntity):
     image_url: Optional[str] = None
     published_at: Optional[str] = None
     updated_at: Optional[str] = None
+    variants: Optional[List[dict]] = None
+    images: Optional[List[dict]] = None
     
     def __post_init__(self):
         if self.tags is None:
             self.tags = []
+        if self.variants is None:
+            self.variants = []
+        if self.images is None:
+            self.images = []
 
 @dataclass
 class CollectionProductMapping(BaseEntity):

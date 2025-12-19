@@ -61,23 +61,7 @@ class ProductScraper(BaseScraper):
                 
                 for product in data["products"]:
                     if handle := product.get("handle"):
-                        # Get first image if available
-                        image_url = None
-                        if product.get("images") and len(product["images"]) > 0:
-                            image_url = product["images"][0].get("src")
-                        
-                        # Get variants for pricing
-                        variants = product.get("variants", [])
-                        price = None
-                        compare_at_price = None
-                        available = False
-                        
-                        if variants:
-                            first_variant = variants[0]
-                            price = first_variant.get("price")
-                            compare_at_price = first_variant.get("compare_at_price")
-                            available = first_variant.get("available", False)
-                        
+                        # Include full variants/images/options payload so uploader can process them
                         product_data = ProductData(
                             shop_id=shop_id,
                             scraped_at=datetime.now().isoformat(),
@@ -89,12 +73,14 @@ class ProductScraper(BaseScraper):
                             product_type=product.get("product_type"),
                             vendor=product.get("vendor"),
                             tags=product.get("tags", []),
-                            price=price,
-                            compare_at_price=compare_at_price,
-                            available=available,
-                            image_url=image_url,
+                            price=None,
+                            compare_at_price=None,
+                            available=None,
+                            image_url=None,
                             published_at=product.get("published_at"),
-                            updated_at=product.get("updated_at")
+                            updated_at=product.get("updated_at"),
+                            variants=product.get("variants", []),
+                            images=product.get("images", [])
                         )
                         products.append(product_data.to_dict())
                 
