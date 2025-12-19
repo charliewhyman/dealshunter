@@ -11,6 +11,7 @@ from datetime import datetime, timezone
 from typing import List, Dict, Any, Optional
 from dotenv import load_dotenv
 from supabase import create_client
+from uploader.supabase_client import SupabaseClient
 from sentence_transformers import SentenceTransformer
 from sklearn.metrics.pairwise import cosine_similarity
 import numpy as np
@@ -453,14 +454,47 @@ class BatchTaxonomyMapper:
                         "taxonomy_mapped_at": datetime.now(timezone.utc).isoformat(),
                     })
                     
-            if updates:
-                self.supabase.table("products_with_details").upsert(updates).execute()
-                match_rate = (len(updates) / len(products)) * 100
-                processor_logger.info(
-                    f"Batch {batch_count}: {len(updates)}/{len(products)} matched "
-                    f"({match_rate:.1f}%) | Total: {self.total_processed}, "
-                    f"Matched: {self.total_matched}"
-                )
+                if updates:
+                    # Try upserting with a safe Supabase client (handles retries).
+                    sup = SupabaseClient()
+
+                    def do_upsert_full(client):
+                        return client.table("products_with_details").upsert(updates).execute()
+
+                    result = sup.safe_execute(do_upsert_full, f"Upsert taxonomy updates batch {batch_count}", max_retries=3)
+
+                    if result and hasattr(result, 'data'):
+                        match_rate = (len(updates) / len(products)) * 100
+                        processor_logger.info(
+                            f"Batch {batch_count}: {len(updates)}/{len(products)} matched "
+                            f"({match_rate:.1f}%) | Total: {self.total_processed}, "
+                            f"Matched: {self.total_matched}"
+                        )
+                    else:
+                        # Likely schema mismatch (missing columns). Try a minimal fallback
+                        processor_logger.warning("Full upsert to products_with_details failed; attempting fallback upsert with minimal columns")
+                        # Prepare fallback updates containing only columns we know exist in products_with_details
+                        fallback_updates = []
+                        for u in updates:
+                            fu = {"id": u.get("id")}
+                            if u.get("taxonomy_path") is not None:
+                                fu["taxonomy_path"] = u.get("taxonomy_path")
+                            if u.get("taxonomy_mapped_at") is not None:
+                                fu["taxonomy_mapped_at"] = u.get("taxonomy_mapped_at")
+                            if len(fu) > 1:
+                                fallback_updates.append(fu)
+
+                        if fallback_updates:
+                            def do_upsert_fallback(client):
+                                return client.table("products_with_details").upsert(fallback_updates).execute()
+
+                            fallback_result = sup.safe_execute(do_upsert_fallback, f"Fallback upsert taxonomy_path/mapped_at batch {batch_count}", max_retries=2)
+                            if fallback_result and hasattr(fallback_result, 'data'):
+                                processor_logger.info(f"Fallback upsert succeeded for batch {batch_count} (taxonomy_path/taxonomy_mapped_at)")
+                            else:
+                                processor_logger.error(f"Fallback upsert also failed for batch {batch_count}; check table schema")
+                        else:
+                            processor_logger.error("No valid fallback updates could be prepared; skipping batch")
             
             self._save_progress()
             batch_count += 1
