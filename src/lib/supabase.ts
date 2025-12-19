@@ -1,5 +1,6 @@
 // src/lib/supabase.ts
 import type { SupabaseClient } from '@supabase/supabase-js';
+import { createClient } from '@supabase/supabase-js';
 
 type ViteEnv = {
   VITE_SUPABASE_URL: string;
@@ -55,9 +56,6 @@ export async function getSupabase(): Promise<SupabaseClientType> {
     console.error(errorMsg);
     throw new Error('Supabase configuration is missing. Check console for details.');
   }
-
-  // Dynamic import with proper typing
-  const { createClient } = await import('@supabase/supabase-js');
 
   client = createClient(supabaseUrl, supabaseKey, {
     auth: {
