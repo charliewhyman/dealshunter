@@ -40,10 +40,12 @@ function ProductCardComponent({ product, pricing, isLcp }: ProductCardProps) {
   const dbSrcSet = firstImageRecord ? (firstImageRecord['srcset'] as string | undefined) : undefined;
   const dbWebpSrcSet = firstImageRecord ? (firstImageRecord['webp_srcset'] as string | undefined) : undefined;
   const dbPlaceholder = firstImageRecord ? (firstImageRecord['placeholder'] as string | undefined) : undefined;
-  const dbThumbnail = firstImageRecord ? (firstImageRecord['thumbnail'] as string | undefined) : undefined;
-  const dbThumbnailWebp = firstImageRecord ? (firstImageRecord['thumbnail_webp'] as string | undefined) : undefined;
   const dbWidth = firstImageRecord ? (firstImageRecord['width'] as number | undefined) : undefined;
   const dbHeight = firstImageRecord ? (firstImageRecord['height'] as number | undefined) : undefined;
+
+  // Choose the best source candidate: prefer DB-produced responsive fallback if present,
+  // otherwise use the productImage (which may be null) converted to undefined when absent.
+  const sourceCandidate = dbFallback || (productImage ?? undefined);
 
   // Helper: build srcset strings for an image URL using common widths.
   // For many CDNs (including Shopify's CDN) adding a `width` query param
@@ -94,10 +96,6 @@ function ProductCardComponent({ product, pricing, isLcp }: ProductCardProps) {
   const { src: responsiveSrc, srcSet: responsiveSrcSet, webpSrcSet } = buildSrcSets(productImage || undefined);
 
   // Decide the best candidate URL to use for building responsive srcsets.
-  // Prefer an explicit thumbnail if available, otherwise fallback to
-  // pipeline responsive fallback or the original image.
-  const sourceCandidate = dbThumbnail || dbFallback || productImage || undefined;
-
   // Build a srcset/webp srcset for the chosen candidate so the browser
   // can request appropriately sized images for the card slot.
   const { src: computedSrc, srcSet: computedSrcSet, webpSrcSet: computedWebpSrcSet } = buildSrcSets(sourceCandidate || undefined);
@@ -107,7 +105,7 @@ function ProductCardComponent({ product, pricing, isLcp }: ProductCardProps) {
   // Prefer any srcsets provided by the DB (pipeline-produced). If none,
   // fall back to the computed srcset we just built from the candidate URL.
   const finalSrcSet = dbSrcSet || computedSrcSet || responsiveSrcSet;
-  const finalWebpSrcSet = dbThumbnailWebp || dbWebpSrcSet || computedWebpSrcSet || webpSrcSet;
+  const finalWebpSrcSet = dbWebpSrcSet || computedWebpSrcSet || webpSrcSet;
 
   // Helpful sizes attribute to hint the browser about the image slot size.
   const sizesAttr = '(max-width: 640px) 50vw, 316px';

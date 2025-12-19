@@ -76,8 +76,6 @@ class DataProcessor:
             variants['srcset'] = ', '.join(f"{variants['src_' + str(w)]} {w}w" for w in sizes)
             variants['webp_srcset'] = ', '.join(f"{variants['src_webp_' + str(w)]} {w}w" for w in sizes)
             variants['fallback'] = variants.get('src_640') or url
-            variants['thumbnail'] = variants.get('src_320') or variants['fallback']
-            variants['thumbnail_webp'] = variants.get('src_webp_320') or variants.get('webp_srcset')
             
             return variants
             
