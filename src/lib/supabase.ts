@@ -38,13 +38,6 @@ export async function getSupabase(): Promise<SupabaseClientType> {
 
   const { supabaseUrl, supabaseKey } = readEnv();
 
-  console.log('Supabase Config Check:', {
-    hasUrl: !!supabaseUrl,
-    hasKey: !!supabaseKey,
-    url: supabaseUrl ? `${supabaseUrl.substring(0, 20)}...` : 'none',
-    key: supabaseKey ? `${supabaseKey.substring(0, 10)}...` : 'none',
-  });
-
   if (!supabaseUrl || !supabaseKey) {
     const errorMsg = `Supabase configuration missing. 
         URL: ${supabaseUrl ? '✓' : '✗'} 
