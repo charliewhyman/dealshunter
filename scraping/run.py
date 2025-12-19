@@ -43,6 +43,24 @@ def run_scraping_only(args):
         orchestrator.logger.error("No shops to process")
         return {}
 
+    # Support filtering by --shop-id (can be comma-separated list of ids or urls)
+    if getattr(args, 'shop_id', None):
+        raw_vals = [v.strip() for v in args.shop_id.split(',') if v.strip()]
+        filtered = []
+        for s in shops:
+            sid = str(s.get('id') or s.get('shop_id', '')).strip()
+            url = (s.get('url') or '').strip()
+            for v in raw_vals:
+                if not v:
+                    continue
+                if v == sid or v == url:
+                    filtered.append(s)
+                    break
+        if not filtered:
+            orchestrator.logger.error(f"No matching shops found for --shop-id={args.shop_id}")
+            return {}
+        shops = filtered
+
     # If no specific scraper flags provided, run the full scraping pipeline
     flags = [getattr(args, 'scrape_shops', False), getattr(args, 'scrape_collections', False),
              getattr(args, 'scrape_products', False), getattr(args, 'scrape_collection_products', False)]
@@ -154,24 +172,48 @@ def run_upload_only(args):
         'steps': {}
     }
 
+    # Helper to process only files for given shop ids when provided
+    def _process_entity_for_shop(uploader, entity_name: str):
+        if getattr(args, 'shop_id', None):
+            shop_vals = [v.strip() for v in args.shop_id.split(',') if v.strip()]
+            files = uploader.file_manager.get_raw_files(entity_name)
+            # Filter filenames that start with one of the shop tokens followed by _{entity}_
+            matched = [f for f in files if any(f.name.startswith(f"{token}_{entity_name}_") for token in shop_vals)]
+            processed = 0
+            failed = 0
+            total = len(matched)
+            for fp in matched:
+                ok = uploader.process_file(fp)
+                if ok:
+                    processed += 1
+                else:
+                    failed += 1
+            return {
+                'processed': processed,
+                'failed': failed,
+                'total_files': total
+            }
+        else:
+            return uploader.process_all()
+
     if getattr(args, 'upload_shops', False):
         print("\nStep: Uploading shops...")
-        shop_results = orchestrator.shop_uploader.process_all()
+        shop_results = _process_entity_for_shop(orchestrator.shop_uploader, 'shops')
         results['steps']['shops'] = shop_results
 
     if getattr(args, 'upload_collections', False):
         print("\nStep: Uploading collections...")
-        collection_results = orchestrator.collection_uploader.process_all()
+        collection_results = _process_entity_for_shop(orchestrator.collection_uploader, 'collections')
         results['steps']['collections'] = collection_results
 
     if getattr(args, 'upload_products', False):
         print("\nStep: Uploading products...")
-        product_results = orchestrator.product_uploader.process_all()
+        product_results = _process_entity_for_shop(orchestrator.product_uploader, 'products')
         results['steps']['products'] = product_results
 
     if getattr(args, 'upload_collection_products', False):
         print("\nStep: Uploading collection->product mappings...")
-        mapping_results = orchestrator.collection_product_uploader.process_all()
+        mapping_results = _process_entity_for_shop(orchestrator.collection_product_uploader, 'collection_products')
         results['steps']['collection_products'] = mapping_results
 
     print("\nUpload finished")
@@ -242,7 +284,28 @@ def run_complete_pipeline(args):
         'reset': args.reset
     }
     
+    # Optionally load and filter shops when --shop-id is provided
+    shops = None
+    if getattr(args, 'shop_id', None):
+        shops_all = orchestrator.load_shops()
+        raw_vals = [v.strip() for v in args.shop_id.split(',') if v.strip()]
+        filtered = []
+        for s in shops_all:
+            sid = str(s.get('id') or s.get('shop_id', '')).strip()
+            url = (s.get('url') or '').strip()
+            for v in raw_vals:
+                if not v:
+                    continue
+                if v == sid or v == url:
+                    filtered.append(s)
+                    break
+        if not filtered:
+            orchestrator.logger.error(f"No matching shops found for --shop-id={args.shop_id}")
+            return {}
+        shops = filtered
+
     results = orchestrator.run_complete_pipeline(
+        shops=shops,
         process_size_groups=not args.skip_size_groups,
         process_taxonomy=not args.skip_taxonomy
     )
@@ -272,6 +335,9 @@ def main():
     parser.add_argument("--scrape-collection-products", action="store_true",
                        help="Run only the collection->product mapping scraper")
 
+    # Optional shop filter (single id or comma-separated list). Matches shop `id` or `url`.
+    parser.add_argument("--shop-id", type=str,
+                       help="Comma-separated shop id(s) or shop url(s) to limit operations to specific shop(s)")
     # Per-entity upload flags (used when --mode upload)
     parser.add_argument("--upload-shops", action="store_true",
                        help="Upload only shops to the target (skip other entities)")
