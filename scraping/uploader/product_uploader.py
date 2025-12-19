@@ -44,7 +44,6 @@ class ProductProcessor:
                 "handle": product.get("handle", ""),
                 "vendor": product.get("vendor", ""),
                 "description": self.processor.strip_html_tags(product.get("body_html", "")),
-                "created_at_external": product.get("created_at"),
                 "updated_at_external": product.get("updated_at"),
                 "published_at_external": product.get("published_at"),
                 "product_type": product.get("product_type", ""),
@@ -86,7 +85,6 @@ class ProductProcessor:
                     "compare_at_price": self.processor.clean_numeric(variant.get("compare_at_price")),
                     "position": variant.get("position"),
                     "inventory_quantity": variant.get("inventory_quantity"),
-                    "created_at_external": variant.get("created_at"),
                     "updated_at_external": variant.get("updated_at"),
                     "variant_type": variant.get("variant_type")
                 }

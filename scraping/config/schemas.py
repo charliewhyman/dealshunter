@@ -108,7 +108,6 @@ class DbProduct:
     handle: str
     vendor: str
     description: str
-    created_at_external: Optional[str] = None
     updated_at_external: Optional[str] = None
     published_at_external: Optional[str] = None
     product_type: str = ""
