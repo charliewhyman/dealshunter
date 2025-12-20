@@ -79,23 +79,6 @@ export async function getSupabase(): Promise<SupabaseClientType> {
         }
       }
 
-      // Browser runtime fallback: sometimes `import.meta.env` is not populated
-      if (typeof window !== 'undefined' && (!supabaseUrl || !supabaseKey)) {
-        try {
-          const controller = new AbortController();
-          const timeout = setTimeout(() => controller.abort(), 1500);
-          const resp = await fetch('/env.json', { signal: controller.signal });
-          clearTimeout(timeout);
-          if (resp?.ok) {
-            const json = await resp.json();
-            supabaseUrl = supabaseUrl || json?.VITE_SUPABASE_URL || json?.PUBLIC_SUPABASE_URL || json?.SUPABASE_URL;
-            supabaseKey = supabaseKey || json?.VITE_SUPABASE_PUBLISHABLE_KEY || json?.VITE_SUPABASE_ANON_KEY || json?.SUPABASE_KEY;
-          }
-        } catch {
-          // ignore fetch errors — best-effort
-        }
-      }
-
       // Node fallback: read a local `.env` file if present
       if ((typeof process !== 'undefined' && (process as unknown as { versions?: { node?: string } }).versions?.node) && (!supabaseUrl || !supabaseKey)) {
         try {
