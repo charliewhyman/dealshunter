@@ -645,7 +645,7 @@ export function HomePage() {
   // Reset page when filters change
   useEffect(() => {
     setPage(0);
-  }, [selectedShopName, inStockOnly, onSaleOnly, searchQuery, selectedPriceRange, sortOrder]);
+  }, [selectedShopName, inStockOnly, onSaleOnly, searchQuery, selectedPriceRange, sortOrder, selectedSizeGroups, selectedCategories]);
 
   // Intersection observer for infinite scroll
   useEffect(() => {
