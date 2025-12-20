@@ -95,6 +95,11 @@ export type Json =
   | Json[]
 
 export type Database = {
+  // Allows to automatically instantiate createClient with right options
+  // instead of createClient<Database, { PostgrestVersion: 'XX' }>(URL, KEY)
+  __InternalSupabase: {
+    PostgrestVersion: "13.0.5"
+  }
   graphql_public: {
     Tables: {
       [_ in never]: never
@@ -105,10 +110,10 @@ export type Database = {
     Functions: {
       graphql: {
         Args: {
+          extensions?: Json
           operationName?: string
           query?: string
           variables?: Json
-          extensions?: Json
         }
         Returns: Json
       }
@@ -124,7 +129,6 @@ export type Database = {
     Tables: {
       collections: {
         Row: {
-          collection_group_id: number | null
           collection_url: string | null
           created_at: string
           deleted_at: string | null
@@ -133,13 +137,12 @@ export type Database = {
           id: number
           products_count: number | null
           published_at_external: string | null
-          shop_id: number | null
+          shop_id: number
           title: string | null
           updated_at: string | null
           updated_at_external: string | null
         }
         Insert: {
-          collection_group_id?: number | null
           collection_url?: string | null
           created_at?: string
           deleted_at?: string | null
@@ -148,13 +151,12 @@ export type Database = {
           id?: number
           products_count?: number | null
           published_at_external?: string | null
-          shop_id?: number | null
+          shop_id: number
           title?: string | null
           updated_at?: string | null
           updated_at_external?: string | null
         }
         Update: {
-          collection_group_id?: number | null
           collection_url?: string | null
           created_at?: string
           deleted_at?: string | null
@@ -163,7 +165,7 @@ export type Database = {
           id?: number
           products_count?: number | null
           published_at_external?: string | null
-          shop_id?: number | null
+          shop_id?: number
           title?: string | null
           updated_at?: string | null
           updated_at_external?: string | null
@@ -174,68 +176,6 @@ export type Database = {
             columns: ["shop_id"]
             isOneToOne: false
             referencedRelation: "shops"
-            referencedColumns: ["id"]
-          }
-        ]
-      }
-      comments: {
-        Row: {
-          comment_text: string | null
-          created_at: string
-          deleted_at: string | null
-          flagged_status: number | null
-          id: string
-          product_id: number
-          reply_of: string | null
-          user_id: string
-        }
-        Insert: {
-          comment_text?: string | null
-          created_at?: string
-          deleted_at?: string | null
-          flagged_status?: number | null
-          id?: string
-          product_id: number
-          reply_of?: string | null
-          user_id: string
-        }
-        Update: {
-          comment_text?: string | null
-          created_at?: string
-          deleted_at?: string | null
-          flagged_status?: number | null
-          id?: string
-          product_id?: number
-          reply_of?: string | null
-          user_id?: string
-        }
-        Relationships: [
-          {
-            foreignKeyName: "comments_product_id_fkey"
-            columns: ["product_id"]
-            isOneToOne: false
-            referencedRelation: "product_min_prices"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "comments_product_id_fkey"
-            columns: ["product_id"]
-            isOneToOne: false
-            referencedRelation: "products"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "comments_reply_of_fkey"
-            columns: ["reply_of"]
-            isOneToOne: false
-            referencedRelation: "comments"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "comments_user_id_fkey"
-            columns: ["user_id"]
-            isOneToOne: false
-            referencedRelation: "profiles"
             referencedColumns: ["id"]
           },
         ]
@@ -250,11 +190,15 @@ export type Database = {
           id: number
           last_modified: string
           last_updated: string | null
+          placeholder: string | null
           position: number | null
           product_id: number | null
+          responsive_fallback: string | null
           src: string | null
+          srcset: string | null
           updated_at: string | null
           updated_at_external: string | null
+          webp_srcset: string | null
           width: number | null
         }
         Insert: {
@@ -266,11 +210,15 @@ export type Database = {
           id: number
           last_modified?: string
           last_updated?: string | null
+          placeholder?: string | null
           position?: number | null
           product_id?: number | null
+          responsive_fallback?: string | null
           src?: string | null
+          srcset?: string | null
           updated_at?: string | null
           updated_at_external?: string | null
+          webp_srcset?: string | null
           width?: number | null
         }
         Update: {
@@ -282,11 +230,15 @@ export type Database = {
           id?: number
           last_modified?: string
           last_updated?: string | null
+          placeholder?: string | null
           position?: number | null
           product_id?: number | null
+          responsive_fallback?: string | null
           src?: string | null
+          srcset?: string | null
           updated_at?: string | null
           updated_at_external?: string | null
+          webp_srcset?: string | null
           width?: number | null
         }
         Relationships: [
@@ -312,6 +264,42 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      migration_progress: {
+        Row: {
+          batch_size: number | null
+          completed_at: string | null
+          error_message: string | null
+          id: number
+          migration_name: string
+          processed_items: number | null
+          started_at: string | null
+          status: string | null
+          total_items: number | null
+        }
+        Insert: {
+          batch_size?: number | null
+          completed_at?: string | null
+          error_message?: string | null
+          id?: number
+          migration_name: string
+          processed_items?: number | null
+          started_at?: string | null
+          status?: string | null
+          total_items?: number | null
+        }
+        Update: {
+          batch_size?: number | null
+          completed_at?: string | null
+          error_message?: string | null
+          id?: number
+          migration_name?: string
+          processed_items?: number | null
+          started_at?: string | null
+          status?: string | null
+          total_items?: number | null
+        }
+        Relationships: []
       }
       offers: {
         Row: {
@@ -382,45 +370,6 @@ export type Database = {
           },
         ]
       }
-      options: {
-        Row: {
-          id: string
-          name: string | null
-          position: number | null
-          product_id: number | null
-          values: string[] | null
-        }
-        Insert: {
-          id: string
-          name?: string | null
-          position?: number | null
-          product_id?: number | null
-          values?: string[] | null
-        }
-        Update: {
-          id?: string
-          name?: string | null
-          position?: number | null
-          product_id?: number | null
-          values?: string[] | null
-        }
-        Relationships: [
-          {
-            foreignKeyName: "options_product_id_fkey"
-            columns: ["product_id"]
-            isOneToOne: false
-            referencedRelation: "product_min_prices"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "options_product_id_fkey"
-            columns: ["product_id"]
-            isOneToOne: false
-            referencedRelation: "products"
-            referencedColumns: ["id"]
-          },
-        ]
-      }
       product_collections: {
         Row: {
           collection_id: number
@@ -464,105 +413,63 @@ export type Database = {
           },
         ]
       }
-      product_tags: {
-        Row: {
-          id: number
-          product_id: number | null
-          tag: string | null
-        }
-        Insert: {
-          id?: number
-          product_id?: number | null
-          tag?: string | null
-        }
-        Update: {
-          id?: number
-          product_id?: number | null
-          tag?: string | null
-        }
-        Relationships: [
-          {
-            foreignKeyName: "product_tags_product_id_fkey"
-            columns: ["product_id"]
-            isOneToOne: false
-            referencedRelation: "product_min_prices"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "product_tags_product_id_fkey"
-            columns: ["product_id"]
-            isOneToOne: false
-            referencedRelation: "products"
-            referencedColumns: ["id"]
-          },
-        ]
-      }
       products: {
         Row: {
           created_at: string | null
-          created_at_external: string | null
           deleted_at: string | null
           description: string | null
-          fts: unknown | null
+          fts: unknown
           handle: string | null
           id: number
           last_modified: string
           last_updated: string | null
           product_type: string | null
           published_at_external: string | null
-          shop_id: number | null
+          shop_id: number
           tags: string[] | null
           title: string | null
-          title_search: unknown | null
           updated_at: string | null
           updated_at_external: string | null
           url: string | null
           vendor: string | null
-          votes: number | null
         }
         Insert: {
           created_at?: string | null
-          created_at_external?: string | null
           deleted_at?: string | null
           description?: string | null
-          fts?: unknown | null
+          fts?: unknown
           handle?: string | null
           id: number
           last_modified?: string
           last_updated?: string | null
           product_type?: string | null
           published_at_external?: string | null
-          shop_id?: number | null
+          shop_id: number
           tags?: string[] | null
           title?: string | null
-          title_search?: unknown | null
           updated_at?: string | null
           updated_at_external?: string | null
           url?: string | null
           vendor?: string | null
-          votes?: number | null
         }
         Update: {
           created_at?: string | null
-          created_at_external?: string | null
           deleted_at?: string | null
           description?: string | null
-          fts?: unknown | null
+          fts?: unknown
           handle?: string | null
           id?: number
           last_modified?: string
           last_updated?: string | null
           product_type?: string | null
           published_at_external?: string | null
-          shop_id?: number | null
+          shop_id?: number
           tags?: string[] | null
           title?: string | null
-          title_search?: unknown | null
           updated_at?: string | null
           updated_at_external?: string | null
           url?: string | null
           vendor?: string | null
-          votes?: number | null
         }
         Relationships: [
           {
@@ -574,72 +481,123 @@ export type Database = {
           },
         ]
       }
-      products_with_details: {
+      products_enriched_data: {
+        Row: {
+          categories: string[] | null
+          last_enriched: string | null
+          product_id: number
+          size_groups: string[] | null
+          taxonomy_mapped_at: string | null
+          taxonomy_path: string[] | null
+        }
+        Insert: {
+          categories?: string[] | null
+          last_enriched?: string | null
+          product_id: number
+          size_groups?: string[] | null
+          taxonomy_mapped_at?: string | null
+          taxonomy_path?: string[] | null
+        }
+        Update: {
+          categories?: string[] | null
+          last_enriched?: string | null
+          product_id?: number
+          size_groups?: string[] | null
+          taxonomy_mapped_at?: string | null
+          taxonomy_path?: string[] | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "products_enriched_data_product_id_fkey"
+            columns: ["product_id"]
+            isOneToOne: true
+            referencedRelation: "products_with_details"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "products_enriched_data_product_id_fkey"
+            columns: ["product_id"]
+            isOneToOne: true
+            referencedRelation: "products_with_details_core"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      products_with_details_core: {
         Row: {
           created_at: string | null
           description: string | null
-          fts: unknown | null
-          has_clothing: boolean | null
-          has_footwear: boolean | null
+          fts: unknown
+          handle: string | null
           id: number
-          images: Json[] | null
+          images: Json | null
           in_stock: boolean | null
+          last_modified: string | null
           last_updated: string | null
           max_discount_percentage: number | null
           min_price: number | null
           on_sale: boolean | null
+          product_type: string | null
+          published_at_external: string | null
           shop_id: number | null
           shop_name: string | null
-          size_groups: string[] | null
-          size_types: string[] | null
+          tags: string[] | null
           title: string | null
+          updated_at: string | null
           updated_at_external: string | null
           url: string | null
-          variants: Json[] | null
+          variants: Json | null
+          vendor: string | null
         }
         Insert: {
           created_at?: string | null
           description?: string | null
-          fts?: unknown | null
-          has_clothing?: boolean | null
-          has_footwear?: boolean | null
+          fts?: unknown
+          handle?: string | null
           id: number
-          images?: Json[] | null
+          images?: Json | null
           in_stock?: boolean | null
+          last_modified?: string | null
           last_updated?: string | null
           max_discount_percentage?: number | null
           min_price?: number | null
           on_sale?: boolean | null
+          product_type?: string | null
+          published_at_external?: string | null
           shop_id?: number | null
           shop_name?: string | null
-          size_groups?: string[] | null
-          size_types?: string[] | null
+          tags?: string[] | null
           title?: string | null
+          updated_at?: string | null
           updated_at_external?: string | null
           url?: string | null
-          variants?: Json[] | null
+          variants?: Json | null
+          vendor?: string | null
         }
         Update: {
           created_at?: string | null
           description?: string | null
-          fts?: unknown | null
-          has_clothing?: boolean | null
-          has_footwear?: boolean | null
+          fts?: unknown
+          handle?: string | null
           id?: number
-          images?: Json[] | null
+          images?: Json | null
           in_stock?: boolean | null
+          last_modified?: string | null
           last_updated?: string | null
           max_discount_percentage?: number | null
           min_price?: number | null
           on_sale?: boolean | null
+          product_type?: string | null
+          published_at_external?: string | null
           shop_id?: number | null
           shop_name?: string | null
-          size_groups?: string[] | null
-          size_types?: string[] | null
+          tags?: string[] | null
           title?: string | null
+          updated_at?: string | null
           updated_at_external?: string | null
           url?: string | null
-          variants?: Json[] | null
+          variants?: Json | null
+          vendor?: string | null
         }
         Relationships: []
       }
@@ -670,104 +628,35 @@ export type Database = {
         }
         Relationships: []
       }
-      reports: {
-        Row: {
-          comment_id: string | null
-          created_at: string
-          id: string
-          product_id: number | null
-          report_count: number
-          reported_by: string | null
-          reported_user: string | null
-        }
-        Insert: {
-          comment_id?: string | null
-          created_at?: string
-          id?: string
-          product_id?: number | null
-          report_count?: number
-          reported_by?: string | null
-          reported_user?: string | null
-        }
-        Update: {
-          comment_id?: string | null
-          created_at?: string
-          id?: string
-          product_id?: number | null
-          report_count?: number
-          reported_by?: string | null
-          reported_user?: string | null
-        }
-        Relationships: [
-          {
-            foreignKeyName: "reports_comment_id_fkey"
-            columns: ["comment_id"]
-            isOneToOne: false
-            referencedRelation: "comments"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "reports_product_id_fkey"
-            columns: ["product_id"]
-            isOneToOne: false
-            referencedRelation: "product_min_prices"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "reports_product_id_fkey"
-            columns: ["product_id"]
-            isOneToOne: false
-            referencedRelation: "products"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "reports_reported_by_fkey"
-            columns: ["reported_by"]
-            isOneToOne: false
-            referencedRelation: "profiles"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "reports_reported_user_fkey"
-            columns: ["reported_user"]
-            isOneToOne: false
-            referencedRelation: "profiles"
-            referencedColumns: ["id"]
-          },
-        ]
-      }
       shops: {
         Row: {
           category: string | null
           created_at: string
           id: number
-          location: string | null
-          returns: string | null
-          shipping: string | null
+          is_shopify: boolean | null
           shop_name: string | null
           tags: string[] | null
+          updated_at: string | null
           url: string | null
         }
         Insert: {
           category?: string | null
           created_at?: string
           id?: number
-          location?: string | null
-          returns?: string | null
-          shipping?: string | null
+          is_shopify?: boolean | null
           shop_name?: string | null
           tags?: string[] | null
+          updated_at?: string | null
           url?: string | null
         }
         Update: {
           category?: string | null
           created_at?: string
           id?: number
-          location?: string | null
-          returns?: string | null
-          shipping?: string | null
+          is_shopify?: boolean | null
           shop_name?: string | null
           tags?: string[] | null
+          updated_at?: string | null
           url?: string | null
         }
         Relationships: []
@@ -796,39 +685,6 @@ export type Database = {
           size_group?: string | null
           size_group_order?: number | null
           type?: string | null
-        }
-        Relationships: []
-      }
-      table_refresh_history: {
-        Row: {
-          end_time: string | null
-          error_message: string | null
-          refresh_id: number
-          refresh_method: string
-          rows_affected: number | null
-          start_time: string
-          status: string | null
-          table_name: string
-        }
-        Insert: {
-          end_time?: string | null
-          error_message?: string | null
-          refresh_id?: number
-          refresh_method: string
-          rows_affected?: number | null
-          start_time: string
-          status?: string | null
-          table_name: string
-        }
-        Update: {
-          end_time?: string | null
-          error_message?: string | null
-          refresh_id?: number
-          refresh_method?: string
-          rows_affected?: number | null
-          start_time?: string
-          status?: string | null
-          table_name?: string
         }
         Relationships: []
       }
@@ -944,70 +800,8 @@ export type Database = {
           },
         ]
       }
-      votes: {
-        Row: {
-          comment_id: string | null
-          created_at: string
-          entity_type: Database["public"]["Enums"]["entity_types"]
-          id: string
-          product_id: number | null
-          user_id: string
-        }
-        Insert: {
-          comment_id?: string | null
-          created_at?: string
-          entity_type: Database["public"]["Enums"]["entity_types"]
-          id?: string
-          product_id?: number | null
-          user_id: string
-        }
-        Update: {
-          comment_id?: string | null
-          created_at?: string
-          entity_type?: Database["public"]["Enums"]["entity_types"]
-          id?: string
-          product_id?: number | null
-          user_id?: string
-        }
-        Relationships: [
-          {
-            foreignKeyName: "votes_comment_id_fkey"
-            columns: ["comment_id"]
-            isOneToOne: false
-            referencedRelation: "comments"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "votes_product_id_fkey"
-            columns: ["product_id"]
-            isOneToOne: false
-            referencedRelation: "product_min_prices"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "votes_product_id_fkey"
-            columns: ["product_id"]
-            isOneToOne: false
-            referencedRelation: "products"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "votes_user_id_fkey1"
-            columns: ["user_id"]
-            isOneToOne: false
-            referencedRelation: "profiles"
-            referencedColumns: ["id"]
-          },
-        ]
-      }
     }
     Views: {
-      distinct_collection_titles: {
-        Row: {
-          title: string | null
-        }
-        Relationships: []
-      }
       distinct_shop_names: {
         Row: {
           shop_name: string | null
@@ -1040,71 +834,140 @@ export type Database = {
         }
         Relationships: []
       }
+      products_with_details: {
+        Row: {
+          categories: string[] | null
+          created_at: string | null
+          description: string | null
+          fts: unknown
+          handle: string | null
+          id: number | null
+          images: Json | null
+          in_stock: boolean | null
+          last_modified: string | null
+          last_updated: string | null
+          max_discount_percentage: number | null
+          min_price: number | null
+          on_sale: boolean | null
+          product_type: string | null
+          published_at_external: string | null
+          shop_id: number | null
+          shop_name: string | null
+          size_groups: string[] | null
+          tags: string[] | null
+          taxonomy_mapped_at: string | null
+          taxonomy_path: string[] | null
+          title: string | null
+          updated_at: string | null
+          updated_at_external: string | null
+          url: string | null
+          variants: Json | null
+          vendor: string | null
+        }
+        Relationships: []
+      }
     }
     Functions: {
-      generate_fts: {
-        Args: { title: string; description: string; tags: string[] }
-        Returns: unknown
+      batch_update_product_enriched_data: {
+        Args: { product_data: Json }
+        Returns: undefined
       }
-      get_price_range: {
-        Args: {
-          shop_names: string[]
-          in_stock: boolean
-          on_sale: boolean
-          search_query: string
-        }
+      clear_product_enriched_data: {
+        Args: { p_product_id?: number }
+        Returns: undefined
+      }
+      complete_migration_safely: {
+        Args: never
         Returns: {
-          min_price: number
-          max_price: number
+          batch_number: number
+          missing_remaining: number
+          products_processed: number
+          total_processed: number
         }[]
       }
-      gtrgm_compress: {
-        Args: { "": unknown }
+      generate_fts: {
+        Args: { description: string; tags: string[]; title: string }
         Returns: unknown
       }
-      gtrgm_decompress: {
-        Args: { "": unknown }
-        Returns: unknown
+      get_migration_progress: {
+        Args: never
+        Returns: {
+          batch_size: number
+          completed_at: string
+          error_message: string
+          migration_name: string
+          processed_items: number
+          progress_percent: number
+          started_at: string
+          status: string
+          total_items: number
+        }[]
       }
-      gtrgm_in: {
-        Args: { "": unknown }
-        Returns: unknown
+      get_missing_products_count: { Args: never; Returns: number }
+      get_products_needing_taxonomy_mapping: {
+        Args: { p_limit?: number; p_offset?: number }
+        Returns: {
+          current_taxonomy_mapped_at: string
+          current_taxonomy_path: string[]
+          description: string
+          product_id: number
+          product_type: string
+          tags: string[]
+          title: string
+          vendor: string
+        }[]
       }
-      gtrgm_options: {
-        Args: { "": unknown }
-        Returns: undefined
+      get_products_pricing: {
+        Args: { product_ids: string[] }
+        Returns: {
+          compare_at_price: number
+          offer_price: number
+          product_id: string
+          variant_price: number
+        }[]
       }
-      gtrgm_out: {
-        Args: { "": unknown }
-        Returns: unknown
+      init_database_structure: { Args: never; Returns: undefined }
+      migrate_batch_simple: { Args: never; Returns: number }
+      populate_all_products_auto: {
+        Args: never
+        Returns: {
+          batch_number: number
+          estimated_remaining: number
+          products_processed: number
+          total_processed: number
+        }[]
       }
-      increment_votes: {
-        Args: { deal_id: string }
-        Returns: undefined
-      }
-      refresh_all_products: {
-        Args: Record<PropertyKey, never>
+      populate_all_products_simple: { Args: never; Returns: undefined }
+      populate_batch: {
+        Args: { batch_size?: number; offset_val?: number }
         Returns: number
       }
-      refresh_product_details: {
-        Args: { product_id: number }
-        Returns: undefined
-      }
-      refresh_products_batch: {
-        Args: { product_ids: number[] }
-        Returns: undefined
-      }
-      set_limit: {
-        Args: { "": number }
+      populate_missing_batch: {
+        Args: { batch_size?: number; offset_val?: number }
         Returns: number
       }
-      show_limit: {
-        Args: Record<PropertyKey, never>
-        Returns: number
+      refresh_products_core: { Args: never; Returns: undefined }
+      refresh_products_enriched: { Args: never; Returns: undefined }
+      refresh_products_full: { Args: never; Returns: undefined }
+      refresh_products_with_details: { Args: never; Returns: undefined }
+      resume_migration: {
+        Args: never
+        Returns: {
+          batch_number: number
+          estimated_remaining: number
+          products_processed: number
+          total_processed: number
+        }[]
       }
-      show_trgm: {
-        Args: { "": string }
-        Returns: string[]
+      update_product_enriched_data: {
+        Args: {
+          p_categories?: string[]
+          p_product_id: number
+          p_size_groups?: string[]
+          p_taxonomy_mapped_at?: string
+          p_taxonomy_path?: string[]
+        }
+        Returns: undefined
       }
     }
     Enums: {
@@ -1116,21 +979,25 @@ export type Database = {
   }
 }
 
-type DefaultSchema = Database[Extract<keyof Database, "public">]
+type DatabaseWithoutInternals = Omit<Database, "__InternalSupabase">
+
+type DefaultSchema = DatabaseWithoutInternals[Extract<keyof Database, "public">]
 
 export type Tables<
   DefaultSchemaTableNameOrOptions extends
     | keyof (DefaultSchema["Tables"] & DefaultSchema["Views"])
-    | { schema: keyof Database },
+    | { schema: keyof DatabaseWithoutInternals },
   TableName extends DefaultSchemaTableNameOrOptions extends {
-    schema: keyof Database
+    schema: keyof DatabaseWithoutInternals
   }
-    ? keyof (Database[DefaultSchemaTableNameOrOptions["schema"]]["Tables"] &
-        Database[DefaultSchemaTableNameOrOptions["schema"]]["Views"])
+    ? keyof (DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"] &
+        DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Views"])
     : never = never,
-> = DefaultSchemaTableNameOrOptions extends { schema: keyof Database }
-  ? (Database[DefaultSchemaTableNameOrOptions["schema"]]["Tables"] &
-      Database[DefaultSchemaTableNameOrOptions["schema"]]["Views"])[TableName] extends {
+> = DefaultSchemaTableNameOrOptions extends {
+  schema: keyof DatabaseWithoutInternals
+}
+  ? (DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"] &
+      DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Views"])[TableName] extends {
       Row: infer R
     }
     ? R
@@ -1148,14 +1015,16 @@ export type Tables<
 export type TablesInsert<
   DefaultSchemaTableNameOrOptions extends
     | keyof DefaultSchema["Tables"]
-    | { schema: keyof Database },
+    | { schema: keyof DatabaseWithoutInternals },
   TableName extends DefaultSchemaTableNameOrOptions extends {
-    schema: keyof Database
+    schema: keyof DatabaseWithoutInternals
   }
-    ? keyof Database[DefaultSchemaTableNameOrOptions["schema"]]["Tables"]
+    ? keyof DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"]
     : never = never,
-> = DefaultSchemaTableNameOrOptions extends { schema: keyof Database }
-  ? Database[DefaultSchemaTableNameOrOptions["schema"]]["Tables"][TableName] extends {
+> = DefaultSchemaTableNameOrOptions extends {
+  schema: keyof DatabaseWithoutInternals
+}
+  ? DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"][TableName] extends {
       Insert: infer I
     }
     ? I
@@ -1171,14 +1040,16 @@ export type TablesInsert<
 export type TablesUpdate<
   DefaultSchemaTableNameOrOptions extends
     | keyof DefaultSchema["Tables"]
-    | { schema: keyof Database },
+    | { schema: keyof DatabaseWithoutInternals },
   TableName extends DefaultSchemaTableNameOrOptions extends {
-    schema: keyof Database
+    schema: keyof DatabaseWithoutInternals
   }
-    ? keyof Database[DefaultSchemaTableNameOrOptions["schema"]]["Tables"]
+    ? keyof DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"]
     : never = never,
-> = DefaultSchemaTableNameOrOptions extends { schema: keyof Database }
-  ? Database[DefaultSchemaTableNameOrOptions["schema"]]["Tables"][TableName] extends {
+> = DefaultSchemaTableNameOrOptions extends {
+  schema: keyof DatabaseWithoutInternals
+}
+  ? DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"][TableName] extends {
       Update: infer U
     }
     ? U
@@ -1194,14 +1065,16 @@ export type TablesUpdate<
 export type Enums<
   DefaultSchemaEnumNameOrOptions extends
     | keyof DefaultSchema["Enums"]
-    | { schema: keyof Database },
+    | { schema: keyof DatabaseWithoutInternals },
   EnumName extends DefaultSchemaEnumNameOrOptions extends {
-    schema: keyof Database
+    schema: keyof DatabaseWithoutInternals
   }
-    ? keyof Database[DefaultSchemaEnumNameOrOptions["schema"]]["Enums"]
+    ? keyof DatabaseWithoutInternals[DefaultSchemaEnumNameOrOptions["schema"]]["Enums"]
     : never = never,
-> = DefaultSchemaEnumNameOrOptions extends { schema: keyof Database }
-  ? Database[DefaultSchemaEnumNameOrOptions["schema"]]["Enums"][EnumName]
+> = DefaultSchemaEnumNameOrOptions extends {
+  schema: keyof DatabaseWithoutInternals
+}
+  ? DatabaseWithoutInternals[DefaultSchemaEnumNameOrOptions["schema"]]["Enums"][EnumName]
   : DefaultSchemaEnumNameOrOptions extends keyof DefaultSchema["Enums"]
     ? DefaultSchema["Enums"][DefaultSchemaEnumNameOrOptions]
     : never
@@ -1209,14 +1082,16 @@ export type Enums<
 export type CompositeTypes<
   PublicCompositeTypeNameOrOptions extends
     | keyof DefaultSchema["CompositeTypes"]
-    | { schema: keyof Database },
+    | { schema: keyof DatabaseWithoutInternals },
   CompositeTypeName extends PublicCompositeTypeNameOrOptions extends {
-    schema: keyof Database
+    schema: keyof DatabaseWithoutInternals
   }
-    ? keyof Database[PublicCompositeTypeNameOrOptions["schema"]]["CompositeTypes"]
+    ? keyof DatabaseWithoutInternals[PublicCompositeTypeNameOrOptions["schema"]]["CompositeTypes"]
     : never = never,
-> = PublicCompositeTypeNameOrOptions extends { schema: keyof Database }
-  ? Database[PublicCompositeTypeNameOrOptions["schema"]]["CompositeTypes"][CompositeTypeName]
+> = PublicCompositeTypeNameOrOptions extends {
+  schema: keyof DatabaseWithoutInternals
+}
+  ? DatabaseWithoutInternals[PublicCompositeTypeNameOrOptions["schema"]]["CompositeTypes"][CompositeTypeName]
   : PublicCompositeTypeNameOrOptions extends keyof DefaultSchema["CompositeTypes"]
     ? DefaultSchema["CompositeTypes"][PublicCompositeTypeNameOrOptions]
     : never
