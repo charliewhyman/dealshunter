@@ -218,19 +218,21 @@ class PipelineOrchestrator:
         
         # After uploading all entity data, refresh the products_with_details
         # aggregated view/table in Supabase so any derived fields are up-to-date.
+        # After uploading all entity data, refresh only the core product data
+        # (preserves size_groups, categories, and taxonomy data)
         try:
             def do_refresh(client):
-                # Call the Postgres RPC function; it may return null or a result row
-                return client.rpc('refresh_products_with_details_incremental').execute()
+                # Call the new RPC function that preserves enriched data
+                return client.rpc('refresh_products_core').execute()
 
             sup = SupabaseClient()
-            rpc_result = sup.safe_execute(do_refresh, 'Refresh products_with_details', max_retries=3)
+            rpc_result = sup.safe_execute(do_refresh, 'Refresh products core data', max_retries=3)
             if rpc_result and hasattr(rpc_result, 'data'):
-                uploader_logger.info('Called RPC `refresh_products_with_details` successfully')
+                uploader_logger.info('Called RPC `refresh_products_core` successfully')
             else:
-                uploader_logger.warning('RPC `refresh_products_with_details` did not return expected data or failed')
+                uploader_logger.warning('RPC `refresh_products_core` did not return expected data or failed')
         except Exception as e:
-            uploader_logger.error(f'Error calling RPC refresh_products_with_details: {e}')
+            uploader_logger.error(f'Error calling RPC refresh_products_core: {e}')
 
         uploader_logger.info("\n" + "="*60)
         uploader_logger.info("UPLOAD PIPELINE COMPLETE")

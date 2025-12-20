@@ -312,6 +312,75 @@ def run_complete_pipeline(args):
     )
     return results
 
+def setup_database_structure(args):
+    """Set up the new database structure and populate initial data."""
+    print("\nSetting up new database structure...")
+    try:
+        sup = SupabaseClient()
+        
+        def do_setup(client):
+            return client.rpc('populate_initial_data').execute()
+        
+        rpc_result = sup.safe_execute(do_setup, 'Setup database structure', max_retries=3)
+        
+        if rpc_result and hasattr(rpc_result, 'data'):
+            print("Database structure setup complete")
+            # Save result file
+            out = settings.DATA_DIR / f"setup_database_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json"
+            with open(out, 'w', encoding='utf-8') as fh:
+                json.dump({'status': 'success', 'data': rpc_result.data}, fh, indent=2, ensure_ascii=False)
+            print(f"Setup result saved to: {out}")
+            return True
+        else:
+            print("Failed to setup database structure")
+            return False
+            
+    except Exception as e:
+        print(f"Error setting up database: {e}")
+        return False
+
+def run_database_refresh(args):
+    """Run database refresh RPC."""
+    print(f"\nRefreshing `products_with_details` via RPC...")
+    try:
+        sup = SupabaseClient()
+
+        # Choose which RPC to call based on arguments
+        if getattr(args, 'refresh_full', False):
+            rpc_name = 'refresh_products_full'
+            print("Running FULL refresh (includes enriched data)")
+        elif getattr(args, 'refresh_core', False):
+            rpc_name = 'refresh_products_core'
+            print("Running CORE refresh only (preserves enriched data)")
+        else:
+            # Default to core refresh (preserves enriched data)
+            rpc_name = 'refresh_products_core'
+            print("Running CORE refresh (preserves enriched data)")
+
+        def do_refresh(client):
+            return client.rpc(rpc_name).execute()
+
+        rpc_result = sup.safe_execute(do_refresh, f'Refresh {rpc_name}', max_retries=3)
+        
+        if rpc_result and hasattr(rpc_result, 'data'):
+            print(f"RPC `{rpc_name}` completed successfully.")
+            # Save a simple result file for visibility in DATA_DIR
+            try:
+                out = settings.DATA_DIR / f"rpc_{rpc_name}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json"
+                with open(out, 'w', encoding='utf-8') as fh:
+                    json.dump({'status': 'success', 'data': rpc_result.data}, fh, indent=2, ensure_ascii=False)
+                print(f"Result saved to: {out}")
+            except Exception as e:
+                print(f"Note: Could not save result file: {e}")
+            return True
+        else:
+            print(f"RPC `{rpc_name}` failed or returned unexpected result.")
+            return False
+            
+    except Exception as e:
+        print(f"Error calling RPC: {e}")
+        return False
+
 def main():
     """Main entry point."""
     parser = argparse.ArgumentParser(
@@ -319,7 +388,7 @@ def main():
     )
     
     # Mode selection
-    parser.add_argument("--mode", choices=["all", "scrape", "upload", "process"], 
+    parser.add_argument("--mode", choices=["all", "scrape", "upload", "process", "db"], 
                        default="all", help="Operation mode (default: all)")
     
     # Scraping options
@@ -355,9 +424,13 @@ def main():
     parser.add_argument("--skip-taxonomy", action="store_true",
                        help="Skip taxonomy mapping")
 
-    # RPC helper: refresh aggregated products view/table
-    parser.add_argument("--refresh-products-with-details", action="store_true",
-                       help="Run only the RPC `refresh_products_with_details` and exit")
+    # Database operations
+    parser.add_argument("--setup-db", action="store_true",
+                       help="Set up new database structure (run once after migration)")
+    parser.add_argument("--refresh-core", action="store_true",
+                       help="Refresh core product data (preserves enriched data)")
+    parser.add_argument("--refresh-full", action="store_true",
+                       help="Refresh full product data (includes enriched data)")
     
     # Explicit processing-only flags (used when --mode process)
     parser.add_argument("--process-size-groups", action="store_true",
@@ -399,34 +472,15 @@ def main():
     # Setup environment
     setup_environment()
 
-    # If requested, run only the RPC to refresh the `products_with_details`
-    # aggregated table/view and exit immediately.
-    if getattr(args, 'refresh_products_with_details', False):
-        print("\nRefreshing `products_with_details` via RPC...")
-        try:
-            sup = SupabaseClient()
-
-            def do_refresh(client):
-                return client.rpc('refresh_products_with_details').execute()
-
-            rpc_result = sup.safe_execute(do_refresh, 'Refresh products_with_details', max_retries=3)
-            if rpc_result and hasattr(rpc_result, 'data'):
-                print("RPC `refresh_products_with_details` completed successfully.")
-                # Save a simple result file for visibility in DATA_DIR
-                try:
-                    out = settings.DATA_DIR / f"rpc_refresh_products_with_details_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json"
-                    with open(out, 'w', encoding='utf-8') as fh:
-                        json.dump({'status': 'success', 'data': getattr(rpc_result, 'data')}, fh, indent=2, ensure_ascii=False)
-                    print(f"Result saved to: {out}")
-                except Exception:
-                    pass
-                sys.exit(0)
-            else:
-                print("RPC `refresh_products_with_details` failed or returned unexpected result. Check logs.")
-                sys.exit(1)
-        except Exception as e:
-            print(f"Error calling RPC: {e}")
-            sys.exit(1)
+    # Database setup mode
+    if getattr(args, 'setup_db', False):
+        success = setup_database_structure(args)
+        sys.exit(0 if success else 1)
+    
+    # Database refresh mode
+    if getattr(args, 'refresh_core', False) or getattr(args, 'refresh_full', False):
+        success = run_database_refresh(args)
+        sys.exit(0 if success else 1)
     
     # Run based on mode
     if args.mode == "scrape":
@@ -435,6 +489,12 @@ def main():
         results = run_upload_only(args)
     elif args.mode == "process":
         results = run_processing_only(args)
+    elif args.mode == "db":
+        print("Database operations require specific flags:")
+        print("  --setup-db      : Set up new database structure")
+        print("  --refresh-core  : Refresh core product data")
+        print("  --refresh-full  : Refresh full product data")
+        sys.exit(0)
     else:  # all
         results = run_complete_pipeline(args)
     
