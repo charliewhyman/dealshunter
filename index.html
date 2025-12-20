@@ -2,13 +2,38 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <!--TODO change icon-->
+  <link rel="preconnect" href="https://cdn.shopify.com" crossorigin>
+  <link rel="dns-prefetch" href="https://cdn.shopify.com">
     <link rel="icon" type="image/svg+xml" href="/tag.svg" />
     <link rel="icon" type="image/svg+xml" href="/tag.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <!-- Preconnect to common image CDN to reduce DNS/TCP/TLS overhead for product images -->
     <link rel="preconnect" href="https://cdn.shopify.com" crossorigin />
     <link rel="dns-prefetch" href="https://cdn.shopify.com" />
+    <!-- Placeholder meta for server to inject the LCP image URL. If populated,
+         the inline script below will preload the exact LCP image early. -->
+    <meta name="lcp-image" content="" />
+    <script>
+      // Immediately-run inline script to preload a server-inserted LCP image URL
+      // if present in the `meta[name="lcp-image"]` tag. This allows the HTML
+      // document to make the LCP request discoverable before React mounts.
+      try {
+        var meta = document.querySelector('meta[name="lcp-image"]');
+        if (meta && meta.content) {
+          var url = meta.content;
+          var selector = 'link[rel="preload"][href="' + url + '"]';
+          if (!document.head.querySelector(selector)) {
+            var link = document.createElement('link');
+            link.rel = 'preload';
+            link.as = 'image';
+            link.href = url;
+            // Attempt to hint high priority for modern browsers
+            try { link.setAttribute('fetchpriority', 'high'); } catch (e) { }
+            document.head.appendChild(link);
+          }
+        }
+      } catch (e) { }
+    </script>
     <title>Curated Canada</title>
   </head>
   <body>

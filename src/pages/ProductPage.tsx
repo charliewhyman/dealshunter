@@ -135,9 +135,8 @@ function ProductPage() {
                       src={productImage ?? '/default-image.png'}
                       srcSet={imageRecord?.srcset as string | undefined}
                       sizes="(max-width: 768px) 100vw, 50vw"
-                      loading="lazy"
                       decoding="async"
-                      fetchPriority="low"
+                      fetchPriority="high"
                       alt={product?.title ?? 'Product image'}
                       className={`relative w-full h-auto max-h-[70vh] object-contain rounded-lg shadow-md transition-opacity duration-500 ${imgLoaded ? 'opacity-100' : 'opacity-0'}`}
                       onLoad={() => setImgLoaded(true)}

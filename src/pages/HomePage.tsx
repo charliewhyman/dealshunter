@@ -1,4 +1,4 @@
-import { ChangeEvent, FormEvent, useCallback, useEffect, useRef, useState } from 'react';
+import { ChangeEvent, FormEvent, useCallback, useEffect, useRef, useState, startTransition } from 'react';
 import { ProductWithDetails } from '../types';
 import { getSupabase } from '../lib/supabase';
 import AsyncLucideIcon from '../components/AsyncLucideIcon';
@@ -26,6 +26,13 @@ import TransformSlider from '../components/TransformSlider';
 // Slider UI is provided by `TransformSlider` component in `src/components`.
 
 const ITEMS_PER_PAGE = 10;
+// Limit how many product cards we render immediately for the initial page
+// to reduce main-thread work and network concurrency that can delay LCP.
+const INITIAL_RENDER_COUNT = 4;
+// Number of top products to mark as potential LCP candidates (preload + eager)
+// This covers the first row on most viewports so the true LCP image among
+// them is likely to be discovered and prioritized.
+const LCP_PRELOAD_COUNT = 2;
 
 export function HomePage() {
   const [products, setProducts] = useState<ProductWithDetails[]>([]);
@@ -252,6 +259,31 @@ export function HomePage() {
   const requestIdRef = useRef(0);
   const prefetchCacheRef = useRef<Record<number, { key: string; data: ProductWithDetails[]; count: number }>>({});
   
+  // Helper to merge previously loaded products with newly fetched ones
+  // while preserving order and avoiding duplicates by `id`.
+  const mergeUniqueProducts = useCallback((prev: ProductWithDetails[], next: ProductWithDetails[]) => {
+    const seen = new Set<string>();
+    const out: ProductWithDetails[] = [];
+
+    for (const p of prev) {
+      const id = String(p.id);
+      if (!seen.has(id)) {
+        seen.add(id);
+        out.push(p);
+      }
+    }
+
+    for (const p of next) {
+      const id = String(p.id);
+      if (!seen.has(id)) {
+        seen.add(id);
+        out.push(p);
+      }
+    }
+
+    return out;
+  }, []);
+  
 
 
   interface FilterOptions {
@@ -285,9 +317,9 @@ export function HomePage() {
     setLoading(true);
     
     try {
-      // Small delay to prevent rapid successive requests
-      await new Promise(resolve => setTimeout(resolve, 100));
-
+      if (page > 0) {
+        await new Promise(resolve => setTimeout(resolve, 100));
+      }
       // If we already prefetched this page for the current filter set, use it
       const cacheKey = JSON.stringify(filters);
       const cached = prefetchCacheRef.current[page];
@@ -295,23 +327,30 @@ export function HomePage() {
         // ignore if a newer request started
         if (myRequestId !== requestIdRef.current) return;
 
-        setProducts(prev => 
-          page === 0 
-            ? cached.data || [] 
-            : [...prev, ...(cached.data || [])]
-        );
+        // Mark product updates as non-urgent to avoid blocking paint/layout.
+        startTransition(() => {
+          setProducts(prev => 
+            page === 0 
+              ? (cached.data || []) 
+              : mergeUniqueProducts(prev, (cached.data as ProductWithDetails[]) || [])
+          );
+        });
         // Batch-fetch pricing for cached page items (non-blocking).
         // Schedule this work off the critical path so it doesn't compete
         // with higher-priority resources (LCP, fonts, etc.). Only fetch
         // the most-likely visible subset for the first page.
         {
           const ids = ((cached.data as ProductWithDetails[]) || []).map(p => p.id).filter(Boolean);
-          const idsToFetch = page === 0 ? ids.slice(0, 12) : ids;
-          if (idsToFetch.length > 0) {
-            scheduleIdle(() => {
-              fetchBatchPricingFor(idsToFetch).catch(e => console.error('Error fetching batch pricing for cached items', e));
-            });
+          if (page === 0 && ids.length > 0) {
+          // Don't use scheduleIdle for LCP cards
+          const lcpIds = ids.slice(0, 2);
+          fetchBatchPricingFor(lcpIds);
           }
+
+          if (ids.length > 2) {
+              scheduleIdle(() => fetchBatchPricingFor(ids.slice(2)));
+            }
+          
         }
         setHasMore((page + 1) * ITEMS_PER_PAGE < (cached.count || 0));
         setInitialLoad(false);
@@ -435,11 +474,15 @@ export function HomePage() {
       const loadedItems = page * ITEMS_PER_PAGE + (data?.length || 0);
       const moreAvailable = loadedItems < totalItems;
         
-      setProducts(prev => 
-        page === 0 
-          ? (data as ProductWithDetails[]) || [] 
-          : [...prev, ...(data as ProductWithDetails[] || [])]
-      );
+      // Use startTransition so React can prioritize paint for LCP and
+      // non-essential list updates are processed at lower priority.
+      startTransition(() => {
+        setProducts(prev => 
+          page === 0 
+            ? (data as ProductWithDetails[]) || [] 
+            : mergeUniqueProducts(prev, (data as ProductWithDetails[] || []))
+        );
+      });
       // Batch-fetch pricing for this page's products (non-blocking).
       // Run as a low-priority task so offer/variant requests don't delay
       // the critical rendering path.
@@ -513,7 +556,9 @@ export function HomePage() {
         setError(
           `Failed to load products: ${error instanceof Error ? error.message : 'Unknown error'}`
         );
-        setProducts([]);
+        startTransition(() => {
+          setProducts([]);
+        });
         setHasMore(false);
       }
     } finally {
@@ -523,7 +568,7 @@ export function HomePage() {
       }
     }
   },
-  [fetchBatchPricingFor, scheduleIdle]
+  [fetchBatchPricingFor, scheduleIdle, mergeUniqueProducts]
 );
 
   // Update shop names fetching to use the materialized view
@@ -1130,11 +1175,10 @@ export function HomePage() {
                 </div>
               ) : (
                 <>
-                  {products
-                    .filter((product, index, self) => 
-                      index === self.findIndex(p => p.id === product.id)
-                    )
-                    .map((product, index) => {
+                  {(
+                    // On the first page, only render the first N items immediately
+                    page === 0 ? products.slice(0, Math.min(INITIAL_RENDER_COUNT, products.length)) : products
+                  ).map((product, index) => {
                     const pid = String(product.id);
                     return (
                       <div
@@ -1151,8 +1195,8 @@ export function HomePage() {
                       >
                         <ProductCard
                           product={product}
-                          pricing={productPricings[String(product.id)]}
-                          isLcp={page === 0 && index === 0}
+                          pricing={productPricings[pid]}
+                          isLcp={page === 0 && index < LCP_PRELOAD_COUNT}
                         />
                       </div>
                     );

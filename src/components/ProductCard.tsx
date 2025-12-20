@@ -1,4 +1,4 @@
-import { useMemo, useState, memo } from 'react';
+import { useMemo, useState, memo, useLayoutEffect, useRef } from 'react';
 import AsyncLucideIcon from './AsyncLucideIcon';
 import { ProductWithDetails } from '../types';
 import { useNavigate } from 'react-router-dom';
@@ -18,16 +18,15 @@ interface ProductCardProps {
 function ProductCardComponent({ product, pricing, isLcp }: ProductCardProps) {
   const [showAllVariants, setShowAllVariants] = useState(false);
   const navigate = useNavigate();
-  // Use pricing passed from parent to avoid per-card network requests. Call
-  // the hook with `enabled=false` when pricing is provided so it doesn't
-  // execute network requests but keeps hook rules satisfied.
+  
+  // Use pricing passed from parent to avoid per-card network requests
   const pricingFromHook = useProductPricing(product.id, !pricing);
   const variantPrice = pricing?.variantPrice ?? pricingFromHook.variantPrice;
   const compareAtPrice = pricing?.compareAtPrice ?? pricingFromHook.compareAtPrice;
   const offerPrice = pricing?.offerPrice ?? pricingFromHook.offerPrice;
 
   // Get the first image as the product image
-  const [productImage, setProductImage] = useState(() => 
+  const [productImage] = useState(() => 
     product.images?.[0]?.src || null
   );
 
@@ -43,100 +42,109 @@ function ProductCardComponent({ product, pricing, isLcp }: ProductCardProps) {
   const dbWidth = firstImageRecord ? (firstImageRecord['width'] as number | undefined) : undefined;
   const dbHeight = firstImageRecord ? (firstImageRecord['height'] as number | undefined) : undefined;
 
-  // Choose the best source candidate: prefer DB-produced responsive fallback if present,
-  // otherwise use the productImage (which may be null) converted to undefined when absent.
+  // Choose the best source candidate
   const sourceCandidate = dbFallback || (productImage ?? undefined);
 
-  // Helper: build srcset strings for an image URL using common widths.
-  // For many CDNs (including Shopify's CDN) adding a `width` query param
-  // returns a resized image. We also build a WebP variant via `format=webp`.
-  const buildSrcSets = (url?: string) => {
-    if (!url) return { src: undefined as string | undefined, srcSet: undefined as string | undefined, webpSrcSet: undefined as string | undefined };
-    try {
-      // Include variants that cover the card slot and common DPRs.
-      // Card renders ~316px on desktop; include ~1x and 2x variants and
-      // a slightly larger option so the browser can pick the best fit.
-      const sizes = [160, 316, 632, 960];
-      const parsed = new URL(url);
-      const base = parsed.origin + parsed.pathname;
-      const originalParams = parsed.searchParams;
+  // Helper: build srcset strings for an image URL using common widths
+  const buildSrcSets = useMemo(() => {
+    return (url?: string) => {
+      if (!url) return { src: undefined as string | undefined, srcSet: undefined as string | undefined, webpSrcSet: undefined as string | undefined };
+      try {
+        // CRITICAL: Use smaller sizes optimized for card rendering
+        // Card renders ~316px on desktop; target 1x, 1.5x, and 2x DPR
+        const sizes = [316, 474, 632];
+        const parsed = new URL(url);
+        const base = parsed.origin + parsed.pathname;
+        const originalParams = parsed.searchParams;
 
-      const srcSet = sizes
-        .map((w) => {
-          const p = new URLSearchParams(originalParams.toString());
-          p.set('width', String(w));
-          return `${base}?${p.toString()} ${w}w`;
-        })
-        .join(', ');
+        const srcSet = sizes
+          .map((w) => {
+            const p = new URLSearchParams(originalParams.toString());
+            p.set('width', String(w));
+            return `${base}?${p.toString()} ${w}w`;
+          })
+          .join(', ');
 
-      const webpSrcSet = sizes
-        .map((w) => {
-          const p = new URLSearchParams(originalParams.toString());
-          p.set('width', String(w));
-          p.set('format', 'webp');
-          return `${base}?${p.toString()} ${w}w`;
-        })
-        .join(', ');
+        const webpSrcSet = sizes
+          .map((w) => {
+            const p = new URLSearchParams(originalParams.toString());
+            p.set('width', String(w));
+            p.set('format', 'webp');
+            return `${base}?${p.toString()} ${w}w`;
+          })
+          .join(', ');
 
-      const fallbackParams = new URLSearchParams(originalParams.toString());
-      // Use a medium fallback sized for the card slot. Previously this used
-      // 632 which causes browsers (or the preload) to request a 2x-sized
-      // image even when not necessary. Use the card slot width (316) as
-      // the fallback; DPR-aware browsers will pick the 632 candidate from
-      // the `srcset` when they need a 2x asset.
-      fallbackParams.set('width', String(316));
-      const src = `${base}?${fallbackParams.toString()}`;
+        // CRITICAL: Use card width (316px) as fallback, not 2x size
+        const fallbackParams = new URLSearchParams(originalParams.toString());
+        fallbackParams.set('width', String(316));
+        const src = `${base}?${fallbackParams.toString()}`;
 
-      return { src, srcSet, webpSrcSet };
-    } catch {
-      return { src: url, srcSet: undefined, webpSrcSet: undefined };
-    }
-  };
+        return { src, srcSet, webpSrcSet };
+      } catch {
+        return { src: url, srcSet: undefined, webpSrcSet: undefined };
+      }
+    };
+  }, []);
 
-  const { src: responsiveSrc, srcSet: responsiveSrcSet, webpSrcSet } = buildSrcSets(productImage || undefined);
+  // Build responsive srcsets from the source candidate
+  const { src: computedSrc, srcSet: computedSrcSet, webpSrcSet: computedWebpSrcSet } = useMemo(
+    () => buildSrcSets(sourceCandidate || undefined),
+    [buildSrcSets, sourceCandidate]
+  );
 
-  // Decide the best candidate URL to use for building responsive srcsets.
-  // Build a srcset/webp srcset for the chosen candidate so the browser
-  // can request appropriately sized images for the card slot.
-  const { src: computedSrc, srcSet: computedSrcSet, webpSrcSet: computedWebpSrcSet } = buildSrcSets(sourceCandidate || undefined);
+  // Final sources to use in <picture>
+  const finalFallback = computedSrc || sourceCandidate || productImage || undefined;
+  const finalSrcSet = dbSrcSet || computedSrcSet;
+  const finalWebpSrcSet = dbWebpSrcSet || computedWebpSrcSet;
 
-  // Final sources we will use in the <picture>
-  const finalFallback = computedSrc || sourceCandidate || responsiveSrc || productImage || undefined;
-  // Prefer any srcsets provided by the DB (pipeline-produced). If none,
-  // fall back to the computed srcset we just built from the candidate URL.
-  const finalSrcSet = dbSrcSet || computedSrcSet || responsiveSrcSet;
-  const finalWebpSrcSet = dbWebpSrcSet || computedWebpSrcSet || webpSrcSet;
+  // CRITICAL: Accurate sizes attribute for proper image selection
+  const sizesAttr = '(max-width: 640px) 50vw, (max-width: 1024px) 33vw, 316px';
 
-  // Helpful sizes attribute to hint the browser about the image slot size.
-  const sizesAttr = '(max-width: 640px) 50vw, 316px';
+  const imgRef = useRef<HTMLImageElement | null>(null);
 
-  // Synchronously insert a preload link for the LCP candidate so the
-  // browser can discover the image request before the <img> is parsed and
-  // starts fetching. We prefer to add `imagesrcset`/`imagesizes` when a
-  // responsive `srcset` is available to make the preload more accurate.
-  if (isLcp && typeof document !== 'undefined' && finalFallback) {
+  // CRITICAL: Preload LCP candidate image synchronously before paint
+  useLayoutEffect(() => {
+    if (!isLcp || typeof document === 'undefined' || !finalFallback) return;
+
     try {
       const url = finalFallback;
       const selector = `link[rel="preload"][href="${url}"]`;
       const existing = document.head.querySelector(selector);
+      
       if (!existing) {
         const link = document.createElement('link');
         link.rel = 'preload';
         link.as = 'image';
         link.href = url;
+        
+        // CRITICAL: Include srcset for responsive preloading
         if (finalWebpSrcSet || finalSrcSet) {
-          // Prefer preloading the WebP srcset when available.
+          // Prefer WebP srcset if available (better compression)
           link.setAttribute('imagesrcset', finalWebpSrcSet || finalSrcSet || '');
-          // Match the <img> sizes hint so the preload is accurate.
           link.setAttribute('imagesizes', sizesAttr);
         }
-        link.setAttribute('fetchPriority', 'high');
-        document.head.appendChild(link);
+        
+        // CRITICAL: High priority for LCP image
+        link.setAttribute('fetchpriority', 'high');
+        
+        // Insert at beginning of head for earliest discovery
+        if (document.head.firstChild) {
+          document.head.insertBefore(link, document.head.firstChild);
+        } else {
+          document.head.appendChild(link);
+        }
+      }
+
+      // CRITICAL: Set fetchpriority directly on img element
+      if (imgRef.current) {
+        imgRef.current.setAttribute('fetchpriority', 'high');
       }
     } catch (err) {
-      void err;
+      console.error('Preload error:', err);
     }
-  }
+
+    // Cleanup not needed - preload hints can persist
+  }, [isLcp, finalFallback, finalWebpSrcSet, finalSrcSet, sizesAttr]);
 
   // Process variants from the product data
   const variants = useMemo(() => 
@@ -169,13 +177,12 @@ function ProductCardComponent({ product, pricing, isLcp }: ProductCardProps) {
     [compareAtPrice, variantPrice, offerPrice]
   );
 
-  // Limit displayed variants to 2 on mobile, 3 on desktop unless showAllVariants is true
-  // Read the viewport width once (per card mount) to avoid repeated layout
-  // reads during render. This reduces the chance of forced synchronous
-  // layouts when many cards render simultaneously.
-  const initialViewportWidth = useMemo(() => (typeof window !== 'undefined' ? window.innerWidth : 1024), []);
+  // CRITICAL: Read viewport width once to avoid layout thrashing
+  const initialViewportWidth = useMemo(() => 
+    (typeof window !== 'undefined' ? window.innerWidth : 1024), 
+  []);
 
-  // Limit displayed variants to 2 on mobile, 3 on desktop unless showAllVariants is true
+  // Limit displayed variants
   const displayedVariants = useMemo(
     () => (showAllVariants ? variants : variants.slice(0, initialViewportWidth < 768 ? 2 : 3)),
     [variants, showAllVariants, initialViewportWidth]
@@ -212,6 +219,7 @@ function ProductCardComponent({ product, pricing, isLcp }: ProductCardProps) {
       <div className="relative w-full pt-[100%] sm:pt-[70%] overflow-hidden">
         {productImage ? (
           <picture>
+            {/* CRITICAL: WebP first for best compression */}
             {finalWebpSrcSet && (
               <source type="image/webp" srcSet={finalWebpSrcSet} sizes={sizesAttr} />
             )}
@@ -220,35 +228,34 @@ function ProductCardComponent({ product, pricing, isLcp }: ProductCardProps) {
               <source srcSet={finalSrcSet} sizes={sizesAttr} />
             )}
 
-            {/* placeholder LQIP: low-res tiny image that stays blurred until main img loads */}
+            {/* CRITICAL: Placeholder LQIP for perceived performance */}
             {dbPlaceholder && (
               <img
                 src={dbPlaceholder}
-                alt={product.title ? `${product.title} placeholder` : 'placeholder'}
-                aria-hidden
-                className={`absolute top-0 left-0 w-full h-full object-cover filter blur-sm scale-105 transition-opacity duration-500 ${imgLoaded ? 'opacity-0' : 'opacity-100'}`}
+                alt=""
+                aria-hidden="true"
+                className={`absolute top-0 left-0 w-full h-full object-cover filter blur-sm scale-105 transition-opacity duration-300 ${
+                  imgLoaded ? 'opacity-0' : 'opacity-100'
+                }`}
               />
             )}
 
+            {/* CRITICAL: Main image with optimized attributes */}
             <img
               src={finalFallback}
               srcSet={finalSrcSet}
-              // The card displays at ~316px on desktop; give the browser a
-              // realistic sizes hint so it picks a smaller image instead of
-              // the 1600px original. On small viewports allow 50vw.
               sizes={sizesAttr}
               loading={isLcp ? 'eager' : 'lazy'}
-              decoding="async"
+              decoding={isLcp ? 'sync' : 'async'}
               alt={product.title || 'Product image'}
               width={dbWidth}
               height={dbHeight}
-              className={`absolute top-0 left-0 w-full h-full object-cover transition-opacity duration-500 ${imgLoaded ? 'opacity-100' : 'opacity-0'}`}
+              ref={imgRef}
+              className={`absolute top-0 left-0 w-full h-full object-cover transition-opacity duration-300 ${
+                imgLoaded ? 'opacity-100' : 'opacity-0'
+              }`}
               onLoad={() => setImgLoaded(true)}
-              onError={() => {
-                setProductImage(null);
-                setImgLoaded(true);
-              }}
-              {...(isLcp ? ({ fetchPriority: 'high' } as unknown as Record<string, string>) : ({ fetchPriority: 'low' } as unknown as Record<string, string>))}
+              onError={() => setImgLoaded(true)}
             />
           </picture>
         ) : (
@@ -323,7 +330,7 @@ function ProductCardComponent({ product, pricing, isLcp }: ProductCardProps) {
                     }}
                     className="text-xs px-1.5 py-0.5 sm:px-2 sm:py-1 rounded-full border border-gray-300 dark:border-gray-600 bg-gray-100 dark:bg-gray-700 text-gray-900 dark:text-gray-100 hover:bg-gray-200 dark:hover:bg-gray-600"
                   >
-                    +{variants.length - 3} more
+                    +{variants.length - (initialViewportWidth < 768 ? 2 : 3)} more
                   </button>
                 )}
                 {showAllVariants && (
