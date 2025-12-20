@@ -661,33 +661,6 @@ export type Database = {
         }
         Relationships: []
       }
-      size_groups: {
-        Row: {
-          created_at: string
-          id: number
-          size: string | null
-          size_group: string | null
-          size_group_order: number | null
-          type: string | null
-        }
-        Insert: {
-          created_at?: string
-          id?: number
-          size?: string | null
-          size_group?: string | null
-          size_group_order?: number | null
-          type?: string | null
-        }
-        Update: {
-          created_at?: string
-          id?: number
-          size?: string | null
-          size_group?: string | null
-          size_group_order?: number | null
-          type?: string | null
-        }
-        Relationships: []
-      }
       variants: {
         Row: {
           available: boolean | null
@@ -710,7 +683,7 @@ export type Database = {
           price: number | null
           product_id: number | null
           requires_shipping: boolean | null
-          size_group_id: number | null
+          size_group: string | null
           sku: string | null
           taxable: boolean | null
           title: string | null
@@ -739,7 +712,7 @@ export type Database = {
           price?: number | null
           product_id?: number | null
           requires_shipping?: boolean | null
-          size_group_id?: number | null
+          size_group?: string | null
           sku?: string | null
           taxable?: boolean | null
           title?: string | null
@@ -768,7 +741,7 @@ export type Database = {
           price?: number | null
           product_id?: number | null
           requires_shipping?: boolean | null
-          size_group_id?: number | null
+          size_group?: string | null
           sku?: string | null
           taxable?: boolean | null
           title?: string | null
@@ -791,13 +764,6 @@ export type Database = {
             referencedRelation: "products"
             referencedColumns: ["id"]
           },
-          {
-            foreignKeyName: "variants_size_group_id_fkey"
-            columns: ["size_group_id"]
-            isOneToOne: false
-            referencedRelation: "size_groups"
-            referencedColumns: ["id"]
-          },
         ]
       }
     }
@@ -808,10 +774,11 @@ export type Database = {
         }
         Relationships: []
       }
-      distinct_size_groups_and_types: {
+      distinct_size_groups: {
         Row: {
+          product_count: number | null
           size_group: string | null
-          type: string | null
+          variant_count: number | null
         }
         Relationships: []
       }
@@ -904,6 +871,13 @@ export type Database = {
         }[]
       }
       get_missing_products_count: { Args: never; Returns: number }
+      get_products_needing_size_groups: {
+        Args: never
+        Returns: {
+          product_id: number
+          size_groups: string[]
+        }[]
+      }
       get_products_needing_taxonomy_mapping: {
         Args: { p_limit?: number; p_offset?: number }
         Returns: {
@@ -946,10 +920,30 @@ export type Database = {
         Args: { batch_size?: number; offset_val?: number }
         Returns: number
       }
+      refresh_product_size_groups_incremental: {
+        Args: never
+        Returns: {
+          products_updated: number
+          variants_processed: number
+        }[]
+      }
       refresh_products_core: { Args: never; Returns: undefined }
       refresh_products_enriched: { Args: never; Returns: undefined }
       refresh_products_full: { Args: never; Returns: undefined }
-      refresh_products_with_details: { Args: never; Returns: undefined }
+      refresh_size_groups_fast: {
+        Args: never
+        Returns: {
+          products_updated: number
+          variants_processed: number
+        }[]
+      }
+      refresh_size_groups_incremental: {
+        Args: never
+        Returns: {
+          products_updated: number
+          variants_processed: number
+        }[]
+      }
       resume_migration: {
         Args: never
         Returns: {
