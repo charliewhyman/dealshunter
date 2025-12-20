@@ -163,7 +163,8 @@ class ProductUploader(BaseUploader):
         self.processor = ProductProcessor()
     
     def get_table_name(self) -> str:
-        return "products"
+        # main core table for product details
+        return "products_with_details_core"
 
     def get_on_conflict(self) -> str:
         """Use id as the ON CONFLICT target for products."""
@@ -243,8 +244,9 @@ class ProductUploader(BaseUploader):
                     # don't fail processing for logging issues
                     pass
 
+                # Upsert into the core products table
                 if self.supabase.bulk_upsert(
-                    "products",
+                    "products_with_details_core",
                     self.processor.collections["products"],
                     on_conflict="id"
                 ):
@@ -298,6 +300,10 @@ class ProductUploader(BaseUploader):
             if len(shop_ids) == 1:
                 shop_id = list(shop_ids)[0]
                 self.cleanup_stale_records(product_ids, shop_id)
+
+            # Enriched rows are intentionally NOT upserted here.
+            # Enrichment processors (taxonomy/size-groups/etc.) are
+            # responsible for creating/updating `products_enriched_data`.
             
             self.file_manager.move_to_processed(filepath)
             self.logger.info(f"Successfully processed {filepath.name}")
