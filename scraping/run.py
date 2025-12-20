@@ -14,7 +14,6 @@ from datetime import datetime
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 from orchestrator.main import PipelineOrchestrator
-from processors.size_group_processor import SizeGroupProcessor
 import processors.taxonomy_processor as taxonomy_processor
 import config.settings as settings
 from uploader.supabase_client import SupabaseClient
@@ -220,6 +219,52 @@ def run_upload_only(args):
     print("\nUpload finished")
     return results
 
+def run_size_groups_update(args):
+    """Run size groups update via RPC."""
+    print("\nUpdating size groups via RPC...")
+    
+    try:
+        sup = SupabaseClient()
+        
+        # Choose RPC function based on args
+        if getattr(args, 'incremental', False):
+            rpc_name = 'refresh_product_size_groups_incremental'
+            print("Running incremental size groups update...")
+        else:
+            rpc_name = 'refresh_product_size_groups_fast'
+            print("Running fast size groups update...")
+        
+        def do_update(client):
+            return client.rpc(rpc_name).execute()
+        
+        rpc_result = sup.safe_execute(do_update, f'Size groups update ({rpc_name})', max_retries=3)
+        
+        if rpc_result and hasattr(rpc_result, 'data'):
+            result_data = rpc_result.data
+            print(f"Size groups update completed successfully.")
+            print(f"Products updated: {result_data.get('products_updated', 0)}")
+            print(f"Variants processed: {result_data.get('total_variants_processed', result_data.get('variants_processed', 0))}")
+            
+            # Save result file
+            out = settings.DATA_DIR / f"size_groups_update_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json"
+            with open(out, 'w', encoding='utf-8') as fh:
+                json.dump({
+                    'status': 'success',
+                    'function': rpc_name,
+                    'timestamp': datetime.now().isoformat(),
+                    'data': result_data
+                }, fh, indent=2, ensure_ascii=False)
+            print(f"Result saved to: {out}")
+            
+            return result_data
+        else:
+            print("Size groups update failed or returned unexpected result.")
+            return {}
+            
+    except Exception as e:
+        print(f"Error updating size groups: {e}")
+        return {}
+
 def run_processing_only(args):
     """Run only processing."""
     print("\nRunning processing only...")
@@ -247,9 +292,8 @@ def run_processing_only(args):
         }
 
         if process_size_groups:
-            print("\nStep: Processing size groups...")
-            size_group_processor = SizeGroupProcessor()
-            size_group_results = size_group_processor.run()
+            print("\nStep: Processing size groups via RPC...")
+            size_group_results = run_size_groups_update(args)
             results['steps']['size_groups'] = size_group_results
 
         if process_taxonomy:
@@ -269,6 +313,16 @@ def run_processing_only(args):
         process_taxonomy=process_taxonomy,
         taxonomy_config=taxonomy_config if process_taxonomy else None
     )
+    
+    # If size groups processing is requested and orchestrator doesn't handle it,
+    # run the RPC directly
+    if process_size_groups:
+        print("\nStep: Processing size groups via RPC...")
+        size_group_results = run_size_groups_update(args)
+        if 'steps' not in results:
+            results['steps'] = {}
+        results['steps']['size_groups'] = size_group_results
+    
     return results
 
 def run_complete_pipeline(args):
@@ -305,11 +359,38 @@ def run_complete_pipeline(args):
             return {}
         shops = filtered
 
-    results = orchestrator.run_complete_pipeline(
-        shops=shops,
-        process_size_groups=not args.skip_size_groups,
-        process_taxonomy=not args.skip_taxonomy
-    )
+    # Run scraping pipeline
+    print("\n=== Running Scraping Pipeline ===")
+    scrape_results = orchestrator.run_scraping_pipeline(shops=shops)
+    
+    # Run upload pipeline
+    print("\n=== Running Upload Pipeline ===")
+    upload_results = orchestrator.run_upload_pipeline()
+    
+    results = {
+        'timestamp': datetime.now().strftime('%Y%m%d_%H%M%S'),
+        'scraping': scrape_results,
+        'upload': upload_results,
+        'processing': {}
+    }
+    
+    # Run processing if requested
+    if not args.skip_size_groups or not args.skip_taxonomy:
+        print("\n=== Running Processing Pipeline ===")
+        
+        # Size groups via RPC
+        if not args.skip_size_groups:
+            print("\nStep: Processing size groups via RPC...")
+            size_group_results = run_size_groups_update(args)
+            results['processing']['size_groups'] = size_group_results
+        
+        # Taxonomy processing
+        if not args.skip_taxonomy:
+            print("\nStep: Processing taxonomy mapping...")
+            taxonomy_results = taxonomy_processor.run_taxonomy_mapping(**taxonomy_config)
+            results['processing']['taxonomy'] = taxonomy_results
+
+    print("\nComplete pipeline finished")
     return results
 
 def setup_database_structure(args):
@@ -388,7 +469,7 @@ def main():
     )
     
     # Mode selection
-    parser.add_argument("--mode", choices=["all", "scrape", "upload", "process", "db"], 
+    parser.add_argument("--mode", choices=["all", "scrape", "upload", "process", "db", "size-groups"], 
                        default="all", help="Operation mode (default: all)")
     
     # Scraping options
@@ -434,9 +515,13 @@ def main():
     
     # Explicit processing-only flags (used when --mode process)
     parser.add_argument("--process-size-groups", action="store_true",
-                       help="Run only size group processing (ignores taxonomy unless also specified)")
+                       help="Run only size group processing via RPC")
     parser.add_argument("--process-taxonomy", action="store_true",
                        help="Run only taxonomy mapping (ignores size groups unless also specified)")
+    
+    # Size groups options (for --mode size-groups)
+    parser.add_argument("--incremental", action="store_true",
+                       help="Use incremental size groups update (only process recent changes)")
     
     # Taxonomy options
     parser.add_argument("--max-depth", type=int,
@@ -482,6 +567,15 @@ def main():
         success = run_database_refresh(args)
         sys.exit(0 if success else 1)
     
+    # Size groups only mode
+    if args.mode == "size-groups":
+        results = run_size_groups_update(args)
+        results_file = settings.DATA_DIR / f"size_groups_results_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json"
+        with open(results_file, 'w', encoding='utf-8') as f:
+            json.dump(results, f, indent=2, ensure_ascii=False)
+        print(f"\nResults saved to: {results_file}")
+        sys.exit(0)
+    
     # Run based on mode
     if args.mode == "scrape":
         results = run_scraping_only(args)
@@ -494,6 +588,7 @@ def main():
         print("  --setup-db      : Set up new database structure")
         print("  --refresh-core  : Refresh core product data")
         print("  --refresh-full  : Refresh full product data")
+        print("  --mode size-groups : Update size groups via RPC")
         sys.exit(0)
     else:  # all
         results = run_complete_pipeline(args)
