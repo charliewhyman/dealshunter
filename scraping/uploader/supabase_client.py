@@ -5,6 +5,8 @@ Supabase client with retry logic.
 import os
 import time
 import random
+import socket
+from urllib.parse import urlparse
 from typing import Optional, Callable, Any, List, Dict
 from supabase import create_client, Client
 from dotenv import load_dotenv
@@ -33,7 +35,19 @@ class SupabaseClient:
         
         if not SUPABASE_URL or not SUPABASE_KEY:
             raise ValueError("SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY not set")
-        
+        # Validate that the host in SUPABASE_URL resolves to avoid confusing
+        # downstream errors like "nodename nor servname provided, or not known".
+        try:
+            parsed = urlparse(SUPABASE_URL)
+            host = parsed.hostname
+            if not host:
+                raise ValueError(f"Invalid SUPABASE_URL: {SUPABASE_URL}")
+            # attempt a DNS resolution
+            socket.getaddrinfo(host, parsed.port or 443)
+        except Exception as e:
+            uploader_logger.error(f"SUPABASE host resolution failed for '{SUPABASE_URL}': {e}")
+            raise
+
         self.client = create_client(SUPABASE_URL, SUPABASE_KEY)
     
     def get_fresh_client(self) -> Client:
@@ -45,7 +59,17 @@ class SupabaseClient:
         
         if not SUPABASE_URL or not SUPABASE_KEY:
             raise ValueError("SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY not set")
-        
+        # Validate host before creating client
+        parsed = urlparse(SUPABASE_URL)
+        host = parsed.hostname
+        if not host:
+            raise ValueError(f"Invalid SUPABASE_URL: {SUPABASE_URL}")
+        try:
+            socket.getaddrinfo(host, parsed.port or 443)
+        except Exception as e:
+            uploader_logger.error(f"SUPABASE host resolution failed for '{SUPABASE_URL}': {e}")
+            raise
+
         return create_client(SUPABASE_URL, SUPABASE_KEY)
     
     def safe_execute(self, operation_fn: Callable, operation_name: str, 
