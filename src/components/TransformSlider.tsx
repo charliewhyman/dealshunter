@@ -44,8 +44,14 @@ export default function TransformSlider({ min, max, step = 1, value, onFinalChan
               <div
                 className="absolute h-full bg-blue-600 rounded-full"
                 style={{
-                  left: `${((internalValues[0] - min) / (max - min)) * 100}%`,
-                  width: `${((internalValues[1] - internalValues[0]) / (max - min)) * 100}%`,
+                  left: 0,
+                  width: '100%',
+                  transformOrigin: 'left center',
+                  // Use transform (translateX + scaleX) so updates are
+                  // composited on the GPU instead of causing layout
+                  // recalculations (forced reflow) when the slider moves.
+                  transform: `translateX(${((internalValues[0] - min) / (max - min)) * 100}%) scaleX(${((internalValues[1] - internalValues[0]) / (max - min))})`,
+                  willChange: 'transform',
                 }}
               />
               {children}
