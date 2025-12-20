@@ -244,8 +244,7 @@ export function HomePage() {
     return () => io.disconnect();
   }, [products, fetchBatchPricingFor, scheduleIdle]);
 
-  const [activeCategory, setActiveCategory] = useState('all');
-  const [allSizeData, setAllSizeData] = useState<{size_group: string, type: string}[]>([]);
+  const [allSizeData, setAllSizeData] = useState<{size_group: string}[]>([]);
 
   // Add a ref to track current request to prevent race conditions
   const currentRequestRef = useRef<AbortController | null>(null);
@@ -534,37 +533,41 @@ export function HomePage() {
 
       // Fetch shop names
       const { data: shopData, error: shopError } = await supabase
-        .from('distinct_shop_names')
-        .select('shop_name')
-        .order('shop_name', { ascending: true });
+      .from('distinct_shop_names')
+      .select('shop_name')
+      .order('shop_name', { ascending: true });
       
       if (shopData && !shopError) {
-        // Ensure TypeScript knows the shape returned by the view
-        setShopNames((shopData as Array<{ shop_name?: string }>).map(item => item.shop_name).filter(Boolean) as string[]);
+      setShopNames((shopData as Array<{ shop_name?: string }>).map(item => item.shop_name).filter(Boolean) as string[]);
       }
 
       // Fetch product categories
       const { data: categoryData, error: categoryError } = await supabase
-        .from('products_with_details')
-        .select('categories')
-        .not('categories', 'is', null);
+      .from('products_with_details')
+      .select('categories')
+      .not('categories', 'is', null);
 
       if (categoryData && !categoryError) {
-        const uniqueCategories = Array.from(new Set(
-          (categoryData as Array<{ categories?: string[] }>)
-            .flatMap(item => item.categories || [])
-            .filter((c): c is string => !!c)
-        )).sort();
-        setCategories(uniqueCategories);
+      const uniqueCategories = Array.from(new Set(
+        (categoryData as Array<{ categories?: string[] }>)
+        .flatMap(item => item.categories || [])
+        .filter((c): c is string => !!c)
+      )).sort();
+      setCategories(uniqueCategories);
       }
-  
+    
       // Fetch size data
       const { data: sizeData, error: sizeError } = await supabase
-        .from('distinct_size_groups_and_types')
-        .select('size_group, type');
+      .from('distinct_size_groups')
+      .select('size_group');
       
       if (sizeData && !sizeError) {
-        setAllSizeData(sizeData);
+      setAllSizeData(
+        (sizeData as Array<{ size_group?: unknown }>)
+          .map(item => ({
+        size_group: item.size_group != null ? String(item.size_group) : ''          }))
+          .filter(item => item.size_group !== '')
+      );
       }
     }
     
@@ -732,19 +735,9 @@ export function HomePage() {
       setSelectedPriceRange([selectedPriceRange[0], newMax]);
     }
   };
-
-  // Handle size groups
   
-  const getAvailableCategories = () => {
-    const uniqueTypes = Array.from(new Set(allSizeData.map(item => item.type)));
-    return uniqueTypes.filter(type => type !== null && type !== undefined);
-  };
-  
-  const getCurrentSizeOptions = (category: string) => {
-    // Filter size groups based on active category
-    const filteredSizes = category === 'all' 
-      ? allSizeData 
-      : allSizeData.filter(item => item.type === category);
+  const getCurrentSizeOptions = () => {
+    const filteredSizes = allSizeData;
     
     // Get unique size groups from the filtered data
     const uniqueSizeGroups = Array.from(
@@ -757,10 +750,7 @@ export function HomePage() {
     }));
   };
 
-  const SizeGroupsFilter = () => {
-    const availableCategories = getAvailableCategories();
-    const showCategoryTabs = availableCategories.length > 1;
-  
+  const SizeGroupsFilter = () => {  
     return (
       <div>
         <h3 className="text-xs font-medium text-gray-700 dark:text-gray-300 mb-2 sm:text-sm sm:mb-3">
@@ -769,40 +759,9 @@ export function HomePage() {
               ({selectedSizeGroups.length} selected)
             </span>
           )}
-        </h3>
-        
-        {/* Category Tabs - only show if we have multiple categories */}
-        {showCategoryTabs && (
-          <div className="flex flex-wrap gap-1.5 mb-3 border-b border-gray-200 dark:border-gray-600 pb-3">
-          {/* Define the exact order we want */}
-          {[
-            'all',
-            'Clothing',
-            'Footwear',
-            'Bras',
-            'Children\'s',
-            'Other'
-          ].filter(category => 
-            // Only show categories that exist in our data
-            category === 'all' || availableCategories.includes(category)
-          ).map(category => (
-            <button 
-              key={category}
-              className={`px-3 py-1.5 text-xs rounded-md transition-all ${
-                activeCategory === category 
-                  ? 'bg-blue-100 text-blue-800 dark:bg-blue-900/60 dark:text-blue-100 font-medium shadow-inner' 
-                  : 'text-gray-600 hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-gray-700'
-              }`}
-              onClick={() => setActiveCategory(category === 'all' ? 'all' : category)}
-            >
-              {category === 'all' ? 'All Sizes' : category}
-            </button>
-          ))}
-        </div>
-        )}
-        
+        </h3>        
         <MultiSelectDropdown
-          options={getCurrentSizeOptions(activeCategory)}
+          options={getCurrentSizeOptions()}
           selected={selectedSizeGroups}
           onChange={setSelectedSizeGroups}
           placeholder="All sizes"
@@ -818,7 +777,6 @@ export function HomePage() {
     setOnSaleOnly(false);
     setSelectedSizeGroups([]);
     setSelectedPriceRange([...PRICE_RANGE]);
-    setActiveCategory('all');
   }
 
   function ProductCardSkeleton() {
