@@ -448,20 +448,29 @@ class BatchTaxonomyMapper:
                     updates.append({
                         "id": self.last_id,
                         "taxonomy_path": result["taxonomy_path"],
-                        "taxonomy_score": result["score"],
-                        "taxonomy_depth": depth,
-                        "taxonomy_model": self.model_name,
                         "taxonomy_mapped_at": datetime.now(timezone.utc).isoformat(),
                     })
                     
                 if updates:
-                    # Try upserting with a safe Supabase client (handles retries).
+                    # Try upserting taxonomy results into the enriched data table.
                     sup = SupabaseClient()
 
-                    def do_upsert_full(client):
-                        return client.table("products_with_details").upsert(updates).execute()
+                    # Map updates from {'id': <prod_id>, ...} to enriched table shape
+                    enriched_updates = []
+                    for u in updates:
+                        pid = u.get("id") or u.get("product_id")
+                        if pid is None:
+                            continue
+                        enriched_updates.append({
+                            "product_id": int(pid) if isinstance(pid, (int, float, str)) and str(pid).strip().isdigit() else pid,
+                            "taxonomy_path": u.get("taxonomy_path"),
+                            "taxonomy_mapped_at": u.get("taxonomy_mapped_at")
+                        })
 
-                    result = sup.safe_execute(do_upsert_full, f"Upsert taxonomy updates batch {batch_count}", max_retries=3)
+                    def do_upsert_enriched(client):
+                        return client.table("products_enriched_data").upsert(enriched_updates).execute()
+
+                    result = sup.safe_execute(do_upsert_enriched, f"Upsert taxonomy updates batch {batch_count}", max_retries=3)
 
                     if result and hasattr(result, 'data'):
                         match_rate = (len(updates) / len(products)) * 100
@@ -471,12 +480,11 @@ class BatchTaxonomyMapper:
                             f"Matched: {self.total_matched}"
                         )
                     else:
-                        # Likely schema mismatch (missing columns). Try a minimal fallback
-                        processor_logger.warning("Full upsert to products_with_details failed; attempting fallback upsert with minimal columns")
-                        # Prepare fallback updates containing only columns we know exist in products_with_details
+                        # Likely schema mismatch or permission issue. Try a minimal fallback
+                        processor_logger.warning("Upsert to products_enriched_data failed; attempting fallback upsert with minimal columns")
                         fallback_updates = []
-                        for u in updates:
-                            fu = {"id": u.get("id")}
+                        for u in enriched_updates:
+                            fu = {"product_id": u.get("product_id")}
                             if u.get("taxonomy_path") is not None:
                                 fu["taxonomy_path"] = u.get("taxonomy_path")
                             if u.get("taxonomy_mapped_at") is not None:
@@ -486,13 +494,13 @@ class BatchTaxonomyMapper:
 
                         if fallback_updates:
                             def do_upsert_fallback(client):
-                                return client.table("products_with_details").upsert(fallback_updates).execute()
+                                return client.table("products_enriched_data").upsert(fallback_updates).execute()
 
                             fallback_result = sup.safe_execute(do_upsert_fallback, f"Fallback upsert taxonomy_path/mapped_at batch {batch_count}", max_retries=2)
                             if fallback_result and hasattr(fallback_result, 'data'):
                                 processor_logger.info(f"Fallback upsert succeeded for batch {batch_count} (taxonomy_path/taxonomy_mapped_at)")
                             else:
-                                processor_logger.error(f"Fallback upsert also failed for batch {batch_count}; check table schema")
+                                processor_logger.error(f"Fallback upsert also failed for batch {batch_count}; check table schema and permissions")
                         else:
                             processor_logger.error("No valid fallback updates could be prepared; skipping batch")
             
