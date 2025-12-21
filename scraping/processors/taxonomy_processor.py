@@ -396,7 +396,8 @@ class BatchTaxonomyMapper:
                 self.supabase.table("products_with_details")
                 .select("*")
                 .gt("id", self.last_id)
-                .is_("taxonomy_path", "null")
+                # select rows where taxonomy has not yet been mapped
+                .is_("taxonomy_mapped_at", None)
                 .order("id")
                 .limit(batch_size)
             )
@@ -461,9 +462,18 @@ class BatchTaxonomyMapper:
                         pid = u.get("id") or u.get("product_id")
                         if pid is None:
                             continue
+                        # Ensure taxonomy_path is a text[] (list) for Postgres
+                        raw_path = u.get("taxonomy_path")
+                        if raw_path is None:
+                            tpath = None
+                        elif isinstance(raw_path, list):
+                            tpath = raw_path
+                        else:
+                            tpath = [raw_path]
+
                         enriched_updates.append({
                             "product_id": int(pid) if isinstance(pid, (int, float, str)) and str(pid).strip().isdigit() else pid,
-                            "taxonomy_path": u.get("taxonomy_path"),
+                            "taxonomy_path": tpath,
                             "taxonomy_mapped_at": u.get("taxonomy_mapped_at")
                         })
 
