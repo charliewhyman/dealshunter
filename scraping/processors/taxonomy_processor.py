@@ -446,73 +446,79 @@ class BatchTaxonomyMapper:
                     depth = result.get("depth", 0)
                     self.depth_stats[depth] = self.depth_stats.get(depth, 0) + 1
                     
+                    # Store only the clean taxonomy path (no Shopify prefix)
+                    clean_path = result["taxonomy_path"]
+                    
                     updates.append({
                         "id": self.last_id,
-                        "taxonomy_path": result["taxonomy_path"],
+                        "taxonomy_path": clean_path,
                         "taxonomy_mapped_at": datetime.now(timezone.utc).isoformat(),
                     })
                     
-                if updates:
-                    # Try upserting taxonomy results into the enriched data table.
-                    sup = SupabaseClient()
+            if updates:
+                # Try upserting taxonomy results into the enriched data table.
+                sup = SupabaseClient()
 
-                    # Map updates from {'id': <prod_id>, ...} to enriched table shape
-                    enriched_updates = []
-                    for u in updates:
-                        pid = u.get("id") or u.get("product_id")
-                        if pid is None:
-                            continue
-                        # Ensure taxonomy_path is a text[] (list) for Postgres
-                        raw_path = u.get("taxonomy_path")
-                        if raw_path is None:
-                            tpath = None
-                        elif isinstance(raw_path, list):
-                            tpath = raw_path
-                        else:
-                            tpath = [raw_path]
-
-                        enriched_updates.append({
-                            "product_id": int(pid) if isinstance(pid, (int, float, str)) and str(pid).strip().isdigit() else pid,
-                            "taxonomy_path": tpath,
-                            "taxonomy_mapped_at": u.get("taxonomy_mapped_at")
-                        })
-
-                    def do_upsert_enriched(client):
-                        return client.table("products_enriched_data").upsert(enriched_updates).execute()
-
-                    result = sup.safe_execute(do_upsert_enriched, f"Upsert taxonomy updates batch {batch_count}", max_retries=3)
-
-                    if result and hasattr(result, 'data'):
-                        match_rate = (len(updates) / len(products)) * 100
-                        processor_logger.info(
-                            f"Batch {batch_count}: {len(updates)}/{len(products)} matched "
-                            f"({match_rate:.1f}%) | Total: {self.total_processed}, "
-                            f"Matched: {self.total_matched}"
-                        )
+                # Map updates from {'id': <prod_id>, ...} to enriched table shape
+                enriched_updates = []
+                for u in updates:
+                    pid = u.get("id") or u.get("product_id")
+                    if pid is None:
+                        continue
+                    
+                    # Store taxonomy_path as a single-element array containing the clean path string
+                    raw_path = u.get("taxonomy_path")
+                    if raw_path is None:
+                        tpath = None
+                    elif isinstance(raw_path, list):
+                        # Already a list - use as is
+                        tpath = raw_path
                     else:
-                        # Likely schema mismatch or permission issue. Try a minimal fallback
-                        processor_logger.warning("Upsert to products_enriched_data failed; attempting fallback upsert with minimal columns")
-                        fallback_updates = []
-                        for u in enriched_updates:
-                            fu = {"product_id": u.get("product_id")}
-                            if u.get("taxonomy_path") is not None:
-                                fu["taxonomy_path"] = u.get("taxonomy_path")
-                            if u.get("taxonomy_mapped_at") is not None:
-                                fu["taxonomy_mapped_at"] = u.get("taxonomy_mapped_at")
-                            if len(fu) > 1:
-                                fallback_updates.append(fu)
+                        # Single string - wrap in array
+                        tpath = [raw_path]
 
-                        if fallback_updates:
-                            def do_upsert_fallback(client):
-                                return client.table("products_enriched_data").upsert(fallback_updates).execute()
+                    enriched_updates.append({
+                        "product_id": int(pid) if isinstance(pid, (int, float, str)) and str(pid).strip().isdigit() else pid,
+                        "taxonomy_path": tpath,
+                        "taxonomy_mapped_at": u.get("taxonomy_mapped_at")
+                    })
 
-                            fallback_result = sup.safe_execute(do_upsert_fallback, f"Fallback upsert taxonomy_path/mapped_at batch {batch_count}", max_retries=2)
-                            if fallback_result and hasattr(fallback_result, 'data'):
-                                processor_logger.info(f"Fallback upsert succeeded for batch {batch_count} (taxonomy_path/taxonomy_mapped_at)")
-                            else:
-                                processor_logger.error(f"Fallback upsert also failed for batch {batch_count}; check table schema and permissions")
+                def do_upsert_enriched(client):
+                    return client.table("products_enriched_data").upsert(enriched_updates).execute()
+
+                result = sup.safe_execute(do_upsert_enriched, f"Upsert taxonomy updates batch {batch_count}", max_retries=3)
+
+                if result and hasattr(result, 'data'):
+                    match_rate = (len(updates) / len(products)) * 100
+                    processor_logger.info(
+                        f"Batch {batch_count}: {len(updates)}/{len(products)} matched "
+                        f"({match_rate:.1f}%) | Total: {self.total_processed}, "
+                        f"Matched: {self.total_matched}"
+                    )
+                else:
+                    # Likely schema mismatch or permission issue. Try a minimal fallback
+                    processor_logger.warning("Upsert to products_enriched_data failed; attempting fallback upsert with minimal columns")
+                    fallback_updates = []
+                    for u in enriched_updates:
+                        fu = {"product_id": u.get("product_id")}
+                        if u.get("taxonomy_path") is not None:
+                            fu["taxonomy_path"] = u.get("taxonomy_path")
+                        if u.get("taxonomy_mapped_at") is not None:
+                            fu["taxonomy_mapped_at"] = u.get("taxonomy_mapped_at")
+                        if len(fu) > 1:
+                            fallback_updates.append(fu)
+
+                    if fallback_updates:
+                        def do_upsert_fallback(client):
+                            return client.table("products_enriched_data").upsert(fallback_updates).execute()
+
+                        fallback_result = sup.safe_execute(do_upsert_fallback, f"Fallback upsert taxonomy_path/mapped_at batch {batch_count}", max_retries=2)
+                        if fallback_result and hasattr(fallback_result, 'data'):
+                            processor_logger.info(f"Fallback upsert succeeded for batch {batch_count} (taxonomy_path/taxonomy_mapped_at)")
                         else:
-                            processor_logger.error("No valid fallback updates could be prepared; skipping batch")
+                            processor_logger.error(f"Fallback upsert also failed for batch {batch_count}; check table schema and permissions")
+                    else:
+                        processor_logger.error("No valid fallback updates could be prepared; skipping batch")
             
             self._save_progress()
             batch_count += 1
