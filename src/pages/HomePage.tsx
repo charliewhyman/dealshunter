@@ -1,4 +1,4 @@
-import { ChangeEvent, FormEvent, useCallback, useEffect, useRef, useState, startTransition } from 'react';
+import { ChangeEvent, FormEvent, useCallback, useEffect, useRef, useState, useMemo, startTransition } from 'react';
 import { ProductWithDetails } from '../types';
 import { getSupabase } from '../lib/supabase';
 import AsyncLucideIcon from '../components/AsyncLucideIcon';
@@ -6,6 +6,7 @@ import { ProductCard } from '../components/ProductCard';
 import { SingleValue } from 'react-select';
 import { Header } from '../components/Header';
 import { useLocation, useNavigate } from 'react-router-dom';
+
 // Small local debounce utility to avoid importing the full lodash bundle 
 function createDebounced<Args extends unknown[]>(fn: (...args: Args) => void, wait: number): ((...args: Args) => void) & { cancel?: () => void } {
   let timer: number | undefined;
@@ -20,6 +21,7 @@ function createDebounced<Args extends unknown[]>(fn: (...args: Args) => void, wa
 function rangesEqual(a: [number, number], b: [number, number]) {
   return a[0] === b[0] && a[1] === b[1];
 }
+
 import { MultiSelectDropdown, SingleSelectDropdown } from '../components/Dropdowns';
 import TransformSlider from '../components/TransformSlider';
 
@@ -33,6 +35,9 @@ const INITIAL_RENDER_COUNT = 4;
 // This covers the first row on most viewports so the true LCP image among
 // them is likely to be discovered and prioritized.
 const LCP_PRELOAD_COUNT = 2;
+
+// Materialized view name for optimized queries
+const PRODUCTS_MATERIALIZED_VIEW = 'products_active_listings_mv';
 
 export function HomePage() {
   const [products, setProducts] = useState<ProductWithDetails[]>([]);
@@ -78,18 +83,13 @@ export function HomePage() {
     JSON.parse(localStorage.getItem('onSaleOnly') || 'false')
   );
 
-  const PRICE_RANGE: [number, number] = [15, 1000];
+  const PRICE_RANGE = useMemo<[number, number]>(() => [15, 1000], []);
   const [selectedPriceRange, setSelectedPriceRange] = useState<[number, number]>(() => {
     const savedRange = JSON.parse(localStorage.getItem('selectedPriceRange') || 'null');
     return savedRange && savedRange[0] >= PRICE_RANGE[0] && savedRange[1] <= PRICE_RANGE[1] 
       ? savedRange 
       : [...PRICE_RANGE];
   });
-
-  // UI-only price range used while dragging the slider to avoid frequent
-  // filter updates / network requests and forced layout reads during drag.
-  // Note: slider UI state is handled inside the `Slider` component to avoid
-  // re-rendering the entire `HomePage` while dragging.
 
   const [selectedSizeGroups, setSelectedSizeGroups] = useState<string[]>(
     JSON.parse(localStorage.getItem('selectedSizeGroups') || '[]')
@@ -98,13 +98,9 @@ export function HomePage() {
   // Batch pricing map to avoid per-card network requests
   const [productPricings, setProductPricings] = useState<Record<string, {variantPrice: number | null; compareAtPrice: number | null; offerPrice: number | null;}>>({});
 
-  // Schedule low-priority work off the main critical path. Use
-  // `requestIdleCallback` when available, otherwise fall back to a
-  // short `setTimeout`. This keeps non-essential network requests
-  // (like fetching offers) off the initial render critical path.
+  // Schedule low-priority work off the main critical path.
   const scheduleIdle = useCallback((task: () => void) => {
     if (typeof window === 'undefined') {
-      // No window (SSR) — run later via timeout
       setTimeout(() => { try { task(); } catch (e) { void e; } }, 200);
       return;
     }
@@ -127,8 +123,6 @@ export function HomePage() {
   }, []);
 
   // Refs & state for per-card pricing via IntersectionObserver.
-  // We keep a map of card elements so we can observe them and only
-  // request pricing when cards are about to enter the viewport.
   const cardRefs = useRef<Map<string, HTMLDivElement>>(new Map());
   const pricedIdsRef = useRef<Set<string>>(new Set());
   
@@ -137,11 +131,8 @@ export function HomePage() {
       const uniqueIds = Array.from(new Set(ids.map(String)));
       if (uniqueIds.length === 0) return;
   
-      const supabase = await getSupabase();
+      const supabase = getSupabase();
 
-      // Try calling a single RPC that returns combined pricing (variants + offers)
-      // for the requested product ids. This reduces two queries -> one RPC call.
-      // The RPC should be implemented in Supabase as shown in the project notes.
       const pricingMap: Record<string, {variantPrice: number | null; compareAtPrice: number | null; offerPrice: number | null;}> = {};
       try {
         const { data: rpcData, error: rpcError } = await supabase
@@ -156,12 +147,11 @@ export function HomePage() {
             pricingMap[pid] = { variantPrice, compareAtPrice, offerPrice };
           }
         } else if (rpcError) {
-          // If RPC not found or failed, fall back to previous approach
           console.warn('RPC get_products_pricing failed, falling back to batched queries', rpcError);
           throw rpcError;
         }
       } catch {
-        // Fallback: fetch variants and offers in two batched queries (existing behavior)
+        // Fallback: fetch variants and offers in two batched queries
         const today = new Date().toISOString().split('T')[0];
 
         const vRes = await supabase
@@ -234,7 +224,6 @@ export function HomePage() {
         }
   
         if (idsToFetch.length > 0) {
-          // Batch up requests: schedule idle fetch for visible items
           scheduleIdle(() => {
             fetchBatchPricingFor(idsToFetch).catch(e => console.error('Error fetching per-card pricing', e));
           });
@@ -243,7 +232,6 @@ export function HomePage() {
       { rootMargin: '300px', threshold: 0.05 }
     );
   
-    // Observe existing card elements
     for (const el of cardRefs.current.values()) {
       try { io.observe(el); } catch { /* ignore */ }
     }
@@ -253,14 +241,60 @@ export function HomePage() {
 
   const [allSizeData, setAllSizeData] = useState<{size_group: string}[]>([]);
 
-  // Add a ref to track current request to prevent race conditions
+  // Request queue for preventing concurrent overload
+  const requestQueueRef = useRef<Array<() => Promise<void>>>([]);
+  const isProcessingRef = useRef(false);
   const currentRequestRef = useRef<AbortController | null>(null);
-  // Request id to ignore stale responses and a cache for prefetched pages
   const requestIdRef = useRef(0);
   const prefetchCacheRef = useRef<Record<number, { key: string; data: ProductWithDetails[]; count: number }>>({});
   
-  // Helper to merge previously loaded products with newly fetched ones
-  // while preserving order and avoiding duplicates by `id`.
+  // Cache for filter dropdowns
+  const filterCacheRef = useRef<Map<string, { data: unknown[]; timestamp: number }>>(new Map());
+  const CACHE_TTL = 5 * 60 * 1000; // 5 minutes
+
+  const fetchWithCache = useCallback(async <T,>(
+    key: string, 
+    fetchFn: () => Promise<T[]>
+  ): Promise<T[]> => {
+    const cached = filterCacheRef.current.get(key);
+    if (cached && Date.now() - cached.timestamp < CACHE_TTL) {
+      return cached.data as T[];
+    }
+    
+    const data = await fetchFn();
+    filterCacheRef.current.set(key, { data: data as unknown[], timestamp: Date.now() });
+    return data as T[];
+  }, [CACHE_TTL]);
+
+  // Request queue processor
+  const processQueue = useCallback(async () => {
+    if (isProcessingRef.current || requestQueueRef.current.length === 0) return;
+    
+    isProcessingRef.current = true;
+    const task = requestQueueRef.current.shift();
+    
+    if (task) {
+      try {
+        await task();
+      } catch (error) {
+        console.error('Request queue task failed:', error);
+      } finally {
+        isProcessingRef.current = false;
+        // Delay between requests to prevent overwhelming the database
+        setTimeout(() => {
+          if (requestQueueRef.current.length > 0) {
+            processQueue();
+          }
+        }, 100);
+      }
+    }
+  }, []);
+
+  const enqueueRequest = useCallback((task: () => Promise<void>) => {
+    requestQueueRef.current.push(task);
+    processQueue();
+  }, [processQueue]);
+
   const mergeUniqueProducts = useCallback((prev: ProductWithDetails[], next: ProductWithDetails[]) => {
     const seen = new Set<string>();
     const out: ProductWithDetails[] = [];
@@ -283,8 +317,6 @@ export function HomePage() {
 
     return out;
   }, []);
-  
-
 
   interface FilterOptions {
     selectedShopName: string[];
@@ -296,340 +328,402 @@ export function HomePage() {
     selectedPriceRange: [number, number];
   }
 
-  const fetchFilteredProducts = useCallback(
-  async (
-    filters: FilterOptions,
-    page: number,
-    sortOrder: 'asc' | 'desc' | 'discount_desc',
-    attempt = 1
-  ) => {
-    // Only abort previous request for top-level changes (page === 0)
-    if (page === 0 && currentRequestRef.current) {
-      currentRequestRef.current.abort();
-    }
-
-    const controller = new AbortController();
-    currentRequestRef.current = controller;
-
-    // assign a request id so we can ignore stale responses
-    const myRequestId = ++requestIdRef.current;
-
-    setLoading(true);
+  // Function to determine which table/view to use based on filters
+  const getTableName = useCallback((filters: FilterOptions): string => {
+    // Use materialized view only for default/common filters
+    const isDefaultFilters = 
+      filters.inStockOnly === true &&
+      filters.onSaleOnly === false &&
+      filters.selectedPriceRange[0] === PRICE_RANGE[0] &&
+      filters.selectedPriceRange[1] === PRICE_RANGE[1] &&
+      filters.selectedShopName.length === 0 &&
+      filters.selectedCategories.length === 0 &&
+      filters.selectedSizeGroups.length === 0 &&
+      !filters.searchQuery;
     
-    try {
-      if (page > 0) {
-        await new Promise(resolve => setTimeout(resolve, 100));
-      }
-      // If we already prefetched this page for the current filter set, use it
-      const cacheKey = JSON.stringify(filters);
-      const cached = prefetchCacheRef.current[page];
-      if (cached && cached.key === cacheKey) {
-        // ignore if a newer request started
-        if (myRequestId !== requestIdRef.current) return;
+    return isDefaultFilters ? PRODUCTS_MATERIALIZED_VIEW : 'products_with_details';
+  }, [PRICE_RANGE]);
 
-        // Mark product updates as non-urgent to avoid blocking paint/layout.
-        startTransition(() => {
-          setProducts(prev => 
-            page === 0 
-              ? (cached.data || []) 
-              : mergeUniqueProducts(prev, (cached.data as ProductWithDetails[]) || [])
-          );
-        });
-        // Batch-fetch pricing for cached page items (non-blocking).
-        // Schedule this work off the critical path so it doesn't compete
-        // with higher-priority resources (LCP, fonts, etc.). Only fetch
-        // the most-likely visible subset for the first page.
-        {
-          const ids = ((cached.data as ProductWithDetails[]) || []).map(p => p.id).filter(Boolean);
-          if (page === 0 && ids.length > 0) {
-          // Don't use scheduleIdle for LCP cards
-          const lcpIds = ids.slice(0, 2);
-          fetchBatchPricingFor(lcpIds);
+  const fetchFilteredProducts = useCallback(
+    async (
+      filters: FilterOptions,
+      page: number,
+      sortOrder: 'asc' | 'desc' | 'discount_desc',
+      attempt = 1
+    ) => {
+      return new Promise<void>((resolve, reject) => {
+        enqueueRequest(async () => {
+          // Only abort previous request for top-level changes (page === 0)
+          if (page === 0 && currentRequestRef.current) {
+            currentRequestRef.current.abort();
           }
 
-          if (ids.length > 2) {
-              scheduleIdle(() => fetchBatchPricingFor(ids.slice(2)));
-            }
+          const controller = new AbortController();
+          currentRequestRef.current = controller;
+
+          const myRequestId = ++requestIdRef.current;
+
+          setLoading(true);
           
-        }
-        setHasMore((page + 1) * ITEMS_PER_PAGE < (cached.count || 0));
-        setInitialLoad(false);
-        setError(null);
-
-        // fire-and-forget prefetch for the next page if more available
-        if ((page + 1) * ITEMS_PER_PAGE < (cached.count || 0)) {
-          (async () => {
-            try {
-              const supabase = await getSupabase();
-              let prefetchQuery = supabase
-                .from('products_with_details')
-                .select('*', { count: 'exact', head: false })
-                .limit(ITEMS_PER_PAGE);
-
-              if (filters.selectedShopName.length > 0) prefetchQuery = prefetchQuery.in('shop_name', filters.selectedShopName);
-              if (filters.selectedCategories.length > 0) prefetchQuery = prefetchQuery.overlaps('categories', filters.selectedCategories);
-              if (filters.inStockOnly) prefetchQuery = prefetchQuery.eq('in_stock', true);
-              if (filters.onSaleOnly) prefetchQuery = prefetchQuery.eq('on_sale', true);
-              if (filters.searchQuery) prefetchQuery = prefetchQuery.textSearch('fts', filters.searchQuery, { type: 'plain', config: 'english' });
-              if (filters.selectedPriceRange) prefetchQuery = prefetchQuery.gte('min_price', filters.selectedPriceRange[0]).lte('min_price', filters.selectedPriceRange[1]);
-              if (filters.selectedSizeGroups.length > 0) prefetchQuery = prefetchQuery.overlaps('size_groups', filters.selectedSizeGroups);
-
-              if (sortOrder === 'discount_desc') {
-                prefetchQuery = prefetchQuery.order('max_discount_percentage', { ascending: false, nullsFirst: false }).order('created_at', { ascending: false });
-              } else {
-                prefetchQuery = prefetchQuery.order('min_price', { ascending: sortOrder === 'asc' }).order('created_at', { ascending: false });
-              }
-
-              const { data: pData, count: pCount, error: pError } = await prefetchQuery.range((page + 1) * ITEMS_PER_PAGE, (page + 2) * ITEMS_PER_PAGE - 1);
-              if (!pError && pData) {
-                prefetchCacheRef.current[page + 1] = { key: cacheKey, data: pData as ProductWithDetails[], count: pCount || 0 };
-              }
-            } catch {
-              // silent: prefetch failures are non-blocking
-            }
-          })();
-        }
-
-        if (!controller.signal.aborted) setLoading(false);
-        return;
-      }
-
-      const supabase = await getSupabase();
-
-      let query = supabase
-        .from('products_with_details')
-        .select('*', { 
-          count: 'exact',
-          head: false
-        })
-        .limit(ITEMS_PER_PAGE)
-        .abortSignal(controller.signal);
-
-      // Apply filters
-      if (filters.selectedShopName.length > 0) {
-        query = query.in('shop_name', filters.selectedShopName);
-      }
-
-      if (filters.selectedCategories.length > 0) {
-        query = query.overlaps('categories', filters.selectedCategories);
-      }
-
-      if (filters.inStockOnly) {
-        query = query.eq('in_stock', true);
-      }
-
-      if (filters.onSaleOnly) {
-        query = query.eq('on_sale', true);
-      }
-
-      if (filters.searchQuery) {
-        query = query.textSearch('fts', filters.searchQuery, {
-          type: 'plain',
-          config: 'english'
-        });
-      }
-
-      if (filters.selectedPriceRange) {
-        query = query
-          .gte('min_price', filters.selectedPriceRange[0])
-          .lte('min_price', filters.selectedPriceRange[1]);
-      }
-
-      if (filters.selectedSizeGroups.length > 0) {
-        query = query.overlaps('size_groups', filters.selectedSizeGroups);
-      }
-
-      // Apply sorting
-      if (sortOrder === 'discount_desc') {
-        query = query
-          .order('max_discount_percentage', { ascending: false, nullsFirst: false })
-          .order('created_at', { ascending: false });
-      } else {
-        query = query
-          .order('min_price', { ascending: sortOrder === 'asc' })
-          .order('created_at', { ascending: false });
-      }
-
-      const { data, error, count } = await query
-        .range(page * ITEMS_PER_PAGE, (page + 1) * ITEMS_PER_PAGE - 1);
-
-      // ignore stale responses
-      if (myRequestId !== requestIdRef.current) return;
-
-      // Handle Supabase errors
-      if (error) {
-        // Special handling for JWT/authentication errors
-        if (error.message.includes('JWT') || error.code === 'PGRST301') {
-          console.error('Auth error, attempting to refresh session');
-          const { error: refreshError } = await supabase.auth.refreshSession();
-          if (refreshError) throw refreshError;
-          if (attempt < 3) {
-            return fetchFilteredProducts(filters, page, sortOrder, attempt + 1);
-          }
-        }
-        throw error;
-      }
-
-      const totalItems = count || 0;
-      const loadedItems = page * ITEMS_PER_PAGE + (data?.length || 0);
-      const moreAvailable = loadedItems < totalItems;
-        
-      // Use startTransition so React can prioritize paint for LCP and
-      // non-essential list updates are processed at lower priority.
-      startTransition(() => {
-        setProducts(prev => 
-          page === 0 
-            ? (data as ProductWithDetails[]) || [] 
-            : mergeUniqueProducts(prev, (data as ProductWithDetails[] || []))
-        );
-      });
-      // Batch-fetch pricing for this page's products (non-blocking).
-      // Run as a low-priority task so offer/variant requests don't delay
-      // the critical rendering path.
-      {
-        const ids = ((data as ProductWithDetails[]) || []).map(p => p.id).filter(Boolean);
-        const idsToFetch = page === 0 ? ids.slice(0, 12) : ids;
-        if (idsToFetch.length > 0) {
-          scheduleIdle(() => {
-            fetchBatchPricingFor(idsToFetch).catch(e => console.error('Error fetching batch pricing for page items', e));
-          });
-        }
-      }
-      setHasMore(moreAvailable);
-      setInitialLoad(false);
-      setError(null);
-
-      // store this page in prefetch cache (keyed by current filters)
-      const cacheKeyCurrent = JSON.stringify(filters);
-      prefetchCacheRef.current[page] = { key: cacheKeyCurrent, data: (data as ProductWithDetails[]) || [], count: totalItems };
-
-      // Prefetch the next page if there are more items
-      if (moreAvailable) {
-        (async () => {
           try {
-            let prefetchQuery = supabase
-              .from('products_with_details')
-              .select('*', { count: 'exact', head: false })
-              .limit(ITEMS_PER_PAGE);
+            if (page > 0) {
+              await new Promise(resolve => setTimeout(resolve, 100));
+            }
+            
+            const cacheKey = JSON.stringify(filters);
+            const cached = prefetchCacheRef.current[page];
+            if (cached && cached.key === cacheKey) {
+              if (myRequestId !== requestIdRef.current) return;
 
-            if (filters.selectedShopName.length > 0) prefetchQuery = prefetchQuery.in('shop_name', filters.selectedShopName);
-            if (filters.selectedCategories.length > 0) prefetchQuery = prefetchQuery.overlaps('categories', filters.selectedCategories);
-            if (filters.inStockOnly) prefetchQuery = prefetchQuery.eq('in_stock', true);
-            if (filters.onSaleOnly) prefetchQuery = prefetchQuery.eq('on_sale', true);
-            if (filters.searchQuery) prefetchQuery = prefetchQuery.textSearch('fts', filters.searchQuery, { type: 'plain', config: 'english' });
-            if (filters.selectedPriceRange) prefetchQuery = prefetchQuery.gte('min_price', filters.selectedPriceRange[0]).lte('min_price', filters.selectedPriceRange[1]);
-            if (filters.selectedSizeGroups.length > 0) prefetchQuery = prefetchQuery.overlaps('size_groups', filters.selectedSizeGroups);
+              startTransition(() => {
+                setProducts(prev => 
+                  page === 0 
+                    ? (cached.data || []) 
+                    : mergeUniqueProducts(prev, (cached.data as unknown as ProductWithDetails[]) || [])
+                );
+              });
+              
+              {
+                const ids = ((cached.data as unknown as ProductWithDetails[]) || []).map(p => p.id).filter(Boolean);
+                if (page === 0 && ids.length > 0) {
+                  const lcpIds = ids.slice(0, 2);
+                  fetchBatchPricingFor(lcpIds);
+                }
 
-            if (sortOrder === 'discount_desc') {
-              prefetchQuery = prefetchQuery.order('max_discount_percentage', { ascending: false, nullsFirst: false }).order('created_at', { ascending: false });
-            } else {
-              prefetchQuery = prefetchQuery.order('min_price', { ascending: sortOrder === 'asc' }).order('created_at', { ascending: false });
+                if (ids.length > 2) {
+                  scheduleIdle(() => fetchBatchPricingFor(ids.slice(2)));
+                }
+              }
+              
+              setHasMore((page + 1) * ITEMS_PER_PAGE < (cached.count || 0));
+              setInitialLoad(false);
+              setError(null);
+
+              // Prefetch next page
+              if ((page + 1) * ITEMS_PER_PAGE < (cached.count || 0)) {
+                scheduleIdle(() => {
+                  (async () => {
+                    try {
+                      const tableName = getTableName(filters);
+                      const supabase = getSupabase();
+                      let prefetchQuery = supabase
+                        .from(tableName)
+                        .select('id,title,shop_name,created_at,url,description,in_stock,min_price,max_discount_percentage,on_sale,size_groups,images,product_type,categories,tags,vendor,handle', { 
+                          count: 'exact',
+                          head: false 
+                        })
+                        .limit(ITEMS_PER_PAGE);
+
+                      if (tableName === 'products_with_details') {
+                        if (filters.selectedShopName.length > 0) prefetchQuery = prefetchQuery.in('shop_name', filters.selectedShopName);
+                        if (filters.selectedCategories.length > 0) prefetchQuery = prefetchQuery.overlaps('categories', filters.selectedCategories);
+                        if (filters.inStockOnly) prefetchQuery = prefetchQuery.eq('in_stock', true);
+                        if (filters.onSaleOnly) prefetchQuery = prefetchQuery.eq('on_sale', true);
+                        if (filters.searchQuery) prefetchQuery = prefetchQuery.textSearch('fts', filters.searchQuery, { type: 'plain', config: 'english' });
+                        if (filters.selectedPriceRange) prefetchQuery = prefetchQuery.gte('min_price', filters.selectedPriceRange[0]).lte('min_price', filters.selectedPriceRange[1]);
+                        if (filters.selectedSizeGroups.length > 0) prefetchQuery = prefetchQuery.overlaps('size_groups', filters.selectedSizeGroups);
+                      }
+
+                      if (sortOrder === 'discount_desc') {
+                        prefetchQuery = prefetchQuery.order('max_discount_percentage', { ascending: false, nullsFirst: false }).order('created_at', { ascending: false });
+                      } else {
+                        prefetchQuery = prefetchQuery.order('min_price', { ascending: sortOrder === 'asc' }).order('created_at', { ascending: false });
+                      }
+
+                      const { data: pData, count: pCount, error: pError } = await prefetchQuery.range((page + 1) * ITEMS_PER_PAGE, (page + 2) * ITEMS_PER_PAGE - 1);
+                      if (!pError && pData) {
+                        prefetchCacheRef.current[page + 1] = { key: cacheKey, data: pData as unknown as ProductWithDetails[], count: pCount || 0 };
+                      }
+                    } catch {
+                      // silent
+                    }
+                  })();
+                });
+              }
+
+              if (!controller.signal.aborted) setLoading(false);
+              resolve();
+              return;
             }
 
-            const { data: pData, count: pCount, error: pError } = await prefetchQuery.range((page + 1) * ITEMS_PER_PAGE, (page + 2) * ITEMS_PER_PAGE - 1);
-              if (!pError && pData) {
-                prefetchCacheRef.current[page + 1] = { key: cacheKeyCurrent, data: pData as ProductWithDetails[], count: pCount || 0 };
+            const supabase = getSupabase();
+            const tableName = getTableName(filters);
+
+            // Only select columns actually used in the UI
+            let query = supabase
+              .from(tableName)
+              .select('id,title,shop_name,created_at,url,description,in_stock,min_price,max_discount_percentage,on_sale,size_groups,images,product_type,categories,tags,vendor,handle', { 
+                count: 'exact',
+                head: false
+              })
+              .limit(ITEMS_PER_PAGE)
+              .abortSignal(controller.signal);
+
+            // Apply filters only if using the full view
+            if (tableName === 'products_with_details') {
+              if (filters.selectedShopName.length > 0) {
+                query = query.in('shop_name', filters.selectedShopName);
               }
-          } catch {
-            // silent
+
+              if (filters.selectedCategories.length > 0) {
+                query = query.overlaps('categories', filters.selectedCategories);
+              }
+
+              if (filters.inStockOnly) {
+                query = query.eq('in_stock', true);
+              }
+
+              if (filters.onSaleOnly) {
+                query = query.eq('on_sale', true);
+              }
+
+              if (filters.searchQuery) {
+                query = query.textSearch('fts', filters.searchQuery, {
+                  type: 'plain',
+                  config: 'english'
+                });
+              }
+
+              if (filters.selectedPriceRange) {
+                query = query
+                  .gte('min_price', filters.selectedPriceRange[0])
+                  .lte('min_price', filters.selectedPriceRange[1]);
+              }
+
+              if (filters.selectedSizeGroups.length > 0) {
+                query = query.overlaps('size_groups', filters.selectedSizeGroups);
+              }
+            } else {
+              // Materialized view already has in_stock=true and default price range
+              // Apply price range if different from default
+              if (!rangesEqual(filters.selectedPriceRange, PRICE_RANGE)) {
+                query = query
+                  .gte('min_price', filters.selectedPriceRange[0])
+                  .lte('min_price', filters.selectedPriceRange[1]);
+              }
+              
+              // Apply onSaleOnly if needed
+              if (filters.onSaleOnly) {
+                query = query.eq('on_sale', true);
+              }
+            }
+
+            // Apply sorting
+            if (sortOrder === 'discount_desc') {
+              query = query
+                .order('max_discount_percentage', { ascending: false, nullsFirst: false })
+                .order('created_at', { ascending: false });
+            } else {
+              query = query
+                .order('min_price', { ascending: sortOrder === 'asc' })
+                .order('created_at', { ascending: false });
+            }
+
+            const { data, error, count } = await query
+              .range(page * ITEMS_PER_PAGE, (page + 1) * ITEMS_PER_PAGE - 1);
+
+            if (myRequestId !== requestIdRef.current) return;
+
+            if (error) {
+              if (error.message.includes('JWT') || error.code === 'PGRST301') {
+                console.error('Auth error, attempting to refresh session');
+                const { error: refreshError } = await supabase.auth.refreshSession();
+                if (refreshError) throw refreshError;
+                if (attempt < 3) {
+                  return fetchFilteredProducts(filters, page, sortOrder, attempt + 1);
+                }
+              }
+              throw error;
+            }
+
+            const totalItems = count || 0;
+            const loadedItems = page * ITEMS_PER_PAGE + (data?.length || 0);
+            const moreAvailable = loadedItems < totalItems;
+              
+            startTransition(() => {
+              setProducts(prev => 
+                page === 0 
+                  ? (data as unknown as ProductWithDetails[]) || [] 
+                  : mergeUniqueProducts(prev, (data as unknown as ProductWithDetails[] || []))
+              );
+            });
+            
+            {
+              const ids = ((data as unknown as ProductWithDetails[]) || []).map(p => p.id).filter(Boolean);
+              const idsToFetch = page === 0 ? ids.slice(0, 12) : ids;
+              if (idsToFetch.length > 0) {
+                scheduleIdle(() => {
+                  fetchBatchPricingFor(idsToFetch).catch(e => console.error('Error fetching batch pricing for page items', e));
+                });
+              }
+            }
+            
+            setHasMore(moreAvailable);
+            setInitialLoad(false);
+            setError(null);
+
+            const cacheKeyCurrent = JSON.stringify(filters);
+            prefetchCacheRef.current[page] = { key: cacheKeyCurrent, data: (data as unknown as ProductWithDetails[]) || [], count: totalItems };
+
+            // Prefetch next page
+            if (moreAvailable) {
+              scheduleIdle(() => {
+                (async () => {
+                  try {
+                    const nextPageTableName = getTableName(filters);
+                    const supabase = getSupabase();
+                    let prefetchQuery = supabase
+                      .from(nextPageTableName)
+                      .select('id,title,shop_name,created_at,url,description,in_stock,min_price,max_discount_percentage,on_sale,size_groups,images,product_type,categories,tags,vendor,handle', { 
+                        count: 'exact', 
+                        head: false 
+                      })
+                      .limit(ITEMS_PER_PAGE);
+
+                    if (nextPageTableName === 'products_with_details') {
+                      if (filters.selectedShopName.length > 0) prefetchQuery = prefetchQuery.in('shop_name', filters.selectedShopName);
+                      if (filters.selectedCategories.length > 0) prefetchQuery = prefetchQuery.overlaps('categories', filters.selectedCategories);
+                      if (filters.inStockOnly) prefetchQuery = prefetchQuery.eq('in_stock', true);
+                      if (filters.onSaleOnly) prefetchQuery = prefetchQuery.eq('on_sale', true);
+                      if (filters.searchQuery) prefetchQuery = prefetchQuery.textSearch('fts', filters.searchQuery, { type: 'plain', config: 'english' });
+                      if (filters.selectedPriceRange) prefetchQuery = prefetchQuery.gte('min_price', filters.selectedPriceRange[0]).lte('min_price', filters.selectedPriceRange[1]);
+                      if (filters.selectedSizeGroups.length > 0) prefetchQuery = prefetchQuery.overlaps('size_groups', filters.selectedSizeGroups);
+                    }
+
+                    if (sortOrder === 'discount_desc') {
+                      prefetchQuery = prefetchQuery.order('max_discount_percentage', { ascending: false, nullsFirst: false }).order('created_at', { ascending: false });
+                    } else {
+                      prefetchQuery = prefetchQuery.order('min_price', { ascending: sortOrder === 'asc' }).order('created_at', { ascending: false });
+                    }
+
+                    const { data: pData, count: pCount, error: pError } = await prefetchQuery.range((page + 1) * ITEMS_PER_PAGE, (page + 2) * ITEMS_PER_PAGE - 1);
+                    if (!pError && pData) {
+                      prefetchCacheRef.current[page + 1] = { key: cacheKeyCurrent, data: pData as unknown as ProductWithDetails[], count: pCount || 0 };
+                    }
+                  } catch {
+                    // silent
+                  }
+                })();
+              });
+            }
+
+            resolve();
+
+          } catch (error: unknown) {
+            if (error instanceof Error && error.name !== 'AbortError') {
+              console.error('Fetch error:', error);
+              
+              if (
+                (error instanceof TypeError ||
+                  (typeof error === 'object' && error !== null && 'code' in error && (error as { code?: string }).code === 'ETIMEDOUT') ||
+                  (typeof error === 'object' && error !== null && 'code' in error && (error as { code?: string }).code === 'ECONNABORTED')
+                ) && attempt < 3
+              ) {
+                console.log(`Retrying... attempt ${attempt + 1}`);
+                await new Promise(resolve => setTimeout(resolve, 1000 * attempt));
+                return fetchFilteredProducts(filters, page, sortOrder, attempt + 1);
+              }
+
+              setError(
+                `Failed to load products: ${error instanceof Error ? error.message : 'Unknown error'}`
+              );
+              startTransition(() => {
+                setProducts([]);
+              });
+              setHasMore(false);
+              reject(error);
+            }
+          } finally {
+            if (!controller.signal.aborted) {
+              setLoading(false);
+            }
           }
-        })();
-      }
-
-    } catch (error: unknown) {
-      // Only handle error if it wasn't an abort
-      if (error instanceof Error && error.name !== 'AbortError') {
-        console.error('Fetch error:', error);
-        
-        // Retry for network errors or server issues
-        if (
-          (error instanceof TypeError ||
-            (typeof error === 'object' && error !== null && 'code' in error && (error as { code?: string }).code === 'ETIMEDOUT') ||
-            (typeof error === 'object' && error !== null && 'code' in error && (error as { code?: string }).code === 'ECONNABORTED')
-          ) && attempt < 3
-        ) {
-          console.log(`Retrying... attempt ${attempt + 1}`);
-          await new Promise(resolve => setTimeout(resolve, 1000 * attempt));
-          return fetchFilteredProducts(filters, page, sortOrder, attempt + 1);
-        }
-
-        setError(
-          `Failed to load products: ${error instanceof Error ? error.message : 'Unknown error'}`
-        );
-        startTransition(() => {
-          setProducts([]);
         });
-        setHasMore(false);
-      }
-    } finally {
-      // Only stop loading if this wasn't aborted for a new request
-      if (!controller.signal.aborted) {
-        setLoading(false);
-      }
-    }
-  },
-  [fetchBatchPricingFor, scheduleIdle, mergeUniqueProducts]
-);
+      });
+    },
+    [fetchBatchPricingFor, scheduleIdle, mergeUniqueProducts, enqueueRequest, getTableName, PRICE_RANGE]
+  );
 
-  // Update shop names fetching to use the materialized view
+  // Update shop names and categories to use caching
   useEffect(() => {
     async function fetchInitialData() {
-      const supabase = await getSupabase();
+      try {
+        const supabase = getSupabase();
 
-      // Fetch shop names
-      const { data: shopData, error: shopError } = await supabase
-      .from('distinct_shop_names')
-      .select('shop_name')
-      .order('shop_name', { ascending: true });
+        // Fetch shop names with cache
+        const shopData = await fetchWithCache('shop_names', async () => {
+          const { data, error } = await supabase
+            .from('distinct_shop_names_mv') // Use materialized view for shop names
+            .select('shop_name')
+            .order('shop_name', { ascending: true });
+          
+          if (error) throw error;
+          return data as Array<{ shop_name?: string }>;
+        });
+        
+        if (shopData) {
+          setShopNames(shopData.map(item => item.shop_name).filter(Boolean) as string[]);
+        }
+
+        // Fetch product categories with cache
+        const categoryData = await fetchWithCache('categories', async () => {
+          const { data, error } = await supabase
+            .from('distinct_categories_mv') // Use materialized view for categories
+            .select('category')
+            .order('category', { ascending: true });
+          
+          if (error) throw error;
+          return data as Array<{ category: string }>;
+        });
+        
+        if (categoryData) {
+          setCategories(categoryData.map(item => item.category));
+        }
       
-      if (shopData && !shopError) {
-      setShopNames((shopData as Array<{ shop_name?: string }>).map(item => item.shop_name).filter(Boolean) as string[]);
-      }
-
-      // Fetch product categories
-      const { data: categoryData, error: categoryError } = await supabase
-      .from('products_with_details')
-      .select('categories')
-      .not('categories', 'is', null);
-
-      if (categoryData && !categoryError) {
-      const uniqueCategories = Array.from(new Set(
-        (categoryData as Array<{ categories?: string[] }>)
-        .flatMap(item => item.categories || [])
-        .filter((c): c is string => !!c)
-      )).sort();
-      setCategories(uniqueCategories);
-      }
-    
-      // Fetch size data
-      const { data: sizeData, error: sizeError } = await supabase
-      .from('distinct_size_groups')
-      .select('size_group');
-      
-      if (sizeData && !sizeError) {
-      setAllSizeData(
-        (sizeData as Array<{ size_group?: unknown }>)
-          .map(item => ({
-        size_group: item.size_group != null ? String(item.size_group) : ''          }))
-          .filter(item => item.size_group !== '')
-      );
+        // Fetch size data with cache
+        const sizeData = await fetchWithCache('size_groups', async () => {
+          const { data, error } = await supabase
+            .from('distinct_size_groups_mv') // Use materialized view for size groups
+            .select('size_group');
+          
+          if (error) throw error;
+          return data as Array<{ size_group?: unknown }>;
+        });
+        
+        if (sizeData) {
+          setAllSizeData(
+            sizeData
+              .map(item => ({
+                size_group: item.size_group != null ? String(item.size_group) : ''
+              }))
+              .filter(item => item.size_group !== '')
+          );
+        }
+      } catch (error) {
+        console.error('Error fetching initial data:', error);
       }
     }
     
     fetchInitialData();
-  }, []);
+  }, [fetchWithCache]);
 
   // Create a stable reference for the debounced function
-        const debouncedFetchProducts = useRef(
-          createDebounced(
-            (filters: FilterOptions, page: number, sortOrder: 'asc' | 'desc' | 'discount_desc') => {
-              fetchFilteredProducts(filters, page, sortOrder);
-            },
-            500
-          )
-        ).current as ((filters: FilterOptions, page: number, sortOrder: 'asc' | 'desc' | 'discount_desc') => void) & { cancel?: () => void };
+  const debouncedFetchProducts = useRef(
+    createDebounced(
+      (filters: FilterOptions, page: number, sortOrder: 'asc' | 'desc' | 'discount_desc') => {
+        fetchFilteredProducts(filters, page, sortOrder);
+      },
+      500
+    )
+  ).current as ((filters: FilterOptions, page: number, sortOrder: 'asc' | 'desc' | 'discount_desc') => void) & { cancel?: () => void };
 
-  // Main effect for fetching data - simplified dependencies
+  // serialize complex arrays/objects to avoid complex deps in hooks
+  const _selShop = JSON.stringify(selectedShopName);
+  const _selCat = JSON.stringify(selectedCategories);
+  const _selSize = JSON.stringify(selectedSizeGroups);
+  const _selPrice = JSON.stringify(selectedPriceRange);
+
+  // Main effect for fetching data with proper debouncing
   useEffect(() => {
     const filters: FilterOptions = {
       selectedShopName,
@@ -641,23 +735,48 @@ export function HomePage() {
       selectedPriceRange,
     };
 
-    // Reset everything when filters change (except page changes)
-    if (page === 0) {
-      setProducts([]);
-      setInitialLoad(true);
-      fetchFilteredProducts(filters, 0, sortOrder).catch(err => {
-        console.error('Error:', err);
-      });
-  } else {
-      fetchFilteredProducts(filters, page, sortOrder).catch(err => {
-        console.error('Error:', err);
-      });
+    // Cancel previous request
+    if (currentRequestRef.current) {
+      currentRequestRef.current.abort();
     }
-  }, [selectedShopName, inStockOnly, onSaleOnly, searchQuery, selectedPriceRange, sortOrder, page, selectedSizeGroups, fetchFilteredProducts, selectedCategories]);
 
-  // Preloading of the LCP candidate is handled inside `ProductCard` so the
-  // component can compute responsive srcsets and append a preload link
-  // synchronously when it is the designated LCP image.
+    // Cancel any pending debounced fetch
+    if (typeof debouncedFetchProducts?.cancel === 'function') {
+      debouncedFetchProducts.cancel();
+    }
+
+    // Use debounce for filter changes (not page changes)
+    const timeoutId = setTimeout(() => {
+      if (page === 0) {
+        setProducts([]);
+        setInitialLoad(true);
+      }
+      
+      fetchFilteredProducts(filters, page, sortOrder).catch(err => {
+          if ((err as Error)?.name !== 'AbortError') {
+            console.error('Error:', err);
+          }
+        });
+    }, page === 0 ? 300 : 0); // Only debounce when page=0 (filter changes)
+
+    return () => clearTimeout(timeoutId);
+  }, [
+    _selShop,
+    _selCat,
+    _selSize,
+    inStockOnly,
+    onSaleOnly,
+    searchQuery,
+    _selPrice,
+    sortOrder,
+    page,
+    debouncedFetchProducts,
+    fetchFilteredProducts,
+    selectedShopName,
+    selectedCategories,
+    selectedPriceRange,
+    selectedSizeGroups,
+  ]);
 
   // Local storage effects
   useEffect(() => {
@@ -667,6 +786,7 @@ export function HomePage() {
   useEffect(() => {
     localStorage.setItem('selectedCategories', JSON.stringify(selectedCategories));
   }, [selectedCategories]);
+  
   useEffect(() => {
     localStorage.setItem('inStockOnly', JSON.stringify(inStockOnly));
   }, [inStockOnly]);
@@ -700,7 +820,6 @@ export function HomePage() {
           setPage(prev => prev + 1);
         }
       },
-      // Start loading before user reaches the end (prefetch)
       { rootMargin: '600px 0px' }
     );
 
@@ -718,10 +837,11 @@ export function HomePage() {
       if (currentRequestRef.current) {
         currentRequestRef.current.abort();
       }
-      // Safely invoke cancel if it exists to avoid "possibly undefined" errors
       if (typeof debouncedFetchProducts?.cancel === 'function') {
         debouncedFetchProducts.cancel();
       }
+      // Clear request queue
+      requestQueueRef.current = [];
     };
   }, [debouncedFetchProducts]);
 
@@ -730,7 +850,6 @@ export function HomePage() {
     { value: 'desc', label: 'Price: High to Low' },
     { value: 'discount_desc', label: 'Discount: High to Low' },
   ];
-
 
   const shopOptions = shopNames.map((shopName) => ({
     value: shopName,
@@ -755,8 +874,6 @@ export function HomePage() {
   };
 
   // Called when the user finishes dragging / releases the slider handle.
-  // This commits the UI price range into the actual selected filters which
-  // will trigger the (debounced) product fetch.
   const handleSliderChangeEnd = (values: number[]) => {
     const [minValue, maxValue] = values;
     setSelectedPriceRange([minValue, maxValue]);
@@ -822,7 +939,7 @@ export function HomePage() {
     setOnSaleOnly(false);
     setSelectedSizeGroups([]);
     setSelectedPriceRange([...PRICE_RANGE]);
-  }
+  };
 
   function ProductCardSkeleton() {
     return (
@@ -947,11 +1064,6 @@ export function HomePage() {
                         />
                       </div>
                     </div>
-                    {/**
-                     * Use a UI-only value during dragging (`uiPriceRange`) so we
-                     * don't update filters (and trigger fetches / reflows) on
-                     * every mousemove. Commit the change on `onFinalChange`.
-                     */}
                     <TransformSlider
                       step={1}
                       min={PRICE_RANGE[0]}
@@ -1176,7 +1288,6 @@ export function HomePage() {
               ) : (
                 <>
                   {(
-                    // On the first page, only render the first N items immediately
                     page === 0 ? products.slice(0, Math.min(INITIAL_RENDER_COUNT, products.length)) : products
                   ).map((product, index) => {
                     const pid = String(product.id);
@@ -1202,7 +1313,6 @@ export function HomePage() {
                     );
                   })}
                   {loading && page > 0 && (
-                    // show inline skeleton cards instead of a centered spinner
                     Array.from({ length: ITEMS_PER_PAGE }).map((_, i) => (
                       <div key={`skeleton-${page}-${i}`} className="h-full">
                         <ProductCardSkeleton />
