@@ -45,15 +45,34 @@ export function HomePage() {
   const [hasMore, setHasMore] = useState(true);
   const [page, setPage] = useState(0);
   const [shopList, setShopList] = useState<Array<{id: number; shop_name: string}>>([]);
-  const [sortOrder, setSortOrder] = useState<'asc' | 'desc' | 'discount_desc'>('asc');
+  const [sortOrder, setSortOrder] = useState<'asc' | 'desc' | 'discount_desc'>(() => {
+    try {
+      if (typeof window === 'undefined') return 'asc';
+      const stored = localStorage.getItem('sortOrder');
+      if (stored === 'asc' || stored === 'desc' || stored === 'discount_desc') return stored;
+    } catch {
+      /* ignore */
+    }
+    return 'asc';
+  });
   const observerRef = useRef<HTMLDivElement | null>(null);
   const [showFilters, setShowFilters] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const location = useLocation();
-  const [searchQuery, setSearchQuery] = useState<string>(
-    new URLSearchParams(location.search).get('search') || ''
-  );
+  const [searchQuery, setSearchQuery] = useState<string>(() => {
+    try {
+      const fromUrl = new URLSearchParams(location.search).get('search');
+      if (fromUrl != null) return fromUrl;
+      if (typeof window !== 'undefined') {
+        const fromStorage = localStorage.getItem('searchQuery');
+        if (fromStorage) return fromStorage;
+      }
+    } catch {
+      /* ignore */
+    }
+    return '';
+  });
   const navigate = useNavigate();
 
   const [selectedShopName, setSelectedShopName] = useState<string[]>(() => {
@@ -929,6 +948,14 @@ export function HomePage() {
     localStorage.setItem('searchQuery', searchQuery);
   }, [searchQuery]);
   
+  useEffect(() => {
+    try {
+      localStorage.setItem('sortOrder', sortOrder);
+    } catch {
+      /* ignore */
+    }
+  }, [sortOrder]);
+
   useEffect(() => {
     localStorage.setItem('selectedPriceRange', JSON.stringify(selectedPriceRange));
   }, [selectedPriceRange]);
