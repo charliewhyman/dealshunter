@@ -12,7 +12,7 @@ interface HeaderProps {
 export const Header = React.memo(({ searchQuery, handleSearchChange, handleSearchSubmit }: HeaderProps) => {
   return (
     <header className="bg-white dark:bg-gray-800 shadow-sm w-full h-16">
-      <div className="max-w-3xl mx-auto px-4 sm:px-6 lg:px-8 h-full">
+      <div className="max-w-screen-2xl mx-auto px-4 sm:px-6 lg:px-8 h-full">
       <div className="flex items-center justify-between h-full">
           {/* Logo */}
           <Link to="/" className="flex items-center space-x-2">

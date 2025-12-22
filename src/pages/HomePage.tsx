@@ -1173,10 +1173,10 @@ export function HomePage() {
         handleSearchSubmit={handleSearchSubmit}
       />
       
-      <div className="mx-auto px-4 py-4 mt-4 sm:px-6 sm:py-6 lg:px-8 max-w-7xl">
+      <div className="mx-auto px-4 py-4 mt-4 sm:px-6 sm:py-6 lg:px-8 max-w-screen-2xl">
         <div className="flex flex-col lg:flex-row gap-4 sm:gap-6">
           {/* Vertical Filters Sidebar - Mobile Toggle */}
-          <div className="lg:w-64 xl:w-72">
+          <div className="w-full lg:w-80 xl:w-96">
             <div className="lg:hidden mb-3">
               <button
                 onClick={() => setShowFilters(!showFilters)}
@@ -1206,7 +1206,7 @@ export function HomePage() {
   
             {/* Filters Container */}
             <div className={`${showFilters ? 'block' : 'hidden'} lg:block lg:sticky lg:top-24 lg:self-start`}>
-              <div className="bg-white dark:bg-gray-800 rounded-lg shadow-sm p-3 space-y-4 sm:p-4 sm:space-y-6 max-h-[calc(100vh-6rem)] overflow-auto pr-2">
+              <div className="bg-white dark:bg-gray-800 rounded-lg shadow-sm p-3 space-y-4 sm:p-4 sm:space-y-6 max-h-[calc(100vh-6rem)] overflow-auto pr-2 lg:mr-4">
                 {/* Shop Filter */}
                 <div>
                   <h3 className="text-xs font-medium text-gray-700 dark:text-gray-300 mb-2 sm:text-sm sm:mb-3">
@@ -1417,7 +1417,7 @@ export function HomePage() {
 
   
             {/* Products List */}
-            <div className="grid grid-cols-2 gap-x-3 gap-y-4 min-h-[400px] sm:grid-cols-3 sm:gap-x-4 sm:gap-y-6 lg:grid-cols-4 xl:grid-cols-5">
+            <div className="grid gap-x-3 gap-y-4 min-h-[400px] grid-cols-[repeat(auto-fit,minmax(220px,1fr))] sm:gap-x-4 sm:gap-y-6 xl:grid-cols-4 xl:gap-x-6">
               {error ? (
                 <div className="col-span-full text-center py-6">
                   <p className="text-red-500 dark:text-red-400 mb-2 text-sm sm:text-base">{error}</p>

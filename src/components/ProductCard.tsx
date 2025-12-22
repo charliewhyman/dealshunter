@@ -214,7 +214,6 @@ function ProductCardComponent({ product, pricing, isLcp }: ProductCardProps) {
         !isAvailable ? 'opacity-80' : ''
       }`}
       onClick={handleCardClick}
-      style={{ margin: '0 5px' }}
     >
       {/* Discount Badge */}
       {hasDiscount && (
