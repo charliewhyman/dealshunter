@@ -26,6 +26,7 @@ export interface ProductWithDetails {
   min_price?: number;
   max_discount_percentage?: number;
   on_sale: boolean;
+  size_groups?: string[];
   variants?: VariantDetail[];
   images?: ImageDetail[];
 }
@@ -85,7 +86,6 @@ export function toProduct(viewProduct: ProductFromView): Product {
 }
 
 
-// Supabase types
 export type Json =
   | string
   | number
@@ -180,68 +180,81 @@ export type Database = {
           },
         ]
       }
+      image_base_urls: {
+        Row: {
+          base_url: string
+          created_at: string | null
+          id: number
+        }
+        Insert: {
+          base_url: string
+          created_at?: string | null
+          id?: number
+        }
+        Update: {
+          base_url?: string
+          created_at?: string | null
+          id?: number
+        }
+        Relationships: []
+      }
       images: {
         Row: {
           alt: string | null
+          base_url_id: number | null
           collection_id: number | null
           created_at: string | null
-          created_at_external: string | null
+          file_path: string | null
           height: number | null
           id: number
           last_modified: string
-          last_updated: string | null
-          placeholder: string | null
           position: number | null
           product_id: number | null
-          responsive_fallback: string | null
           src: string | null
-          srcset: string | null
           updated_at: string | null
-          updated_at_external: string | null
-          webp_srcset: string | null
+          version: string | null
           width: number | null
         }
         Insert: {
           alt?: string | null
+          base_url_id?: number | null
           collection_id?: number | null
           created_at?: string | null
-          created_at_external?: string | null
+          file_path?: string | null
           height?: number | null
           id: number
           last_modified?: string
-          last_updated?: string | null
-          placeholder?: string | null
           position?: number | null
           product_id?: number | null
-          responsive_fallback?: string | null
           src?: string | null
-          srcset?: string | null
           updated_at?: string | null
-          updated_at_external?: string | null
-          webp_srcset?: string | null
+          version?: string | null
           width?: number | null
         }
         Update: {
           alt?: string | null
+          base_url_id?: number | null
           collection_id?: number | null
           created_at?: string | null
-          created_at_external?: string | null
+          file_path?: string | null
           height?: number | null
           id?: number
           last_modified?: string
-          last_updated?: string | null
-          placeholder?: string | null
           position?: number | null
           product_id?: number | null
-          responsive_fallback?: string | null
           src?: string | null
-          srcset?: string | null
           updated_at?: string | null
-          updated_at_external?: string | null
-          webp_srcset?: string | null
+          version?: string | null
           width?: number | null
         }
         Relationships: [
+          {
+            foreignKeyName: "images_base_url_id_fkey"
+            columns: ["base_url_id"]
+            isOneToOne: false
+            referencedRelation: "image_base_urls"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "images_collection_id_fkey"
             columns: ["collection_id"]
@@ -264,42 +277,6 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
-      }
-      migration_progress: {
-        Row: {
-          batch_size: number | null
-          completed_at: string | null
-          error_message: string | null
-          id: number
-          migration_name: string
-          processed_items: number | null
-          started_at: string | null
-          status: string | null
-          total_items: number | null
-        }
-        Insert: {
-          batch_size?: number | null
-          completed_at?: string | null
-          error_message?: string | null
-          id?: number
-          migration_name: string
-          processed_items?: number | null
-          started_at?: string | null
-          status?: string | null
-          total_items?: number | null
-        }
-        Update: {
-          batch_size?: number | null
-          completed_at?: string | null
-          error_message?: string | null
-          id?: number
-          migration_name?: string
-          processed_items?: number | null
-          started_at?: string | null
-          status?: string | null
-          total_items?: number | null
-        }
-        Relationships: []
       }
       offers: {
         Row: {
@@ -505,6 +482,13 @@ export type Database = {
             foreignKeyName: "products_enriched_data_product_id_fkey"
             columns: ["product_id"]
             isOneToOne: true
+            referencedRelation: "products_active_listings_mv"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "products_enriched_data_product_id_fkey"
+            columns: ["product_id"]
+            isOneToOne: true
             referencedRelation: "products_with_details"
             referencedColumns: ["id"]
           },
@@ -662,7 +646,6 @@ export type Database = {
           created_at: string | null
           created_at_external: string | null
           discount_percentage: number | null
-          featured_image: string | null
           grams: number | null
           id: number
           inventory_quantity: number | null
@@ -691,7 +674,6 @@ export type Database = {
           created_at?: string | null
           created_at_external?: string | null
           discount_percentage?: number | null
-          featured_image?: string | null
           grams?: number | null
           id: number
           inventory_quantity?: number | null
@@ -720,7 +702,6 @@ export type Database = {
           created_at?: string | null
           created_at_external?: string | null
           discount_percentage?: number | null
-          featured_image?: string | null
           grams?: number | null
           id?: number
           inventory_quantity?: number | null
@@ -762,17 +743,16 @@ export type Database = {
       }
     }
     Views: {
-      distinct_shop_names: {
+      distinct_shops_mv: {
         Row: {
+          shop_id: number | null
           shop_name: string | null
         }
         Relationships: []
       }
-      distinct_size_groups: {
+      distinct_size_groups_mv: {
         Row: {
-          product_count: number | null
           size_group: string | null
-          variant_count: number | null
         }
         Relationships: []
       }
@@ -792,6 +772,28 @@ export type Database = {
         Row: {
           id: number | null
           min_price: number | null
+        }
+        Relationships: []
+      }
+      products_active_listings_mv: {
+        Row: {
+          created_at: string | null
+          description: string | null
+          handle: string | null
+          id: number | null
+          images: Json | null
+          in_stock: boolean | null
+          max_discount_percentage: number | null
+          min_price: number | null
+          on_sale: boolean | null
+          product_type: string | null
+          shop_id: number | null
+          shop_name: string | null
+          size_groups: string[] | null
+          tags: string[] | null
+          title: string | null
+          url: string | null
+          vendor: string | null
         }
         Relationships: []
       }
@@ -820,7 +822,6 @@ export type Database = {
           updated_at: string | null
           updated_at_external: string | null
           url: string | null
-          variants: Json | null
           vendor: string | null
         }
         Relationships: []
@@ -835,18 +836,72 @@ export type Database = {
         Args: { p_product_id?: number }
         Returns: undefined
       }
-      complete_migration_safely: {
-        Args: never
-        Returns: {
-          batch_number: number
-          missing_remaining: number
-          products_processed: number
-          total_processed: number
-        }[]
-      }
       generate_fts: {
         Args: { description: string; tags: string[]; title: string }
         Returns: unknown
+      }
+      get_filtered_categories: {
+        Args: {
+          in_stock_only?: boolean
+          max_price?: number
+          min_price?: number
+          on_sale_only?: boolean
+          shop_names?: string[]
+          size_groups?: string[]
+        }
+        Returns: {
+          level1: string
+          level2: string
+        }[]
+      }
+      get_filtered_products: {
+        Args: {
+          p_in_stock?: boolean
+          p_limit?: number
+          p_max_price?: number
+          p_min_price?: number
+          p_offset?: number
+          p_on_sale?: boolean
+          p_sort_order?: string
+        }
+        Returns: {
+          categories: string[]
+          created_at: string
+          description: string
+          handle: string
+          id: number
+          images: Json
+          in_stock: boolean
+          max_discount_percentage: number
+          min_price: number
+          on_sale: boolean
+          product_type: string
+          shop_name: string
+          size_groups: string[]
+          tags: string[]
+          title: string
+          url: string
+          vendor: string
+        }[]
+      }
+      get_image_srcset: {
+        Args: {
+          p_base_url_id: number
+          p_file_path: string
+          p_version: string
+          p_webp?: boolean
+        }
+        Returns: string
+      }
+      get_image_url: {
+        Args: {
+          p_base_url_id: number
+          p_file_path: string
+          p_format?: string
+          p_version: string
+          p_width?: number
+        }
+        Returns: string
       }
       get_migration_progress: {
         Args: never
@@ -870,7 +925,6 @@ export type Database = {
           size_groups: string[]
         }[]
       }
-    
       get_products_pricing: {
         Args: { product_ids: string[] }
         Returns: {
@@ -882,6 +936,10 @@ export type Database = {
       }
       init_database_structure: { Args: never; Returns: undefined }
       migrate_batch_simple: { Args: never; Returns: number }
+      normalize_size_groups: {
+        Args: { size_groups_arr: string[] }
+        Returns: string[]
+      }
       populate_all_products_auto: {
         Args: never
         Returns: {
@@ -900,6 +958,7 @@ export type Database = {
         Args: { batch_size?: number; offset_val?: number }
         Returns: number
       }
+      refresh_materialized_views: { Args: never; Returns: undefined }
       refresh_product_size_groups_incremental: {
         Args: never
         Returns: {
@@ -910,6 +969,7 @@ export type Database = {
       refresh_products_core: { Args: never; Returns: undefined }
       refresh_products_enriched: { Args: never; Returns: undefined }
       refresh_products_full: { Args: never; Returns: undefined }
+      refresh_products_with_details: { Args: never; Returns: undefined }
       refresh_size_groups_fast: {
         Args: never
         Returns: {
@@ -938,6 +998,8 @@ export type Database = {
           p_categories?: string[]
           p_product_id: number
           p_size_groups?: string[]
+          p_taxonomy_mapped_at?: string
+          p_taxonomy_path?: string[]
         }
         Returns: undefined
       }

@@ -146,21 +146,39 @@ function ProductCardComponent({ product, pricing, isLcp }: ProductCardProps) {
     // Cleanup not needed - preload hints can persist
   }, [isLcp, finalFallback, finalWebpSrcSet, finalSrcSet, sizesAttr]);
 
-  // Process variants from the product data
-  const variants = useMemo(() => 
-    (product.variants || [])
-      .filter(variant => variant.title !== 'Default Title')
-      .map(variant => ({
+  // Process variants from the product data. If `product.variants` is
+  // missing/empty (materialized view may omit full variants), fall back
+  // to `product.size_groups` so we still render size chips on the card.
+  const processedVariants = useMemo(() => {
+    // Narrow `variant` from unknown to an object with a string title and optional available
+    const fromVariants = (product.variants || [])
+      .filter((variant: unknown): variant is { title: string; available?: unknown } =>
+        typeof variant === 'object' &&
+        variant !== null &&
+        'title' in variant &&
+        typeof (variant as Record<string, unknown>).title === 'string' &&
+        (variant as Record<string, unknown>).title !== 'Default Title'
+      )
+      .map((variant) => ({
         title: variant.title,
-        available: variant.available,
-      })),
-    [product.variants]
-  );
+        available: Boolean(variant.available),
+      }));
 
-  // Determine if all variants are unavailable
-  const allVariantsUnavailable = useMemo(() => 
-    variants.length > 0 && variants.every(variant => !variant.available),
-    [variants]
+    if (fromVariants.length > 0) return fromVariants;
+
+    // Fallback: use `size_groups` (array of strings) if available
+    const sizes = (product.size_groups || []) as string[];
+    if (Array.isArray(sizes) && sizes.length > 0) {
+      return sizes.filter(Boolean).map(s => ({ title: String(s), available: true }));
+    }
+
+    return [] as { title: string; available: boolean }[];
+  }, [product.variants, product.size_groups]);
+
+  // Determine if all variants (or fallback sizes) are unavailable
+  const allVariantsUnavailable = useMemo(
+    () => processedVariants.length > 0 && processedVariants.every(v => !v.available),
+    [processedVariants]
   );
 
   // Determine product availability
@@ -197,15 +215,15 @@ function ProductCardComponent({ product, pricing, isLcp }: ProductCardProps) {
     (typeof window !== 'undefined' ? window.innerWidth : 1024), 
   []);
 
-  // Limit displayed variants
+  // Limit displayed variants (or fallback size groups)
   const displayedVariants = useMemo(
-    () => (showAllVariants ? variants : variants.slice(0, initialViewportWidth < 768 ? 2 : 3)),
-    [variants, showAllVariants, initialViewportWidth]
+    () => (showAllVariants ? processedVariants : processedVariants.slice(0, initialViewportWidth < 768 ? 2 : 3)),
+    [processedVariants, showAllVariants, initialViewportWidth]
   );
 
   const hasHiddenVariants = useMemo(
-    () => variants.length > (initialViewportWidth < 768 ? 2 : 3) && !showAllVariants,
-    [variants, showAllVariants, initialViewportWidth]
+    () => processedVariants.length > (initialViewportWidth < 768 ? 2 : 3) && !showAllVariants,
+    [processedVariants, showAllVariants, initialViewportWidth]
   );
 
   return (
@@ -321,7 +339,7 @@ function ProductCardComponent({ product, pricing, isLcp }: ProductCardProps) {
           </div>
 
           {/* Variants */}
-          {variants.length > 0 && (
+          {processedVariants.length > 0 && (
             <div className="mt-1 sm:mt-2">
               <div className="flex flex-wrap gap-1">
                 {displayedVariants.map((variant, index) => (
@@ -344,7 +362,7 @@ function ProductCardComponent({ product, pricing, isLcp }: ProductCardProps) {
                     }}
                     className="text-xs px-1.5 py-0.5 sm:px-2 sm:py-1 rounded-full border border-gray-300 dark:border-gray-600 bg-gray-100 dark:bg-gray-700 text-gray-900 dark:text-gray-100 hover:bg-gray-200 dark:hover:bg-gray-600"
                   >
-                    +{variants.length - (initialViewportWidth < 768 ? 2 : 3)} more
+                    +{processedVariants.length - (initialViewportWidth < 768 ? 2 : 3)} more
                   </button>
                 )}
                 {showAllVariants && (
