@@ -45,16 +45,6 @@ UPLOADER_CONFIG = {
     'delete_batch_size': 100
 }
 
-# Processor settings
-PROCESSOR_CONFIG = {
-    'size_group_batch_size': 100,
-    'taxonomy_batch_size': 500,
-    'taxonomy_threshold': 0.45,
-    'taxonomy_max_depth': 4,
-    'taxonomy_min_depth': 3,
-    'taxonomy_preferred_depth': 4,
-    'taxonomy_model': 'all-MiniLM-L6-v2'
-}
 
 # API endpoints
 API_ENDPOINTS = {

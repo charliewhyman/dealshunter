@@ -16,9 +16,7 @@ from uploader.collection_uploader import CollectionUploader
 from uploader.product_uploader import ProductUploader
 from uploader.collection_product_uploader import CollectionProductUploader
 
-from processors.taxonomy_processor import run_taxonomy_mapping
-
-from core.logger import scraper_logger, uploader_logger, processor_logger
+from core.logger import scraper_logger, uploader_logger
 import config.settings as settings
 from uploader.supabase_client import SupabaseClient
 
@@ -45,7 +43,6 @@ class PipelineOrchestrator:
         self.results = {
             'scraping': {},
             'uploading': {},
-            'processing': {}
         }
     
     def load_shops(self) -> List[Dict[str, Any]]:
@@ -237,106 +234,7 @@ class PipelineOrchestrator:
         
         return self.results['uploading']
     
-    def run_size_groups_update(self, incremental: bool = False) -> Dict[str, Any]:
-        """Run size groups update via RPC."""
-        processor_logger.info("\n" + "="*60)
-        processor_logger.info("UPDATING SIZE GROUPS VIA RPC")
-        processor_logger.info("="*60)
-        
-        try:
-            sup = SupabaseClient()
-            
-            # Choose RPC function based on incremental flag
-            rpc_name = 'refresh_product_size_groups_incremental' if incremental else 'refresh_product_size_groups_fast'
-            processor_logger.info(f"Running {rpc_name}...")
-            
-            def do_update(client):
-                return client.rpc(rpc_name).execute()
-            
-            rpc_result = sup.safe_execute(do_update, f'Size groups update ({rpc_name})', max_retries=3)
-            
-            result_data = {}
-            if rpc_result and hasattr(rpc_result, 'data'):
-                result_data = rpc_result.data
-                processor_logger.info(f"Size groups update completed successfully.")
-                processor_logger.info(f"Products updated: {result_data.get('products_updated', 0)}")
-                processor_logger.info(f"Variants processed: {result_data.get('total_variants_processed', result_data.get('variants_processed', 0))}")
-            else:
-                processor_logger.warning("Size groups update failed or returned unexpected result.")
-            
-            # Save result file
-            out = settings.DATA_DIR / f"size_groups_update_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json"
-            with open(out, 'w', encoding='utf-8') as fh:
-                json.dump({
-                    'status': 'success' if result_data else 'failed',
-                    'function': rpc_name,
-                    'timestamp': datetime.now().isoformat(),
-                    'data': result_data
-                }, fh, indent=2, ensure_ascii=False)
-            processor_logger.info(f"Result saved to: {out}")
-            
-            return {
-                'status': 'success' if result_data else 'failed',
-                'rpc_function': rpc_name,
-                'data': result_data,
-                'timestamp': self.timestamp
-            }
-            
-        except Exception as e:
-            processor_logger.error(f"Error updating size groups via RPC: {e}")
-            return {
-                'status': 'failed',
-                'error': str(e),
-                'timestamp': self.timestamp
-            }
-    
-    def run_processing_pipeline(self, 
-                              process_size_groups: bool = True,
-                              process_taxonomy: bool = True,
-                              taxonomy_config: Optional[Dict[str, Any]] = None,
-                              incremental_size_groups: bool = False) -> Dict[str, Any]:
-        """Run the processing pipeline."""
-        processor_logger.info("\n" + "="*60)
-        processor_logger.info("STARTING PROCESSING PIPELINE")
-        processor_logger.info("="*60)
-        
-        self.results['processing'] = {
-            'timestamp': self.timestamp,
-            'steps': {}
-        }
-        
-        if process_size_groups:
-            processor_logger.info("\nStep 1: Processing size groups via RPC...")
-            size_group_results = self.run_size_groups_update(incremental=incremental_size_groups)
-            self.results['processing']['steps']['size_groups'] = size_group_results
-        
-        if process_taxonomy:
-            processor_logger.info("\nStep 2: Processing taxonomy mapping...")
-            
-            # Use default config if not provided
-            if taxonomy_config is None:
-                taxonomy_config = {
-                    'max_depth': settings.PROCESSOR_CONFIG['taxonomy_max_depth'],
-                    'min_depth': settings.PROCESSOR_CONFIG['taxonomy_min_depth'],
-                    'preferred_depth': settings.PROCESSOR_CONFIG['taxonomy_preferred_depth'],
-                    'threshold': settings.PROCESSOR_CONFIG['taxonomy_threshold'],
-                    'model_name': settings.PROCESSOR_CONFIG['taxonomy_model']
-                }
-            
-            taxonomy_results = run_taxonomy_mapping(**taxonomy_config)
-            self.results['processing']['steps']['taxonomy'] = taxonomy_results
-        
-        processor_logger.info("\n" + "="*60)
-        processor_logger.info("PROCESSING PIPELINE COMPLETE")
-        processor_logger.info("="*60)
-        
-        return self.results['processing']
-    
-    def run_complete_pipeline(self, 
-                             shops: Optional[List[Dict[str, Any]]] = None,
-                             process_size_groups: bool = True,
-                             process_taxonomy: bool = True,
-                             incremental_size_groups: bool = False) -> Dict[str, Any]:
+    def run_complete_pipeline(self, shops: Optional[List[Dict[str, Any]]] = None) -> Dict[str, Any]:
         """Run the complete end-to-end pipeline."""
         self.logger.info("\n" + "="*60)
         self.logger.info("STARTING COMPLETE PIPELINE")
@@ -348,13 +246,6 @@ class PipelineOrchestrator:
         # Uploading phase
         upload_results = self.run_upload_pipeline()
         
-        # Processing phase
-        processing_results = self.run_processing_pipeline(
-            process_size_groups=process_size_groups,
-            process_taxonomy=process_taxonomy,
-            incremental_size_groups=incremental_size_groups
-        )
-        
         # Generate summary
         self._generate_summary()
         
@@ -365,7 +256,6 @@ class PipelineOrchestrator:
         return {
             'scraping': scraping_results,
             'uploading': upload_results,
-            'processing': processing_results,
             'timestamp': self.timestamp
         }
     
@@ -378,7 +268,6 @@ class PipelineOrchestrator:
             },
             'scraping': self.results.get('scraping', {}),
             'uploading': self.results.get('uploading', {}),
-            'processing': self.results.get('processing', {})
         }
         
         # Save summary to file
@@ -413,24 +302,6 @@ class PipelineOrchestrator:
                 self.logger.info(f"  {step}: {data.get('processed', 0)}/{data.get('total_files', 0)} files "
                                f"({data.get('failed', 0)} failed)")
         
-        # Processing summary
-        processing = summary.get('processing', {})
-        if processing:
-            self.logger.info("\nPROCESSING:")
-            for step, data in processing.get('steps', {}).items():
-                if step == 'size_groups':
-                    rpc_data = data.get('data', {})
-                    products_updated = rpc_data.get('products_updated', 0)
-                    variants_processed = rpc_data.get('total_variants_processed', 
-                                                     rpc_data.get('variants_processed', 0))
-                    self.logger.info(f"  {step}: {products_updated} products updated, "
-                                   f"{variants_processed} variants processed via RPC")
-                elif step == 'taxonomy' and data.get('status') == 'success':
-                    summary_data = data.get('summary', {})
-                    self.logger.info(f"  {step}: {summary_data.get('total_processed', 0)} products, "
-                                   f"{summary_data.get('total_matched', 0)} matched "
-                                   f"({summary_data.get('match_rate', 0):.1%})")
-        
         self.logger.info("\n" + "="*60)
 
 
@@ -439,10 +310,7 @@ def main():
     orchestrator = PipelineOrchestrator()
     
     # Run complete pipeline
-    results = orchestrator.run_complete_pipeline(
-        process_size_groups=True,
-        process_taxonomy=True
-    )
+    results = orchestrator.run_complete_pipeline()
     
     return results
 

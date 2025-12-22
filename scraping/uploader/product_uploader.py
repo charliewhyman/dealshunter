@@ -377,10 +377,6 @@ class ProductUploader(BaseUploader):
                 shop_id = list(shop_ids)[0]
                 self.cleanup_stale_records(product_ids, shop_id)
 
-            # Enriched rows are intentionally NOT upserted here.
-            # Enrichment processors (taxonomy/size-groups/etc.) are
-            # responsible for creating/updating `products_enriched_data`.
-            
             self.file_manager.move_to_processed(filepath)
             self.logger.info(f"Successfully processed {filepath.name}")
             return True

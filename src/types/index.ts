@@ -487,24 +487,18 @@ export type Database = {
           last_enriched: string | null
           product_id: number
           size_groups: string[] | null
-          taxonomy_mapped_at: string | null
-          taxonomy_path: string[] | null
         }
         Insert: {
           categories?: string[] | null
           last_enriched?: string | null
           product_id: number
           size_groups?: string[] | null
-          taxonomy_mapped_at?: string | null
-          taxonomy_path?: string[] | null
         }
         Update: {
           categories?: string[] | null
           last_enriched?: string | null
           product_id?: number
           size_groups?: string[] | null
-          taxonomy_mapped_at?: string | null
-          taxonomy_path?: string[] | null
         }
         Relationships: [
           {
@@ -822,8 +816,6 @@ export type Database = {
           shop_name: string | null
           size_groups: string[] | null
           tags: string[] | null
-          taxonomy_mapped_at: string | null
-          taxonomy_path: string[] | null
           title: string | null
           updated_at: string | null
           updated_at_external: string | null
@@ -878,19 +870,7 @@ export type Database = {
           size_groups: string[]
         }[]
       }
-      get_products_needing_taxonomy_mapping: {
-        Args: { p_limit?: number; p_offset?: number }
-        Returns: {
-          current_taxonomy_mapped_at: string
-          current_taxonomy_path: string[]
-          description: string
-          product_id: number
-          product_type: string
-          tags: string[]
-          title: string
-          vendor: string
-        }[]
-      }
+    
       get_products_pricing: {
         Args: { product_ids: string[] }
         Returns: {
@@ -958,8 +938,6 @@ export type Database = {
           p_categories?: string[]
           p_product_id: number
           p_size_groups?: string[]
-          p_taxonomy_mapped_at?: string
-          p_taxonomy_path?: string[]
         }
         Returns: undefined
       }

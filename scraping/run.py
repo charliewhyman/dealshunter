@@ -14,7 +14,6 @@ from datetime import datetime
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 from orchestrator.main import PipelineOrchestrator
-import processors.taxonomy_processor as taxonomy_processor
 import config.settings as settings
 from uploader.supabase_client import SupabaseClient
 
@@ -219,125 +218,11 @@ def run_upload_only(args):
     print("\nUpload finished")
     return results
 
-def run_size_groups_update(args):
-    """Run size groups update via RPC."""
-    print("\nUpdating size groups via RPC...")
-    
-    try:
-        sup = SupabaseClient()
-        
-        # Choose RPC function based on args
-        if getattr(args, 'incremental', False):
-            rpc_name = 'refresh_product_size_groups_incremental'
-            print("Running incremental size groups update...")
-        else:
-            rpc_name = 'refresh_product_size_groups_fast'
-            print("Running fast size groups update...")
-        
-        def do_update(client):
-            return client.rpc(rpc_name).execute()
-        
-        rpc_result = sup.safe_execute(do_update, f'Size groups update ({rpc_name})', max_retries=3)
-        
-        if rpc_result and hasattr(rpc_result, 'data'):
-            result_data = rpc_result.data
-            print(f"Size groups update completed successfully.")
-            print(f"Products updated: {result_data.get('products_updated', 0)}")
-            print(f"Variants processed: {result_data.get('total_variants_processed', result_data.get('variants_processed', 0))}")
-            
-            # Save result file
-            out = settings.DATA_DIR / f"size_groups_update_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json"
-            with open(out, 'w', encoding='utf-8') as fh:
-                json.dump({
-                    'status': 'success',
-                    'function': rpc_name,
-                    'timestamp': datetime.now().isoformat(),
-                    'data': result_data
-                }, fh, indent=2, ensure_ascii=False)
-            print(f"Result saved to: {out}")
-            
-            return result_data
-        else:
-            print("Size groups update failed or returned unexpected result.")
-            return {}
-            
-    except Exception as e:
-        print(f"Error updating size groups: {e}")
-        return {}
-
-def run_processing_only(args):
-    """Run only processing."""
-    print("\nRunning processing only...")
-    orchestrator = PipelineOrchestrator()
-    
-    taxonomy_config = {
-        'max_depth': args.max_depth if args.max_depth else settings.PROCESSOR_CONFIG['taxonomy_max_depth'],
-        'min_depth': args.min_depth if args.min_depth else settings.PROCESSOR_CONFIG['taxonomy_min_depth'],
-        'preferred_depth': args.preferred_depth if args.preferred_depth else settings.PROCESSOR_CONFIG['taxonomy_preferred_depth'],
-        'threshold': args.threshold if args.threshold else settings.PROCESSOR_CONFIG['taxonomy_threshold'],
-        'model_name': args.model if args.model else settings.PROCESSOR_CONFIG['taxonomy_model'],
-        'reset': args.reset
-    }
-    
-    # Determine whether explicit process-only flags were provided.
-    explicit = getattr(args, 'process_size_groups', False) or getattr(args, 'process_taxonomy', False)
-
-    if explicit:
-        process_size_groups = getattr(args, 'process_size_groups', False)
-        process_taxonomy = getattr(args, 'process_taxonomy', False)
-
-        results = {
-            'timestamp': datetime.now().strftime('%Y%m%d_%H%M%S'),
-            'steps': {}
-        }
-
-        if process_size_groups:
-            print("\nStep: Processing size groups via RPC...")
-            size_group_results = run_size_groups_update(args)
-            results['steps']['size_groups'] = size_group_results
-
-        if process_taxonomy:
-            print("\nStep: Processing taxonomy mapping...")
-            taxonomy_results = taxonomy_processor.run_taxonomy_mapping(**taxonomy_config)
-            results['steps']['taxonomy'] = taxonomy_results
-
-        print("\nProcessing finished")
-        return results
-
-    # No explicit flags — fall back to skip flags and orchestrator behavior
-    process_size_groups = not getattr(args, 'skip_size_groups', False)
-    process_taxonomy = not getattr(args, 'skip_taxonomy', False)
-
-    results = orchestrator.run_processing_pipeline(
-        process_size_groups=process_size_groups,
-        process_taxonomy=process_taxonomy,
-        taxonomy_config=taxonomy_config if process_taxonomy else None
-    )
-    
-    # If size groups processing is requested and orchestrator doesn't handle it,
-    # run the RPC directly
-    if process_size_groups:
-        print("\nStep: Processing size groups via RPC...")
-        size_group_results = run_size_groups_update(args)
-        if 'steps' not in results:
-            results['steps'] = {}
-        results['steps']['size_groups'] = size_group_results
-    
-    return results
-
 def run_complete_pipeline(args):
     """Run complete pipeline."""
     print("\nRunning complete pipeline...")
     orchestrator = PipelineOrchestrator()
     
-    taxonomy_config = {
-        'max_depth': args.max_depth if args.max_depth else settings.PROCESSOR_CONFIG['taxonomy_max_depth'],
-        'min_depth': args.min_depth if args.min_depth else settings.PROCESSOR_CONFIG['taxonomy_min_depth'],
-        'preferred_depth': args.preferred_depth if args.preferred_depth else settings.PROCESSOR_CONFIG['taxonomy_preferred_depth'],
-        'threshold': args.threshold if args.threshold else settings.PROCESSOR_CONFIG['taxonomy_threshold'],
-        'model_name': args.model if args.model else settings.PROCESSOR_CONFIG['taxonomy_model'],
-        'reset': args.reset
-    }
     
     # Optionally load and filter shops when --shop-id is provided
     shops = None
@@ -371,24 +256,7 @@ def run_complete_pipeline(args):
         'timestamp': datetime.now().strftime('%Y%m%d_%H%M%S'),
         'scraping': scrape_results,
         'upload': upload_results,
-        'processing': {}
     }
-    
-    # Run processing if requested
-    if not args.skip_size_groups or not args.skip_taxonomy:
-        print("\n=== Running Processing Pipeline ===")
-        
-        # Size groups via RPC
-        if not args.skip_size_groups:
-            print("\nStep: Processing size groups via RPC...")
-            size_group_results = run_size_groups_update(args)
-            results['processing']['size_groups'] = size_group_results
-        
-        # Taxonomy processing
-        if not args.skip_taxonomy:
-            print("\nStep: Processing taxonomy mapping...")
-            taxonomy_results = taxonomy_processor.run_taxonomy_mapping(**taxonomy_config)
-            results['processing']['taxonomy'] = taxonomy_results
 
     print("\nComplete pipeline finished")
     return results
@@ -498,12 +366,6 @@ def main():
                        help="Upload only products to the target (skip other entities)")
     parser.add_argument("--upload-collection-products", action="store_true",
                        help="Upload only collection->product mappings to the target")
-    
-    # Processing options
-    parser.add_argument("--skip-size-groups", action="store_true",
-                       help="Skip size group processing")
-    parser.add_argument("--skip-taxonomy", action="store_true",
-                       help="Skip taxonomy mapping")
 
     # Database operations
     parser.add_argument("--setup-db", action="store_true",
@@ -512,30 +374,6 @@ def main():
                        help="Refresh core product data (preserves enriched data)")
     parser.add_argument("--refresh-full", action="store_true",
                        help="Refresh full product data (includes enriched data)")
-    
-    # Explicit processing-only flags (used when --mode process)
-    parser.add_argument("--process-size-groups", action="store_true",
-                       help="Run only size group processing via RPC")
-    parser.add_argument("--process-taxonomy", action="store_true",
-                       help="Run only taxonomy mapping (ignores size groups unless also specified)")
-    
-    # Size groups options (for --mode size-groups)
-    parser.add_argument("--incremental", action="store_true",
-                       help="Use incremental size groups update (only process recent changes)")
-    
-    # Taxonomy options
-    parser.add_argument("--max-depth", type=int,
-                       help="Maximum taxonomy depth")
-    parser.add_argument("--min-depth", type=int,
-                       help="Minimum taxonomy depth")
-    parser.add_argument("--preferred-depth", type=int,
-                       help="Preferred taxonomy depth")
-    parser.add_argument("--threshold", type=float,
-                       help="Similarity threshold for taxonomy matching")
-    parser.add_argument("--model", type=str,
-                       help="Embedding model for taxonomy matching")
-    parser.add_argument("--reset", action="store_true",
-                       help="Reset taxonomy progress and start from beginning")
     
     # Other options
     parser.add_argument("--output-dir", type=str,
@@ -567,22 +405,11 @@ def main():
         success = run_database_refresh(args)
         sys.exit(0 if success else 1)
     
-    # Size groups only mode
-    if args.mode == "size-groups":
-        results = run_size_groups_update(args)
-        results_file = settings.DATA_DIR / f"size_groups_results_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json"
-        with open(results_file, 'w', encoding='utf-8') as f:
-            json.dump(results, f, indent=2, ensure_ascii=False)
-        print(f"\nResults saved to: {results_file}")
-        sys.exit(0)
-    
     # Run based on mode
     if args.mode == "scrape":
         results = run_scraping_only(args)
     elif args.mode == "upload":
         results = run_upload_only(args)
-    elif args.mode == "process":
-        results = run_processing_only(args)
     elif args.mode == "db":
         print("Database operations require specific flags:")
         print("  --setup-db      : Set up new database structure")

@@ -62,13 +62,8 @@ source .venv/bin/activate
 pip install -r scraping/requirements.txt
 
 # run a script (example)
-python scraping/scrape_and_upload_all.py
+uv run scraping/scrape_and_upload_all.py
 ```
-
-Run tests for the scrapers with `pytest` (there is at least one test in `scraping/test_map_product_to_taxonomy.py`):
-
-```bash
-pytest scraping/test_map_product_to_taxonomy.py
 ```
 
 ## Running common tasks
