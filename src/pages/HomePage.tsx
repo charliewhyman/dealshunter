@@ -747,24 +747,31 @@ export function HomePage() {
     else setSelectedShopName([]);
   }, [shopList, selectedShopName]);
 
-  // Create a stable reference for the debounced function
-  const debouncedFetchProducts = useRef(
-    createDebounced(
-      (filters: FilterOptions, page: number, sortOrder: 'asc' | 'desc' | 'discount_desc') => {
-        fetchFilteredProducts(filters, page, sortOrder);
-      },
-      500
-    )
-  ).current as ((filters: FilterOptions, page: number, sortOrder: 'asc' | 'desc' | 'discount_desc') => void) & { cancel?: () => void };
+  // Commit vs UI (pending) filters
+  // We keep immediate UI state (selectedShopName, selectedSizeGroups, selectedPriceRange, etc.)
+  // and only commit them to the network after the user stops interacting (debounced)
+  const [committedFilters, setCommittedFilters] = useState<FilterOptions>(() => ({
+    selectedShopName,
+    selectedSizeGroups,
+    inStockOnly,
+    onSaleOnly,
+    searchQuery,
+    selectedPriceRange,
+  }));
+
+  // Debounced commit (immediate UI updates, but wait before requesting)
+  const commitFiltersDebounced = useRef(createDebounced((filters: FilterOptions) => {
+    setCommittedFilters(filters);
+  }, 700)).current;
 
   // serialize complex arrays/objects to avoid complex deps in hooks
   const _selShop = JSON.stringify(selectedShopName);
   const _selSize = JSON.stringify(selectedSizeGroups);
   const _selPrice = JSON.stringify(selectedPriceRange);
-
-  // Main effect for fetching data with proper debouncing
+  // When pending UI filters change, commit them (debounced) so network requests
+  // are only made after the user stops interacting.
   useEffect(() => {
-    const filters: FilterOptions = {
+    const pending: FilterOptions = {
       selectedShopName,
       selectedSizeGroups,
       inStockOnly,
@@ -773,32 +780,42 @@ export function HomePage() {
       selectedPriceRange,
     };
 
-    // Cancel previous request
+    // Debounced commit; the debounced function captures the passed filters
+    // and will update `committedFilters` after user interaction stops.
+    try {
+      commitFiltersDebounced(pending);
+    } catch {
+      // fallback: set immediately
+      setCommittedFilters(pending);
+    }
+  }, [_selShop, _selSize, inStockOnly, onSaleOnly, searchQuery, _selPrice, commitFiltersDebounced, selectedShopName, selectedSizeGroups, selectedPriceRange]);
+
+  // Reset page when committed filters or sort order change.
+  const committedFiltersKey = useMemo(() => JSON.stringify(committedFilters), [committedFilters]);
+  
+  useEffect(() => {
+    setPage(0);
+  }, [committedFiltersKey, sortOrder]);
+
+  // Fetch whenever committed filters, sortOrder or page change.
+  const _committedKey = JSON.stringify(committedFilters);
+  useEffect(() => {
+    // Abort previous request for top-level changes
     if (currentRequestRef.current) {
       currentRequestRef.current.abort();
     }
 
-    // Cancel any pending debounced fetch
-    if (typeof debouncedFetchProducts?.cancel === 'function') {
-      debouncedFetchProducts.cancel();
+    if (page === 0) {
+      setProducts([]);
+      setInitialLoad(true);
     }
 
-    // Use debounce for filter changes (not page changes)
-    const timeoutId = setTimeout(() => {
-      if (page === 0) {
-        setProducts([]);
-        setInitialLoad(true);
+    fetchFilteredProducts(committedFilters, page, sortOrder).catch(err => {
+      if ((err as Error)?.name !== 'AbortError') {
+        console.error('Error:', err);
       }
-      
-      fetchFilteredProducts(filters, page, sortOrder).catch(err => {
-          if ((err as Error)?.name !== 'AbortError') {
-            console.error('Error:', err);
-          }
-        });
-    }, page === 0 ? 300 : 0); // Only debounce when page=0 (filter changes)
-
-    return () => clearTimeout(timeoutId);
-  }, [_selShop, _selSize, inStockOnly, onSaleOnly, searchQuery, _selPrice, sortOrder, page, debouncedFetchProducts, fetchFilteredProducts, selectedShopName, selectedSizeGroups, selectedPriceRange]);
+    });
+  }, [_committedKey, sortOrder, page, fetchFilteredProducts, committedFilters]);
 
   // Local storage effects
   useEffect(() => {
@@ -826,9 +843,7 @@ export function HomePage() {
   }, [selectedSizeGroups]);
 
   // Reset page when filters change
-  useEffect(() => {
-    setPage(0);
-  }, [selectedShopName, inStockOnly, onSaleOnly, searchQuery, selectedPriceRange, sortOrder, selectedSizeGroups]);
+  // NOTE: page reset is now handled when committed filters change (above).
 
   // Intersection observer for infinite scroll
   useEffect(() => {
@@ -855,13 +870,13 @@ export function HomePage() {
       if (currentRequestRef.current) {
         currentRequestRef.current.abort();
       }
-      if (typeof debouncedFetchProducts?.cancel === 'function') {
-        debouncedFetchProducts.cancel();
+      if (typeof commitFiltersDebounced?.cancel === 'function') {
+        commitFiltersDebounced.cancel();
       }
       // Clear request queue
       requestQueueRef.current = [];
     };
-  }, [debouncedFetchProducts]);
+  }, [commitFiltersDebounced]);
 
   const sortOptions = [
     { value: 'asc', label: 'Price: Low to High' },
@@ -901,6 +916,15 @@ export function HomePage() {
   const handleSliderChangeEnd = (values: number[]) => {
     const [minValue, maxValue] = values;
     setSelectedPriceRange([minValue, maxValue]);
+    // Commit immediately on drag end
+    setCommittedFilters({
+      selectedShopName,
+      selectedSizeGroups,
+      inStockOnly,
+      onSaleOnly,
+      searchQuery,
+      selectedPriceRange: [minValue, maxValue],
+    });
   };
 
   const handlePriceInputChange = (type: 'min' | 'max', value: string) => {
