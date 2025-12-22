@@ -778,8 +778,9 @@ export function HomePage() {
   const selectedSizeGroupsKey = useMemo(() => JSON.stringify(selectedSizeGroups), [selectedSizeGroups]);
   const selectedPriceRangeKey = useMemo(() => JSON.stringify(selectedPriceRange), [selectedPriceRange]);
 
-  // When pending UI filters change, commit them (debounced) so network requests
-  // are only made after the user stops interacting.
+  // Reset page when committed filters or sort order change.
+  const committedFiltersKey = useMemo(() => JSON.stringify(committedFilters), [committedFilters]);
+  
   useEffect(() => {
     const pending: FilterOptions = {
       selectedShopName: JSON.parse(selectedShopNameKey),
@@ -789,6 +790,12 @@ export function HomePage() {
       searchQuery,
       selectedPriceRange: JSON.parse(selectedPriceRangeKey) as [number, number],
     };
+
+    const pendingKey = JSON.stringify(pending);
+
+    // If pending filters already equal the committed filters, do nothing —
+    // this avoids enqueueing an identical fetch (common on initial load/refresh).
+    if (pendingKey === committedFiltersKey) return;
 
     // Debounced commit; the debounced function captures the passed filters
     // and will update `committedFilters` after user interaction stops.
@@ -805,11 +812,10 @@ export function HomePage() {
     onSaleOnly,
     searchQuery,
     selectedPriceRangeKey,
-    commitFiltersDebounced
+    commitFiltersDebounced,
+    committedFiltersKey,
   ]);
 
-  // Reset page when committed filters or sort order change.
-  const committedFiltersKey = useMemo(() => JSON.stringify(committedFilters), [committedFilters]);
   
   useEffect(() => {
     setPage(0);
