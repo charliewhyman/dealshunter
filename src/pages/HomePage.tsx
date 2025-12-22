@@ -78,11 +78,26 @@ export function HomePage() {
   );
 
   const PRICE_RANGE = useMemo<[number, number]>(() => [15, 1000], []);
+  // Absolute allowed bounds for manual input (prevents extreme values)
+  const ABS_MIN_PRICE = 0;
+  const ABS_MAX_PRICE = 100000;
   const [selectedPriceRange, setSelectedPriceRange] = useState<[number, number]>(() => {
-    const savedRange = JSON.parse(localStorage.getItem('selectedPriceRange') || 'null');
-    return savedRange && savedRange[0] >= PRICE_RANGE[0] && savedRange[1] <= PRICE_RANGE[1] 
-      ? savedRange 
-      : [...PRICE_RANGE];
+    try {
+      const savedRange = JSON.parse(localStorage.getItem('selectedPriceRange') || 'null');
+      if (
+        Array.isArray(savedRange) &&
+        typeof savedRange[0] === 'number' &&
+        typeof savedRange[1] === 'number' &&
+        savedRange[0] <= savedRange[1] &&
+        savedRange[0] >= ABS_MIN_PRICE &&
+        savedRange[1] <= ABS_MAX_PRICE
+      ) {
+        return [savedRange[0], savedRange[1]] as [number, number];
+      }
+    } catch {
+      // fall through to default
+    }
+    return [...PRICE_RANGE];
   });
 
   const [selectedSizeGroups, setSelectedSizeGroups] = useState<string[]>(
@@ -893,16 +908,12 @@ export function HomePage() {
     if (isNaN(numericValue)) return;
 
     if (type === 'min') {
-      const newMin = Math.min(
-        Math.max(numericValue, PRICE_RANGE[0]),
-        selectedPriceRange[1]
-      );
+      // Allow users to enter values below the default PRICE_RANGE[0], but clamp to ABS_MIN_PRICE
+      const newMin = Math.min(Math.max(numericValue, ABS_MIN_PRICE), selectedPriceRange[1]);
       setSelectedPriceRange([newMin, selectedPriceRange[1]]);
     } else {
-      const newMax = Math.max(
-        Math.min(numericValue, PRICE_RANGE[1]),
-        selectedPriceRange[0]
-      );
+      // Allow values above default PRICE_RANGE[1], but clamp to ABS_MAX_PRICE
+      const newMax = Math.max(Math.min(numericValue, ABS_MAX_PRICE), selectedPriceRange[0]);
       setSelectedPriceRange([selectedPriceRange[0], newMax]);
     }
   };
@@ -1034,7 +1045,7 @@ export function HomePage() {
                           value={selectedPriceRange[0]}
                           onChange={(e) => handlePriceInputChange('min', e.target.value)}
                           className="w-full pl-6 pr-2 py-1 border border-gray-300 rounded-md bg-transparent text-sm sm:pl-8 sm:pr-3 sm:py-1.5 sm:text-base"
-                          min={PRICE_RANGE[0]}
+                          min={ABS_MIN_PRICE}
                           max={selectedPriceRange[1]}
                         />
                       </div>
@@ -1047,14 +1058,14 @@ export function HomePage() {
                           onChange={(e) => handlePriceInputChange('max', e.target.value)}
                           className="w-full pl-6 pr-2 py-1 border border-gray-300 rounded-md bg-transparent text-sm sm:pl-8 sm:pr-3 sm:py-1.5 sm:text-base"
                           min={selectedPriceRange[0]}
-                          max={PRICE_RANGE[1]}
+                          max={ABS_MAX_PRICE}
                         />
                       </div>
                     </div>
                     <TransformSlider
                       step={1}
-                      min={PRICE_RANGE[0]}
-                      max={PRICE_RANGE[1]}
+                      min={Math.min(PRICE_RANGE[0], selectedPriceRange[0])}
+                      max={Math.max(PRICE_RANGE[1], selectedPriceRange[1])}
                       value={selectedPriceRange}
                       onFinalChange={(values) => handleSliderChangeEnd(values)}
                     />
