@@ -46,7 +46,7 @@ export function HomePage() {
   const [hasMore, setHasMore] = useState(true);
   const [page, setPage] = useState(0);
   const [shopList, setShopList] = useState<Array<{id: number; shop_name: string}>>([]);
-  const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('asc');
+  const [sortOrder, setSortOrder] = useState<'asc' | 'desc' | 'discount_desc'>('asc');
   const observerRef = useRef<HTMLDivElement | null>(null);
   const [showFilters, setShowFilters] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -145,6 +145,9 @@ export function HomePage() {
   const cardRefs = useRef<Map<string, HTMLDivElement>>(new Map());
   const pricedIdsRef = useRef<Set<string>>(new Set());
   
+  // Request deduplication
+  const pendingRequestsRef = useRef<Map<string, Promise<void>>>(new Map());
+  
   const fetchBatchPricingFor = useCallback(async (ids: Array<number | string>) => {
     const uniqueIds = Array.from(new Set(ids.map(String)));
     if (uniqueIds.length === 0) return;
@@ -227,14 +230,25 @@ export function HomePage() {
             }
           }
         }
-      } catch (err) {
-        console.error('Fallback batch fetch error', err);
+      } catch {
+        console.error('Fallback batch fetch error');
       }
     }
 
     // Merge results into state once all chunks processed
     setProductPricings(prev => ({ ...prev, ...pricingMap }));
   }, []);
+  
+  // Debounced pricing fetch
+  const fetchPricingDebounced = useRef(
+    createDebounced((ids: string[]) => {
+      if (ids.length > 0) {
+        fetchBatchPricingFor(ids).catch(e => 
+          console.error('Error fetching pricing', e)
+        );
+      }
+    }, 300)
+  ).current;
   
   useEffect(() => {
     if (typeof window === 'undefined') return;
@@ -252,12 +266,10 @@ export function HomePage() {
         }
   
         if (idsToFetch.length > 0) {
-          scheduleIdle(() => {
-            fetchBatchPricingFor(idsToFetch).catch(e => console.error('Error fetching per-card pricing', e));
-          });
+          fetchPricingDebounced(idsToFetch);
         }
       },
-      { rootMargin: '300px', threshold: 0.05 }
+      { rootMargin: '200px', threshold: 0.1 }
     );
   
     for (const el of cardRefs.current.values()) {
@@ -265,7 +277,7 @@ export function HomePage() {
     }
   
     return () => io.disconnect();
-  }, [products, fetchBatchPricingFor, scheduleIdle]);
+  }, [products, fetchBatchPricingFor, fetchPricingDebounced]);
 
   const [allSizeData, setAllSizeData] = useState<{size_group: string}[]>([]);
 
@@ -274,10 +286,13 @@ export function HomePage() {
   const isProcessingRef = useRef(false);
   const currentRequestRef = useRef<AbortController | null>(null);
   const requestIdRef = useRef(0);
+  const currentRequestKeyRef = useRef<string>('');
   const prefetchCacheRef = useRef<Record<number, { key: string; data: ProductWithDetails[]; count: number }>>({});
   
   // Cache for filter dropdowns
   const filterCacheRef = useRef<Map<string, { data: unknown[]; timestamp: number }>>(new Map());
+  // Track in-flight fetch promises to deduplicate concurrent requests for the same key
+  const inflightFetchesRef = useRef<Map<string, Promise<unknown>>>(new Map());
   const CACHE_TTL = 5 * 60 * 1000; // 5 minutes
 
   const fetchWithCache = useCallback(async <T,>(
@@ -288,10 +303,30 @@ export function HomePage() {
     if (cached && Date.now() - cached.timestamp < CACHE_TTL) {
       return cached.data as T[];
     }
-    
-    const data = await fetchFn();
-    filterCacheRef.current.set(key, { data: data as unknown[], timestamp: Date.now() });
-    return data as T[];
+    // If another call for this key is already in-flight, wait for it instead
+    const inflight = inflightFetchesRef.current.get(key) as Promise<T[]> | undefined;
+    if (inflight) {
+      try {
+        const data = await inflight;
+        return data as T[];
+      } catch {
+        // fall through to attempt a fresh fetch below
+      }
+    }
+
+    const promise = (async () => {
+      const data = await fetchFn();
+      filterCacheRef.current.set(key, { data: data as unknown[], timestamp: Date.now() });
+      return data as T[];
+    })();
+
+    inflightFetchesRef.current.set(key, promise as Promise<unknown>);
+    try {
+      const result = await promise;
+      return result;
+    } finally {
+      inflightFetchesRef.current.delete(key);
+    }
   }, [CACHE_TTL]);
 
   // Request queue processor
@@ -377,7 +412,15 @@ export function HomePage() {
       sortOrder: 'asc' | 'desc' | 'discount_desc',
       attempt = 1
     ) => {
-      return new Promise<void>((resolve, reject) => {
+      // Create a unique request key for deduplication
+      const requestKey = `${JSON.stringify(filters)}-${page}-${sortOrder}-${attempt}`;
+      
+      // Check if same request is already in flight
+      if (pendingRequestsRef.current.has(requestKey)) {
+        return pendingRequestsRef.current.get(requestKey)!;
+      }
+      
+      const requestPromise = new Promise<void>((resolve, reject) => {
         enqueueRequest(async () => {
           // Only abort previous request for top-level changes (page === 0)
           if (page === 0 && currentRequestRef.current) {
@@ -386,6 +429,7 @@ export function HomePage() {
 
           const controller = new AbortController();
           currentRequestRef.current = controller;
+          currentRequestKeyRef.current = requestKey;
 
           const myRequestId = ++requestIdRef.current;
 
@@ -554,7 +598,10 @@ export function HomePage() {
             const { data, error, count } = await query
               .range(page * ITEMS_PER_PAGE, (page + 1) * ITEMS_PER_PAGE - 1);
 
-            if (myRequestId !== requestIdRef.current) return;
+            if (currentRequestKeyRef.current !== requestKey) {
+              resolve();
+              return;
+            }
 
             if (error) {
               if (error.message.includes('JWT') || error.code === 'PGRST301') {
@@ -679,9 +726,14 @@ export function HomePage() {
             if (!controller.signal.aborted) {
               setLoading(false);
             }
+            // Clean up from pending requests
+            pendingRequestsRef.current.delete(requestKey);
           }
         });
       });
+      
+      pendingRequestsRef.current.set(requestKey, requestPromise);
+      return requestPromise;
     },
     [fetchBatchPricingFor, scheduleIdle, mergeUniqueProducts, enqueueRequest, getTableName]
   );
@@ -692,21 +744,21 @@ export function HomePage() {
       try {
         const supabase = getSupabase();
 
-        // Fetch shops (id + name) with cache
-        const shopData = await fetchWithCache('shops', async () => {
+        // Fetch distinct shops (id + name) from materialized view for performance
+        const shopData = await fetchWithCache('distinct_shops_mv', async () => {
           const { data, error } = await supabase
-            .from('shops')
-            .select('id,shop_name')
+            .from('distinct_shops_mv')
+            .select('shop_id,shop_name')
             .order('shop_name', { ascending: true });
 
           if (error) throw error;
-          return data as Array<{ id?: number; shop_name?: string }>;
+          return data as Array<{ shop_id?: number; shop_name?: string }>;
         });
 
         if (shopData) {
           setShopList(
             shopData
-              .map(item => ({ id: Number(item.id || 0), shop_name: item.shop_name || '' }))
+              .map(item => ({ id: Number(item.shop_id || 0), shop_name: item.shop_name || '' }))
               .filter(item => item.shop_name !== '')
           );
         }
@@ -757,8 +809,6 @@ export function HomePage() {
   }, [shopList, selectedShopName]);
 
   // Commit vs UI (pending) filters
-  // We keep immediate UI state (selectedShopName, selectedSizeGroups, selectedPriceRange, etc.)
-  // and only commit them to the network after the user stops interacting (debounced)
   const [committedFilters, setCommittedFilters] = useState<FilterOptions>(() => ({
     selectedShopName,
     selectedSizeGroups,
@@ -781,8 +831,10 @@ export function HomePage() {
   // Reset page when committed filters or sort order change.
   const committedFiltersKey = useMemo(() => JSON.stringify(committedFilters), [committedFilters]);
   
+  // FIXED: Simplified filter commitment logic
   useEffect(() => {
-    const pending: FilterOptions = {
+    // Create a single, stable pending filters object
+    const pendingFilters = {
       selectedShopName: JSON.parse(selectedShopNameKey),
       selectedSizeGroups: JSON.parse(selectedSizeGroupsKey),
       inStockOnly,
@@ -791,19 +843,21 @@ export function HomePage() {
       selectedPriceRange: JSON.parse(selectedPriceRangeKey) as [number, number],
     };
 
-    const pendingKey = JSON.stringify(pending);
+    const pendingKey = JSON.stringify(pendingFilters);
 
-    // If pending filters already equal the committed filters, do nothing —
-    // this avoids enqueueing an identical fetch (common on initial load/refresh).
+    // Only update if truly different
     if (pendingKey === committedFiltersKey) return;
 
-    // Debounced commit; the debounced function captures the passed filters
-    // and will update `committedFilters` after user interaction stops.
-    try {
-      commitFiltersDebounced(pending);
-    } catch {
-      // fallback: set immediately
-      setCommittedFilters(pending);
+    // Cancel previous debounce
+    if (commitFiltersDebounced.cancel) {
+      commitFiltersDebounced.cancel();
+    }
+
+    // Update immediately for initial load, debounce for subsequent changes
+    if (page === 0 && products.length === 0) {
+      setCommittedFilters(pendingFilters);
+    } else {
+      commitFiltersDebounced(pendingFilters);
     }
   }, [
     selectedShopNameKey,
@@ -812,8 +866,10 @@ export function HomePage() {
     onSaleOnly,
     searchQuery,
     selectedPriceRangeKey,
-    commitFiltersDebounced,
+    page,
+    products.length,
     committedFiltersKey,
+    commitFiltersDebounced,
   ]);
 
   
@@ -822,7 +878,6 @@ export function HomePage() {
   }, [committedFiltersKey, sortOrder]);
 
   // Fetch whenever committed filters, sortOrder or page change.
-  const _committedKey = JSON.stringify(committedFilters);
   useEffect(() => {
     // Abort previous request for top-level changes
     if (currentRequestRef.current) {
@@ -839,7 +894,7 @@ export function HomePage() {
         console.error('Error:', err);
       }
     });
-  }, [_committedKey, sortOrder, page, fetchFilteredProducts, committedFilters]);
+  }, [committedFiltersKey, sortOrder, page, fetchFilteredProducts, committedFilters]);
 
   // Local storage effects
   useEffect(() => {
@@ -866,9 +921,6 @@ export function HomePage() {
     localStorage.setItem('selectedSizeGroups', JSON.stringify(selectedSizeGroups));
   }, [selectedSizeGroups]);
 
-  // Reset page when filters change
-  // NOTE: page reset is now handled when committed filters change (above).
-
   // Intersection observer for infinite scroll
   useEffect(() => {
     const observer = new IntersectionObserver(
@@ -890,17 +942,51 @@ export function HomePage() {
 
   // Cleanup on unmount
   useEffect(() => {
+    // Capture ref.current values here so the cleanup uses the same objects
+    const capturedPendingRequests = pendingRequestsRef.current;
+    const capturedInflightFetches = inflightFetchesRef.current;
+    const capturedCommitCancel = commitFiltersDebounced?.cancel;
+    // Type-safe access to optional `cancel` on the debounced function
+    type CancelableDebounced = { cancel?: () => void };
+    const capturedFetchPricingCancel =
+      typeof fetchPricingDebounced !== 'undefined' && typeof (fetchPricingDebounced as CancelableDebounced).cancel === 'function'
+        ? (fetchPricingDebounced as CancelableDebounced).cancel
+        : undefined;
+
     return () => {
       if (currentRequestRef.current) {
         currentRequestRef.current.abort();
       }
-      if (typeof commitFiltersDebounced?.cancel === 'function') {
-        commitFiltersDebounced.cancel();
+      if (typeof capturedCommitCancel === 'function') {
+        capturedCommitCancel();
       }
-      // Clear request queue
+      if (typeof capturedFetchPricingCancel === 'function') {
+        capturedFetchPricingCancel();
+      }
+
+      // Clear captured containers rather than accessing ref.current directly,
+      // and reset the live refs to empty structures to avoid retaining references.
+      try {
+        if (capturedPendingRequests && typeof (capturedPendingRequests as Map<string, Promise<void>>).clear === 'function') {
+          (capturedPendingRequests as Map<string, Promise<void>>).clear();
+        }
+      } catch {
+        /* ignore */
+      }
+
+      try {
+        if (capturedInflightFetches && typeof (capturedInflightFetches as Map<string, Promise<unknown>>).clear === 'function') {
+          (capturedInflightFetches as Map<string, Promise<unknown>>).clear();
+        }
+      } catch {
+        /* ignore */
+      }
+
+      // Reset the live refs to fresh empty containers to avoid holding onto stale data.
       requestQueueRef.current = [];
+      prefetchCacheRef.current = {};
     };
-  }, [commitFiltersDebounced]);
+  }, [commitFiltersDebounced, fetchPricingDebounced]);
 
   const sortOptions = [
     { value: 'asc', label: 'Price: Low to High' },
@@ -932,7 +1018,7 @@ export function HomePage() {
     newValue: SingleValue<{ value: string; label: string }>
   ) => {
     if (newValue) {
-      setSortOrder(newValue.value as 'asc' | 'desc');
+      setSortOrder(newValue.value as 'asc' | 'desc' | 'discount_desc');
     }
   };
 
