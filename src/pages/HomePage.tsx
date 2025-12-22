@@ -45,7 +45,7 @@ export function HomePage() {
   const [initialLoad, setInitialLoad] = useState(true);
   const [hasMore, setHasMore] = useState(true);
   const [page, setPage] = useState(0);
-  const [shopNames, setShopNames] = useState<string[]>([]);
+  const [shopList, setShopList] = useState<Array<{id: number; shop_name: string}>>([]);
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('asc');
   const observerRef = useRef<HTMLDivElement | null>(null);
   const [showFilters, setShowFilters] = useState(false);
@@ -417,7 +417,10 @@ export function HomePage() {
                         .limit(ITEMS_PER_PAGE);
 
                       if (tableName === 'products_with_details') {
-                        if (filters.selectedShopName.length > 0) prefetchQuery = prefetchQuery.in('shop_name', filters.selectedShopName);
+                        if (filters.selectedShopName.length > 0) {
+                          const ids = Array.from(new Set(filters.selectedShopName.map(s => Number(s)).filter(n => !Number.isNaN(n) && n > 0)));
+                          if (ids.length > 0) prefetchQuery = prefetchQuery.in('shop_id', ids);
+                        }
                         if (filters.inStockOnly) prefetchQuery = prefetchQuery.eq('in_stock', true);
                         if (filters.onSaleOnly) prefetchQuery = prefetchQuery.eq('on_sale', true);
                         if (filters.searchQuery) prefetchQuery = prefetchQuery.textSearch('fts', filters.searchQuery, { type: 'plain', config: 'english' });
@@ -463,7 +466,8 @@ export function HomePage() {
             // Apply filters only if using the full view
             if (tableName === 'products_with_details') {
               if (filters.selectedShopName.length > 0) {
-                query = query.in('shop_name', filters.selectedShopName);
+                const ids = Array.from(new Set(filters.selectedShopName.map(s => Number(s)).filter(n => !Number.isNaN(n) && n > 0)));
+                if (ids.length > 0) query = query.in('shop_id', ids);
               }
 
               if (filters.inStockOnly) {
@@ -578,7 +582,10 @@ export function HomePage() {
                       .limit(ITEMS_PER_PAGE);
 
                     if (nextPageTableName === 'products_with_details') {
-                      if (filters.selectedShopName.length > 0) prefetchQuery = prefetchQuery.in('shop_name', filters.selectedShopName);
+                      if (filters.selectedShopName.length > 0) {
+                        const ids = Array.from(new Set(filters.selectedShopName.map(s => Number(s)).filter(n => !Number.isNaN(n) && n > 0)));
+                        if (ids.length > 0) prefetchQuery = prefetchQuery.in('shop_id', ids);
+                      }
                       if (filters.inStockOnly) prefetchQuery = prefetchQuery.eq('in_stock', true);
                       if (filters.onSaleOnly) prefetchQuery = prefetchQuery.eq('on_sale', true);
                       if (filters.searchQuery) prefetchQuery = prefetchQuery.textSearch('fts', filters.searchQuery, { type: 'plain', config: 'english' });
@@ -646,20 +653,24 @@ export function HomePage() {
       try {
         const supabase = getSupabase();
 
-        // Fetch shop names with cache
-        const shopData = await fetchWithCache('shop_names', async () => {
+        // Fetch shops (id + name) with cache
+        const shopData = await fetchWithCache('shops', async () => {
           const { data, error } = await supabase
-            .from('distinct_shop_names_mv') // Use materialized view for shop names
-            .select('shop_name')
+            .from('shops')
+            .select('id,shop_name')
             .order('shop_name', { ascending: true });
-          
+
           if (error) throw error;
-          return data as Array<{ shop_name?: string }>;
+          return data as Array<{ id?: number; shop_name?: string }>;
         });
-        
+
         if (shopData) {
-          setShopNames(shopData.map(item => item.shop_name).filter(Boolean) as string[]);
-        }        
+          setShopList(
+            shopData
+              .map(item => ({ id: Number(item.id || 0), shop_name: item.shop_name || '' }))
+              .filter(item => item.shop_name !== '')
+          );
+        }
       
         // Fetch size data with cache
         const sizeData = await fetchWithCache('size_groups', async () => {
@@ -687,6 +698,24 @@ export function HomePage() {
     
     fetchInitialData();
   }, [fetchWithCache]);
+
+  // After we load the shop list, reconcile any saved shop names (legacy) to their IDs.
+  useEffect(() => {
+    if (!shopList || shopList.length === 0) return;
+
+    // If selectedShopName contains non-numeric values (previously stored names), map them to ids
+    const needsMapping = selectedShopName.some(s => !/^\d+$/.test(s));
+    if (!needsMapping) return;
+
+    const mapped = selectedShopName.map(s => {
+      if (/^\d+$/.test(s)) return s;
+      const found = shopList.find(x => (x.shop_name || '').toLowerCase() === String(s).toLowerCase());
+      return found ? String(found.id) : null;
+    }).filter(Boolean) as string[];
+
+    if (mapped.length > 0) setSelectedShopName(Array.from(new Set(mapped)));
+    else setSelectedShopName([]);
+  }, [shopList, selectedShopName]);
 
   // Create a stable reference for the debounced function
   const debouncedFetchProducts = useRef(
@@ -739,21 +768,7 @@ export function HomePage() {
     }, page === 0 ? 300 : 0); // Only debounce when page=0 (filter changes)
 
     return () => clearTimeout(timeoutId);
-  }, [
-    _selShop,
-    _selSize,
-    inStockOnly,
-    onSaleOnly,
-    searchQuery,
-    _selPrice,
-    sortOrder,
-    page,
-    debouncedFetchProducts,
-    fetchFilteredProducts,
-    selectedShopName,
-    selectedPriceRange,
-    selectedSizeGroups,
-  ]);
+  }, [_selShop, _selSize, inStockOnly, onSaleOnly, searchQuery, _selPrice, sortOrder, page, debouncedFetchProducts, fetchFilteredProducts, selectedShopName, selectedSizeGroups, selectedPriceRange]);
 
   // Local storage effects
   useEffect(() => {
@@ -824,10 +839,15 @@ export function HomePage() {
     { value: 'discount_desc', label: 'Discount: High to Low' },
   ];
 
-  const shopOptions = shopNames.map((shopName) => ({
-    value: shopName,
-    label: shopName,
+  const shopOptions = shopList.map((s) => ({
+    value: String(s.id),
+    label: s.shop_name || String(s.id),
   }));
+
+  const getShopLabel = useCallback((idOrName: string) => {
+    const found = shopList.find(s => String(s.id) === idOrName);
+    return found ? found.shop_name : idOrName;
+  }, [shopList]);
 
   const handleSearchChange = (e: ChangeEvent<HTMLInputElement>) => {
     setSearchQuery(e.target.value);
@@ -1080,7 +1100,7 @@ export function HomePage() {
                                 key={shop}
                                 className="inline-flex items-center rounded-md bg-blue-50 dark:bg-blue-900/30 px-1.5 py-0.5 text-xs font-medium text-blue-700 dark:text-blue-200 ring-1 ring-inset ring-blue-700/10 dark:ring-blue-500/30 sm:px-2 sm:py-1"
                               >
-                                {shop}
+                                {getShopLabel(shop)}
                                   <button 
                                   onClick={() => setSelectedShopName(prev => prev.filter(s => s !== shop))}
                                   className="ml-1 inline-flex text-blue-500 hover:text-blue-700 dark:text-blue-300 dark:hover:text-blue-100"

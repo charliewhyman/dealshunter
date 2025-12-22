@@ -62,23 +62,28 @@ const MultiSelectDropdown: React.FC<MultiSelectDropdownProps> = ({
       >
         <div className="flex-1 flex flex-wrap gap-1">
           {selected.length > 0 ? (
-            selected.map((item) => (
+            selected.map((item) => {
+              // find label for selected value from options
+              const opt = options.find(o => (typeof o === 'string' ? o === item : o.value === item));
+              const label = typeof opt === 'string' ? opt : opt ? opt.label : item;
+              return (
                 <span
-                key={item}
-                className="inline-flex items-center gap-1 px-2 py-1 bg-gray-100 dark:bg-gray-700 text-gray-800 dark:text-gray-200 text-xs rounded-md"
-              >
-                {item}
-                <button
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    removeItem(item);
-                  }}
-                  className="hover:text-red-500 dark:hover:text-red-400"
+                  key={item}
+                  className="inline-flex items-center gap-1 px-2 py-1 bg-gray-100 dark:bg-gray-700 text-gray-800 dark:text-gray-200 text-xs rounded-md"
                 >
+                  {label}
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      removeItem(item);
+                    }}
+                    className="hover:text-red-500 dark:hover:text-red-400"
+                  >
                     <AsyncLucideIcon name="X" className="h-3 w-3" />
-                </button>
-              </span>
-            ))
+                  </button>
+                </span>
+              );
+            })
           ) : (
             <span className="text-gray-500 dark:text-gray-400 text-sm">
               {placeholder}
