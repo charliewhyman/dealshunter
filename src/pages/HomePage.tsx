@@ -426,6 +426,14 @@ export function HomePage() {
                         if (filters.searchQuery) prefetchQuery = prefetchQuery.textSearch('fts', filters.searchQuery, { type: 'plain', config: 'english' });
                         if (filters.selectedPriceRange) prefetchQuery = prefetchQuery.gte('min_price', filters.selectedPriceRange[0]).lte('min_price', filters.selectedPriceRange[1]);
                         if (filters.selectedSizeGroups.length > 0) prefetchQuery = prefetchQuery.overlaps('size_groups', filters.selectedSizeGroups);
+                      } else {
+                        // Materialized view may not enforce the default price range — apply range and on-sale here too.
+                        if (filters.selectedPriceRange) {
+                          prefetchQuery = prefetchQuery.gte('min_price', filters.selectedPriceRange[0]).lte('min_price', filters.selectedPriceRange[1]);
+                        }
+                        if (filters.onSaleOnly) {
+                          prefetchQuery = prefetchQuery.eq('on_sale', true);
+                        }
                       }
 
                       if (sortOrder === 'discount_desc') {
@@ -494,20 +502,19 @@ export function HomePage() {
               if (filters.selectedSizeGroups.length > 0) {
                 query = query.overlaps('size_groups', filters.selectedSizeGroups);
               }
-            } else {
-              // Materialized view already has in_stock=true and default price range
-              // Apply price range if different from default
-              if (!rangesEqual(filters.selectedPriceRange, PRICE_RANGE)) {
-                query = query
-                  .gte('min_price', filters.selectedPriceRange[0])
-                  .lte('min_price', filters.selectedPriceRange[1]);
+              } else {
+                // Materialized view may not reliably enforce the default price range,
+                // so always apply the selected price range and the on-sale filter here too.
+                if (filters.selectedPriceRange) {
+                  query = query
+                    .gte('min_price', filters.selectedPriceRange[0])
+                    .lte('min_price', filters.selectedPriceRange[1]);
+                }
+
+                if (filters.onSaleOnly) {
+                  query = query.eq('on_sale', true);
+                }
               }
-              
-              // Apply onSaleOnly if needed
-              if (filters.onSaleOnly) {
-                query = query.eq('on_sale', true);
-              }
-            }
 
             // Apply sorting
             if (sortOrder === 'discount_desc') {
@@ -591,6 +598,14 @@ export function HomePage() {
                       if (filters.searchQuery) prefetchQuery = prefetchQuery.textSearch('fts', filters.searchQuery, { type: 'plain', config: 'english' });
                       if (filters.selectedPriceRange) prefetchQuery = prefetchQuery.gte('min_price', filters.selectedPriceRange[0]).lte('min_price', filters.selectedPriceRange[1]);
                       if (filters.selectedSizeGroups.length > 0) prefetchQuery = prefetchQuery.overlaps('size_groups', filters.selectedSizeGroups);
+                    } else {
+                      // Materialized view may not enforce the default price range — apply range and on-sale here too.
+                      if (filters.selectedPriceRange) {
+                        prefetchQuery = prefetchQuery.gte('min_price', filters.selectedPriceRange[0]).lte('min_price', filters.selectedPriceRange[1]);
+                      }
+                      if (filters.onSaleOnly) {
+                        prefetchQuery = prefetchQuery.eq('on_sale', true);
+                      }
                     }
 
                     if (sortOrder === 'discount_desc') {
@@ -644,7 +659,7 @@ export function HomePage() {
         });
       });
     },
-    [fetchBatchPricingFor, scheduleIdle, mergeUniqueProducts, enqueueRequest, getTableName, PRICE_RANGE]
+    [fetchBatchPricingFor, scheduleIdle, mergeUniqueProducts, enqueueRequest, getTableName]
   );
 
   // Update shop names to use caching
