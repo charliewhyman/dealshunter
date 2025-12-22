@@ -46,7 +46,6 @@ export function HomePage() {
   const [hasMore, setHasMore] = useState(true);
   const [page, setPage] = useState(0);
   const [shopNames, setShopNames] = useState<string[]>([]);
-  const [categories, setCategories] = useState<string[]>([]);
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('asc');
   const observerRef = useRef<HTMLDivElement | null>(null);
   const [showFilters, setShowFilters] = useState(false);
@@ -61,16 +60,11 @@ export function HomePage() {
   const [selectedShopName, setSelectedShopName] = useState<string[]>(() => {
     try {
       const saved = localStorage.getItem('selectedShopName');
-      return saved ? JSON.parse(saved) : [];
-    } catch {
-      return [];
-    }
-  });
-
-  const [selectedCategories, setSelectedCategories] = useState<string[]>(() => {
-    try {
-      const saved = localStorage.getItem('selectedCategories');
-      return saved ? JSON.parse(saved) : [];
+      const parsed = saved ? JSON.parse(saved) : [];
+      // Normalize to array in case older persisted values were a string
+      if (Array.isArray(parsed)) return parsed as string[];
+      if (parsed == null) return [];
+      return [String(parsed)];
     } catch {
       return [];
     }
@@ -92,7 +86,17 @@ export function HomePage() {
   });
 
   const [selectedSizeGroups, setSelectedSizeGroups] = useState<string[]>(
-    JSON.parse(localStorage.getItem('selectedSizeGroups') || '[]')
+    (() => {
+      try {
+        const saved = localStorage.getItem('selectedSizeGroups');
+        const parsed = saved ? JSON.parse(saved) : [];
+        if (Array.isArray(parsed)) return parsed as string[];
+        if (parsed == null) return [];
+        return [String(parsed)];
+      } catch {
+        return [];
+      }
+    })()
   );
 
   // Batch pricing map to avoid per-card network requests
@@ -321,7 +325,6 @@ export function HomePage() {
   interface FilterOptions {
     selectedShopName: string[];
     selectedSizeGroups: string[];
-    selectedCategories: string[];
     inStockOnly: boolean;
     onSaleOnly: boolean;
     searchQuery: string;
@@ -337,7 +340,6 @@ export function HomePage() {
       filters.selectedPriceRange[0] === PRICE_RANGE[0] &&
       filters.selectedPriceRange[1] === PRICE_RANGE[1] &&
       filters.selectedShopName.length === 0 &&
-      filters.selectedCategories.length === 0 &&
       filters.selectedSizeGroups.length === 0 &&
       !filters.searchQuery;
     
@@ -408,7 +410,7 @@ export function HomePage() {
                       const supabase = getSupabase();
                       let prefetchQuery = supabase
                         .from(tableName)
-                        .select('id,title,shop_name,created_at,url,description,in_stock,min_price,max_discount_percentage,on_sale,size_groups,images,product_type,categories,tags,vendor,handle', { 
+                        .select('id,title,shop_name,created_at,url,description,in_stock,min_price,max_discount_percentage,on_sale,size_groups,images,product_type,tags,vendor,handle', { 
                           count: 'exact',
                           head: false 
                         })
@@ -416,7 +418,6 @@ export function HomePage() {
 
                       if (tableName === 'products_with_details') {
                         if (filters.selectedShopName.length > 0) prefetchQuery = prefetchQuery.in('shop_name', filters.selectedShopName);
-                        if (filters.selectedCategories.length > 0) prefetchQuery = prefetchQuery.overlaps('categories', filters.selectedCategories);
                         if (filters.inStockOnly) prefetchQuery = prefetchQuery.eq('in_stock', true);
                         if (filters.onSaleOnly) prefetchQuery = prefetchQuery.eq('on_sale', true);
                         if (filters.searchQuery) prefetchQuery = prefetchQuery.textSearch('fts', filters.searchQuery, { type: 'plain', config: 'english' });
@@ -452,7 +453,7 @@ export function HomePage() {
             // Only select columns actually used in the UI
             let query = supabase
               .from(tableName)
-              .select('id,title,shop_name,created_at,url,description,in_stock,min_price,max_discount_percentage,on_sale,size_groups,images,product_type,categories,tags,vendor,handle', { 
+              .select('id,title,shop_name,created_at,url,description,in_stock,min_price,max_discount_percentage,on_sale,size_groups,images,product_type,tags,vendor,handle', { 
                 count: 'exact',
                 head: false
               })
@@ -463,10 +464,6 @@ export function HomePage() {
             if (tableName === 'products_with_details') {
               if (filters.selectedShopName.length > 0) {
                 query = query.in('shop_name', filters.selectedShopName);
-              }
-
-              if (filters.selectedCategories.length > 0) {
-                query = query.overlaps('categories', filters.selectedCategories);
               }
 
               if (filters.inStockOnly) {
@@ -574,7 +571,7 @@ export function HomePage() {
                     const supabase = getSupabase();
                     let prefetchQuery = supabase
                       .from(nextPageTableName)
-                      .select('id,title,shop_name,created_at,url,description,in_stock,min_price,max_discount_percentage,on_sale,size_groups,images,product_type,categories,tags,vendor,handle', { 
+                      .select('id,title,shop_name,created_at,url,description,in_stock,min_price,max_discount_percentage,on_sale,size_groups,images,product_type,tags,vendor,handle', { 
                         count: 'exact', 
                         head: false 
                       })
@@ -582,7 +579,6 @@ export function HomePage() {
 
                     if (nextPageTableName === 'products_with_details') {
                       if (filters.selectedShopName.length > 0) prefetchQuery = prefetchQuery.in('shop_name', filters.selectedShopName);
-                      if (filters.selectedCategories.length > 0) prefetchQuery = prefetchQuery.overlaps('categories', filters.selectedCategories);
                       if (filters.inStockOnly) prefetchQuery = prefetchQuery.eq('in_stock', true);
                       if (filters.onSaleOnly) prefetchQuery = prefetchQuery.eq('on_sale', true);
                       if (filters.searchQuery) prefetchQuery = prefetchQuery.textSearch('fts', filters.searchQuery, { type: 'plain', config: 'english' });
@@ -644,7 +640,7 @@ export function HomePage() {
     [fetchBatchPricingFor, scheduleIdle, mergeUniqueProducts, enqueueRequest, getTableName, PRICE_RANGE]
   );
 
-  // Update shop names and categories to use caching
+  // Update shop names to use caching
   useEffect(() => {
     async function fetchInitialData() {
       try {
@@ -663,22 +659,7 @@ export function HomePage() {
         
         if (shopData) {
           setShopNames(shopData.map(item => item.shop_name).filter(Boolean) as string[]);
-        }
-
-        // Fetch product categories with cache
-        const categoryData = await fetchWithCache('categories', async () => {
-          const { data, error } = await supabase
-            .from('distinct_categories_mv') // Use materialized view for categories
-            .select('category')
-            .order('category', { ascending: true });
-          
-          if (error) throw error;
-          return data as Array<{ category: string }>;
-        });
-        
-        if (categoryData) {
-          setCategories(categoryData.map(item => item.category));
-        }
+        }        
       
         // Fetch size data with cache
         const sizeData = await fetchWithCache('size_groups', async () => {
@@ -719,7 +700,6 @@ export function HomePage() {
 
   // serialize complex arrays/objects to avoid complex deps in hooks
   const _selShop = JSON.stringify(selectedShopName);
-  const _selCat = JSON.stringify(selectedCategories);
   const _selSize = JSON.stringify(selectedSizeGroups);
   const _selPrice = JSON.stringify(selectedPriceRange);
 
@@ -728,7 +708,6 @@ export function HomePage() {
     const filters: FilterOptions = {
       selectedShopName,
       selectedSizeGroups,
-      selectedCategories,
       inStockOnly,
       onSaleOnly,
       searchQuery,
@@ -762,7 +741,6 @@ export function HomePage() {
     return () => clearTimeout(timeoutId);
   }, [
     _selShop,
-    _selCat,
     _selSize,
     inStockOnly,
     onSaleOnly,
@@ -773,7 +751,6 @@ export function HomePage() {
     debouncedFetchProducts,
     fetchFilteredProducts,
     selectedShopName,
-    selectedCategories,
     selectedPriceRange,
     selectedSizeGroups,
   ]);
@@ -782,10 +759,6 @@ export function HomePage() {
   useEffect(() => {
     localStorage.setItem('selectedShopName', JSON.stringify(selectedShopName));
   }, [selectedShopName]);
-  
-  useEffect(() => {
-    localStorage.setItem('selectedCategories', JSON.stringify(selectedCategories));
-  }, [selectedCategories]);
   
   useEffect(() => {
     localStorage.setItem('inStockOnly', JSON.stringify(inStockOnly));
@@ -810,7 +783,7 @@ export function HomePage() {
   // Reset page when filters change
   useEffect(() => {
     setPage(0);
-  }, [selectedShopName, inStockOnly, onSaleOnly, searchQuery, selectedPriceRange, sortOrder, selectedSizeGroups, selectedCategories]);
+  }, [selectedShopName, inStockOnly, onSaleOnly, searchQuery, selectedPriceRange, sortOrder, selectedSizeGroups]);
 
   // Intersection observer for infinite scroll
   useEffect(() => {
@@ -864,6 +837,7 @@ export function HomePage() {
     e.preventDefault();
     navigate(`/?search=${searchQuery}`);
   };
+
 
   const handleSortChange = (
     newValue: SingleValue<{ value: string; label: string }>
@@ -934,7 +908,6 @@ export function HomePage() {
 
   const handleClearAllFilters = () => {
     setSelectedShopName([]);
-    setSelectedCategories([]);
     setInStockOnly(true);
     setOnSaleOnly(false);
     setSelectedSizeGroups([]);
@@ -976,7 +949,6 @@ export function HomePage() {
                   </span>
                   {
                     selectedShopName.length > 0 || 
-                    selectedCategories.length > 0 ||
                     inStockOnly !== false || 
                     onSaleOnly !== false || 
                     !rangesEqual(selectedPriceRange, PRICE_RANGE) ? (
@@ -1010,26 +982,6 @@ export function HomePage() {
                     selected={selectedShopName}
                     onChange={setSelectedShopName}
                     placeholder="All shops"
-                  />
-                </div>
-
-                {/* Category Filter */}
-                <div>
-                  <h3 className="text-xs font-medium text-gray-700 dark:text-gray-300 mb-2 sm:text-sm sm:mb-3">
-                    Categories {selectedCategories.length > 0 && (
-                      <span className="ml-1 text-xs text-gray-500 dark:text-gray-400">
-                        ({selectedCategories.length} selected)
-                      </span>
-                    )}
-                  </h3>
-                  <MultiSelectDropdown
-                    options={categories.map(cat => ({
-                      value: cat,
-                      label: cat
-                    }))}
-                    selected={selectedCategories}
-                    onChange={setSelectedCategories}
-                    placeholder="All categories"
                   />
                 </div>
   
@@ -1140,25 +1092,6 @@ export function HomePage() {
                           </>
                         )}
 
-                        {selectedCategories.length > 0 && (
-                          <>
-                            {selectedCategories.map(cat => (
-                              <div 
-                                key={cat}
-                                className="inline-flex items-center rounded-md bg-blue-50 dark:bg-blue-900/30 px-1.5 py-0.5 text-xs font-medium text-blue-700 dark:text-blue-200 ring-1 ring-inset ring-blue-700/10 dark:ring-blue-500/30 sm:px-2 sm:py-1"
-                              >
-                                {cat}
-                                  <button 
-                                  onClick={() => setSelectedCategories(prev => prev.filter(c => c !== cat))}
-                                  className="ml-1 inline-flex text-blue-500 hover:text-blue-700 dark:text-blue-300 dark:hover:text-blue-100"
-                                >
-                                  <AsyncLucideIcon name="X" className="h-2.5 w-2.5 sm:h-3 sm:w-3" />
-                                </button>
-                              </div>
-                            ))}
-                          </>
-                        )}
-                        
                         {!rangesEqual(selectedPriceRange, PRICE_RANGE) && (
                           <div className="inline-flex items-center rounded-md bg-blue-50 dark:bg-blue-900/30 px-1.5 py-0.5 text-xs font-medium text-blue-700 dark:text-blue-200 ring-1 ring-inset ring-blue-700/10 dark:ring-blue-500/30 sm:px-2 sm:py-1">
                             ${selectedPriceRange[0]} - ${selectedPriceRange[1]}
