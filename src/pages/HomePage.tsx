@@ -3,7 +3,6 @@ import { ProductWithDetails } from '../types';
 import { getSupabase } from '../lib/supabase';
 import AsyncLucideIcon from '../components/AsyncLucideIcon';
 import { ProductCard } from '../components/ProductCard';
-import { SingleValue } from 'react-select';
 import { Header } from '../components/Header';
 import { useLocation, useNavigate } from 'react-router-dom';
 
@@ -34,7 +33,7 @@ const INITIAL_RENDER_COUNT = 4;
 // Number of top products to mark as potential LCP candidates (preload + eager)
 // This covers the first row on most viewports so the true LCP image among
 // them is likely to be discovered and prioritized.
-const LCP_PRELOAD_COUNT = 2;
+const LCP_PRELOAD_COUNT = INITIAL_RENDER_COUNT;
 
 // Materialized view name for optimized queries
 const PRODUCTS_MATERIALIZED_VIEW = 'products_active_listings_mv';
@@ -236,7 +235,10 @@ export function HomePage() {
     }
 
     // Merge results into state once all chunks processed
-    setProductPricings(prev => ({ ...prev, ...pricingMap }));
+    setProductPricings(prev => {
+      const merged = { ...prev, ...pricingMap };
+      return merged;
+    });
   }, []);
   
   // Debounced pricing fetch
@@ -440,7 +442,7 @@ export function HomePage() {
               await new Promise(resolve => setTimeout(resolve, 100));
             }
             
-            const cacheKey = JSON.stringify(filters);
+            const cacheKey = JSON.stringify({ filters, sortOrder });
             const cached = prefetchCacheRef.current[page];
             if (cached && cached.key === cacheKey) {
               if (myRequestId !== requestIdRef.current) return;
@@ -455,13 +457,16 @@ export function HomePage() {
               
               {
                 const ids = ((cached.data as unknown as ProductWithDetails[]) || []).map(p => p.id).filter(Boolean);
-                if (page === 0 && ids.length > 0) {
-                  const lcpIds = ids.slice(0, 2);
-                  fetchBatchPricingFor(lcpIds);
-                }
+                if (ids.length > 0) {
+                  const lcpIds = ids.slice(0, LCP_PRELOAD_COUNT);
+                  if (lcpIds.length > 0) {
+                      fetchBatchPricingFor(lcpIds).catch(e => console.error('Error fetching LCP batch pricing for cached page items', e));
+                    }
 
-                if (ids.length > 2) {
-                  scheduleIdle(() => fetchBatchPricingFor(ids.slice(2)));
+                    const rest = ids.slice(LCP_PRELOAD_COUNT);
+                    if (rest.length > 0) {
+                      scheduleIdle(() => fetchBatchPricingFor(rest));
+                    }
                 }
               }
               
@@ -631,9 +636,20 @@ export function HomePage() {
               const ids = ((data as unknown as ProductWithDetails[]) || []).map(p => p.id).filter(Boolean);
               const idsToFetch = page === 0 ? ids.slice(0, 12) : ids;
               if (idsToFetch.length > 0) {
-                scheduleIdle(() => {
-                  fetchBatchPricingFor(idsToFetch).catch(e => console.error('Error fetching batch pricing for page items', e));
-                });
+                // Fetch pricing for LCP candidates immediately so discount badges
+                // and accurate prices appear quickly when sorting or changing filters.
+                const lcpIds = idsToFetch.slice(0, LCP_PRELOAD_COUNT);
+                if (lcpIds.length > 0) {
+                  fetchBatchPricingFor(lcpIds).catch(e => console.error('Error fetching LCP batch pricing for page items', e));
+                }
+
+                // Fetch remaining page items at low priority to avoid blocking
+                const rest = idsToFetch.slice(LCP_PRELOAD_COUNT);
+                if (rest.length > 0) {
+                  scheduleIdle(() => {
+                    fetchBatchPricingFor(rest).catch(e => console.error('Error fetching batch pricing for page items', e));
+                  });
+                }
               }
             }
             
@@ -641,7 +657,7 @@ export function HomePage() {
             setInitialLoad(false);
             setError(null);
 
-            const cacheKeyCurrent = JSON.stringify(filters);
+            const cacheKeyCurrent = JSON.stringify({ filters, sortOrder });
             prefetchCacheRef.current[page] = { key: cacheKeyCurrent, data: (data as unknown as ProductWithDetails[]) || [], count: totalItems };
 
             // Prefetch next page
@@ -1014,12 +1030,28 @@ export function HomePage() {
   };
 
 
-  const handleSortChange = (
-    newValue: SingleValue<{ value: string; label: string }>
-  ) => {
-    if (newValue) {
-      setSortOrder(newValue.value as 'asc' | 'desc' | 'discount_desc');
-    }
+  // Accept simple string value from our `SingleSelectDropdown` component.
+  const handleSortChange = (value: string) => {
+    const parsed = value as 'asc' | 'desc' | 'discount_desc';
+    setSortOrder(parsed);
+
+    // Immediately commit current UI filters so the sort is applied together
+    // with the latest (possibly uncommitted) filter UI state such as On Sale.
+    const pendingFilters: FilterOptions = {
+      selectedShopName,
+      selectedSizeGroups,
+      inStockOnly,
+      onSaleOnly,
+      searchQuery,
+      selectedPriceRange,
+    };
+
+    // Cancel any pending debounce and commit right away to ensure fetch uses
+    // the currently visible filter toggles.
+    if (commitFiltersDebounced?.cancel) commitFiltersDebounced.cancel();
+    setCommittedFilters(pendingFilters);
+    // Reset to first page when changing sort
+    setPage(0);
   };
 
   // Called when the user finishes dragging / releases the slider handle.
@@ -1350,10 +1382,7 @@ export function HomePage() {
                 <SingleSelectDropdown
                   options={sortOptions}
                   selected={sortOrder}
-                  onChange={(value) => handleSortChange({
-                    value,
-                    label: ''
-                  })}
+                  onChange={handleSortChange}
                   placeholder="Featured"
                 />
               </div>

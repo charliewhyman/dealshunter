@@ -170,12 +170,27 @@ function ProductCardComponent({ product, pricing, isLcp }: ProductCardProps) {
     navigate(`/products/${product.id}`);
   };
 
-  const discountPercentage = useMemo(() => 
-    compareAtPrice && variantPrice 
-    ? Math.round(((compareAtPrice - (offerPrice ?? variantPrice)) / compareAtPrice * 100))
-    : 0,
-    [compareAtPrice, variantPrice, offerPrice]
-  );
+  const discountPercentage = useMemo(() => {
+    // Ensure compareAtPrice and price are non-null and non-zero to avoid null/zero division
+    if (typeof compareAtPrice === 'number' && compareAtPrice > 0) {
+      const price = (offerPrice ?? variantPrice) ?? 0;
+      if (price > 0) {
+        return Math.round(((compareAtPrice - price) / compareAtPrice) * 100);
+      }
+    }
+    // Fallback to product-level max_discount_percentage when compareAtPrice is not available
+    if (typeof product.max_discount_percentage === 'number' && product.max_discount_percentage > 0) {
+      return Math.round(product.max_discount_percentage);
+    }
+    return 0;
+  }, [compareAtPrice, variantPrice, offerPrice, product.max_discount_percentage]);
+
+  const hasDiscount = useMemo(() => {
+    // Primary: require compareAtPrice to be greater than price to show precise badge
+    if (compareAtPrice && (compareAtPrice > ((offerPrice ?? variantPrice) ?? 0))) return true;
+    // Fallback: if we don't have compareAtPrice but the product metadata reports a discount, show badge
+    return typeof product.max_discount_percentage === 'number' && product.max_discount_percentage > 0;
+  }, [compareAtPrice, variantPrice, offerPrice, product.max_discount_percentage]);
 
   // CRITICAL: Read viewport width once to avoid layout thrashing
   const initialViewportWidth = useMemo(() => 
@@ -202,7 +217,7 @@ function ProductCardComponent({ product, pricing, isLcp }: ProductCardProps) {
       style={{ margin: '0 5px' }}
     >
       {/* Discount Badge */}
-      {compareAtPrice && compareAtPrice > ((offerPrice ?? variantPrice) ?? 0) && (
+      {hasDiscount && (
         <div className="absolute top-2 left-2 bg-red-600 text-white text-xs font-bold px-1.5 py-0.5 rounded z-10">
           {discountPercentage}% OFF
         </div>
