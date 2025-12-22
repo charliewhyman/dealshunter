@@ -167,16 +167,24 @@ export function HomePage() {
   const pendingRequestsRef = useRef<Map<string, Promise<void>>>(new Map());
   
   const fetchBatchPricingFor = useCallback(async (ids: Array<number | string>) => {
-    const uniqueIds = Array.from(new Set(ids.map(String)));
+    const uniqueIds = Array.from(new Set(ids.map(String))).filter(Boolean);
     if (uniqueIds.length === 0) return;
+
+    // Skip IDs we already have pricing for to avoid unnecessary load
+    const idsToFetch = uniqueIds.filter(id => !(id in productPricings));
+    if (idsToFetch.length === 0) return;
 
     const supabase = getSupabase();
     const pricingMap: Record<string, {variantPrice: number | null; compareAtPrice: number | null; offerPrice: number | null;}> = {};
 
-    // Chunk large requests to avoid statement timeouts on the DB side.
-    const BATCH_SIZE = 100;
-    for (let i = 0; i < uniqueIds.length; i += BATCH_SIZE) {
-      const chunk = uniqueIds.slice(i, i + BATCH_SIZE);
+    // Conservative defaults
+    const MAX_ATTEMPTS = 4;
+    const INITIAL_BATCH_SIZE = 100;
+
+    // Helper to process a chunk with retries and split-on-timeout behaviour
+    const processChunk = async (chunk: string[], attempt = 1) => {
+      if (chunk.length === 0) return;
+
       try {
         const { data: rpcData, error: rpcError } = await supabase.rpc('get_products_pricing', { product_ids: chunk });
 
@@ -188,13 +196,51 @@ export function HomePage() {
             const offerPrice = row.offer_price != null ? parseFloat(String(row.offer_price)) : null;
             pricingMap[pid] = { variantPrice, compareAtPrice, offerPrice };
           }
-          // continue to next chunk
-          continue;
+          return;
         }
 
-        // If RPC returned an error, fall back to batched table queries for this chunk
+        // If RPC returned an error, check whether it's likely a statement timeout
+        const extractErrorMessage = (err: unknown): string => {
+          if (!err) return '';
+          if (typeof err === 'string') return err;
+          if (err instanceof Error) return err.message;
+          if (typeof err === 'object' && err !== null && 'message' in err && typeof (err as { message?: unknown }).message === 'string') {
+            return (err as { message?: string }).message || '';
+          }
+          try {
+            return String(err);
+          } catch {
+            return '';
+          }
+        };
+        const errMsg = rpcError ? extractErrorMessage(rpcError) : '';
+        const looksLikeTimeout = /statement timeout|timeout|cancel|504|ETIMEDOUT|ECONNABORTED/i.test(errMsg || '');
+
+        if (looksLikeTimeout && attempt < MAX_ATTEMPTS && chunk.length > 1) {
+          // Split chunk into halves and retry each half (helps reduce DB pressure)
+          const mid = Math.floor(chunk.length / 2) || 1;
+          const left = chunk.slice(0, mid);
+          const right = chunk.slice(mid);
+          // Backoff a bit before retrying
+          await new Promise(res => setTimeout(res, Math.min(1000 * Math.pow(2, attempt - 1), 5000)));
+          await Promise.all([processChunk(left, attempt + 1), processChunk(right, attempt + 1)]);
+          return;
+        }
+
+        // Otherwise fall through to table-based batched queries for this chunk
         console.warn('RPC get_products_pricing failed for chunk, falling back to batched queries', rpcError);
       } catch (rpcErr) {
+        const msg = rpcErr instanceof Error ? rpcErr.message : String(rpcErr);
+        const looksLikeTimeout = /statement timeout|timeout|cancel|504|ETIMEDOUT|ECONNABORTED/i.test(msg || '');
+        if (looksLikeTimeout && attempt < MAX_ATTEMPTS && chunk.length > 1) {
+          const mid = Math.floor(chunk.length / 2) || 1;
+          const left = chunk.slice(0, mid);
+          const right = chunk.slice(mid);
+          await new Promise(res => setTimeout(res, Math.min(1000 * Math.pow(2, attempt - 1), 5000)));
+          await Promise.all([processChunk(left, attempt + 1), processChunk(right, attempt + 1)]);
+          return;
+        }
+
         console.warn('RPC get_products_pricing RPC error for chunk, falling back to batched queries', rpcErr);
       }
 
@@ -248,17 +294,20 @@ export function HomePage() {
             }
           }
         }
-      } catch {
-        console.error('Fallback batch fetch error');
+      } catch (fallbackErr) {
+        console.error('Fallback batch fetch error', fallbackErr);
       }
+    };
+
+    // Process in batches, but each batch may itself split on timeouts
+    for (let i = 0; i < idsToFetch.length; i += INITIAL_BATCH_SIZE) {
+      const chunk = idsToFetch.slice(i, i + INITIAL_BATCH_SIZE);
+      await processChunk(chunk);
     }
 
     // Merge results into state once all chunks processed
-    setProductPricings(prev => {
-      const merged = { ...prev, ...pricingMap };
-      return merged;
-    });
-  }, []);
+    setProductPricings(prev => ({ ...prev, ...pricingMap }));
+  }, [productPricings]);
   
   // Debounced pricing fetch
   const fetchPricingDebounced = useRef(
