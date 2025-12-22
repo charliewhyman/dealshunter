@@ -146,16 +146,18 @@ export function HomePage() {
   const pricedIdsRef = useRef<Set<string>>(new Set());
   
   const fetchBatchPricingFor = useCallback(async (ids: Array<number | string>) => {
-    try {
-      const uniqueIds = Array.from(new Set(ids.map(String)));
-      if (uniqueIds.length === 0) return;
-  
-      const supabase = getSupabase();
+    const uniqueIds = Array.from(new Set(ids.map(String)));
+    if (uniqueIds.length === 0) return;
 
-      const pricingMap: Record<string, {variantPrice: number | null; compareAtPrice: number | null; offerPrice: number | null;}> = {};
+    const supabase = getSupabase();
+    const pricingMap: Record<string, {variantPrice: number | null; compareAtPrice: number | null; offerPrice: number | null;}> = {};
+
+    // Chunk large requests to avoid statement timeouts on the DB side.
+    const BATCH_SIZE = 100;
+    for (let i = 0; i < uniqueIds.length; i += BATCH_SIZE) {
+      const chunk = uniqueIds.slice(i, i + BATCH_SIZE);
       try {
-        const { data: rpcData, error: rpcError } = await supabase
-          .rpc('get_products_pricing', { product_ids: uniqueIds });
+        const { data: rpcData, error: rpcError } = await supabase.rpc('get_products_pricing', { product_ids: chunk });
 
         if (!rpcError && Array.isArray(rpcData)) {
           for (const row of rpcData) {
@@ -165,23 +167,29 @@ export function HomePage() {
             const offerPrice = row.offer_price != null ? parseFloat(String(row.offer_price)) : null;
             pricingMap[pid] = { variantPrice, compareAtPrice, offerPrice };
           }
-        } else if (rpcError) {
-          console.warn('RPC get_products_pricing failed, falling back to batched queries', rpcError);
-          throw rpcError;
+          // continue to next chunk
+          continue;
         }
-      } catch {
-        // Fallback: fetch variants and offers in two batched queries
+
+        // If RPC returned an error, fall back to batched table queries for this chunk
+        console.warn('RPC get_products_pricing failed for chunk, falling back to batched queries', rpcError);
+      } catch (rpcErr) {
+        console.warn('RPC get_products_pricing RPC error for chunk, falling back to batched queries', rpcErr);
+      }
+
+      // Fallback per-chunk: fetch variants and offers in two batched queries
+      try {
         const today = new Date().toISOString().split('T')[0];
 
         const vRes = await supabase
           .from('variants')
           .select('product_id, price, compare_at_price')
-          .in('product_id', uniqueIds);
+          .in('product_id', chunk);
 
         const oRes = await supabase
           .from('offers')
           .select('product_id, price, price_valid_until')
-          .in('product_id', uniqueIds)
+          .in('product_id', chunk)
           .gte('price_valid_until', today);
 
         const vData = vRes.data as Array<{ product_id: number | string; price?: string | number; compare_at_price?: string | number; }> | null;
@@ -219,12 +227,13 @@ export function HomePage() {
             }
           }
         }
+      } catch (err) {
+        console.error('Fallback batch fetch error', err);
       }
-
-      setProductPricings(prev => ({ ...prev, ...pricingMap }));
-    } catch (err) {
-      console.error('Error fetching batch pricing', err);
     }
+
+    // Merge results into state once all chunks processed
+    setProductPricings(prev => ({ ...prev, ...pricingMap }));
   }, []);
   
   useEffect(() => {
