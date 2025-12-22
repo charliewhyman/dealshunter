@@ -764,20 +764,21 @@ export function HomePage() {
     setCommittedFilters(filters);
   }, 700)).current;
 
-  // serialize complex arrays/objects to avoid complex deps in hooks
-  const _selShop = JSON.stringify(selectedShopName);
-  const _selSize = JSON.stringify(selectedSizeGroups);
-  const _selPrice = JSON.stringify(selectedPriceRange);
+  // Create stable keys for complex dependencies so the effect deps can be statically checked
+  const selectedShopNameKey = useMemo(() => JSON.stringify(selectedShopName), [selectedShopName]);
+  const selectedSizeGroupsKey = useMemo(() => JSON.stringify(selectedSizeGroups), [selectedSizeGroups]);
+  const selectedPriceRangeKey = useMemo(() => JSON.stringify(selectedPriceRange), [selectedPriceRange]);
+
   // When pending UI filters change, commit them (debounced) so network requests
   // are only made after the user stops interacting.
   useEffect(() => {
     const pending: FilterOptions = {
-      selectedShopName,
-      selectedSizeGroups,
+      selectedShopName: JSON.parse(selectedShopNameKey),
+      selectedSizeGroups: JSON.parse(selectedSizeGroupsKey),
       inStockOnly,
       onSaleOnly,
       searchQuery,
-      selectedPriceRange,
+      selectedPriceRange: JSON.parse(selectedPriceRangeKey) as [number, number],
     };
 
     // Debounced commit; the debounced function captures the passed filters
@@ -788,7 +789,15 @@ export function HomePage() {
       // fallback: set immediately
       setCommittedFilters(pending);
     }
-  }, [_selShop, _selSize, inStockOnly, onSaleOnly, searchQuery, _selPrice, commitFiltersDebounced, selectedShopName, selectedSizeGroups, selectedPriceRange]);
+  }, [
+    selectedShopNameKey,
+    selectedSizeGroupsKey,
+    inStockOnly,
+    onSaleOnly,
+    searchQuery,
+    selectedPriceRangeKey,
+    commitFiltersDebounced
+  ]);
 
   // Reset page when committed filters or sort order change.
   const committedFiltersKey = useMemo(() => JSON.stringify(committedFilters), [committedFilters]);
