@@ -47,13 +47,13 @@ export function HomePage() {
   const [shopList, setShopList] = useState<Array<{id: number; shop_name: string}>>([]);
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc' | 'discount_desc'>(() => {
     try {
-      if (typeof window === 'undefined') return 'asc';
+      if (typeof window === 'undefined') return 'discount_desc';
       const stored = localStorage.getItem('sortOrder');
       if (stored === 'asc' || stored === 'desc' || stored === 'discount_desc') return stored;
     } catch {
       /* ignore */
     }
-    return 'asc';
+    return 'discount_desc';
   });
   const observerRef = useRef<HTMLDivElement | null>(null);
   const [showFilters, setShowFilters] = useState(false);
