@@ -238,8 +238,6 @@ export function HomePage() {
   const requestQueueRef = useRef<Array<() => Promise<void>>>([]);
   const isProcessingRef = useRef(false);
   const currentRequestRef = useRef<AbortController | null>(null);
-  const requestIdRef = useRef(0);
-  const currentRequestKeyRef = useRef<string>('');
   const prefetchCacheRef = useRef<Record<number, { key: string; data: ProductWithDetails[]; count: number }>>({});
   
   const filterCacheRef = useRef<Map<string, { data: unknown[]; timestamp: number }>>(new Map());
@@ -438,206 +436,88 @@ export function HomePage() {
       filters: FilterOptions,
       page: number,
       sortOrder: 'asc' | 'desc' | 'discount_desc',
-      attempt = 1
     ) => {
-      const TIMEOUT_MS = 8000;
-      const requestKey = `${JSON.stringify(filters)}-${page}-${sortOrder}-${attempt}`;
+      const TIMEOUT_MS = 10000;
+      const requestKey = `${JSON.stringify(filters)}-${page}-${sortOrder}`;
       
-      if (pendingRequestsRef.current.has(requestKey)) {
-        return pendingRequestsRef.current.get(requestKey)!;
-      }
-      
+      // Prevent duplicate triggers for the exact same page/filter combo
+      if (pendingRequestsRef.current.has(requestKey)) return;
+
       const requestPromise = new Promise<void>((resolve, reject) => {
         enqueueRequest(async () => {
-          if (page === 0 && currentRequestRef.current) {
-            currentRequestRef.current.abort();
-          }
-
+          // 1. Create Abort Signal
           const controller = new AbortController();
           currentRequestRef.current = controller;
-          currentRequestKeyRef.current = requestKey;
-
-          const timeoutId = setTimeout(() => {
-            if (!controller.signal.aborted) {
-              controller.abort();
-            }
-          }, TIMEOUT_MS);
-
-          const myRequestId = ++requestIdRef.current;
-
+          
+          const timeoutId = setTimeout(() => controller.abort(), TIMEOUT_MS);
           isFetchingRef.current = true;
           setLoading(true);
-          
+
           try {
-            if (page > 0) {
-              await new Promise(resolve => setTimeout(resolve, 30));
-            }
-            
-            const cacheKey = JSON.stringify({ filters, sortOrder });
-            const cached = prefetchCacheRef.current[page];
-            if (cached && cached.key === cacheKey) {
-              if (myRequestId !== requestIdRef.current) return;
-
-              clearTimeout(timeoutId);
-              
-              startTransition(() => {
-                setProducts(prev => 
-                  page === 0 
-                    ? (cached.data || []) 
-                    : mergeUniqueProducts(prev, (cached.data as unknown as ProductWithDetails[]) || [])
-                );
-              });
-              
-              const ids = ((cached.data as unknown as ProductWithDetails[]) || []).map(p => p.id).filter(Boolean);
-              if (ids.length > 0) {
-                const lcpIds = ids.slice(0, LCP_PRELOAD_COUNT);
-                if (lcpIds.length > 0) {
-                  fetchBatchPricingFor(lcpIds).catch(e => console.error('Error fetching LCP batch pricing for cached page items', e));
-                }
-
-                const rest = ids.slice(LCP_PRELOAD_COUNT);
-                if (rest.length > 0) {
-                  scheduleIdle(() => fetchBatchPricingFor(rest));
-                }
-              }
-              
-              setHasMore((cached.data?.length || 0) >= ITEMS_PER_PAGE || (page + 1) * ITEMS_PER_PAGE < (cached.count || 0));
-              setInitialLoad(false);
-              setError(null);
-              setLoading(false);
-              isFetchingRef.current = false;
-              resolve();
-              return;
-            }
-
             const supabase = getSupabase();
             const mvName = getOptimizedMV(filters);
-
+            
+            // 2. Build and Execute Query
             const query = buildOptimizedQuery(supabase, mvName, filters, sortOrder, page);
             query.abortSignal(controller.signal);
 
-            const { data, error, count } = await query;
-
+            const { data, error } = await query;
             clearTimeout(timeoutId);
 
-            if (currentRequestKeyRef.current !== requestKey) {
-              isFetchingRef.current = false;
-              resolve();
-              return;
-            }
+            if (error) throw error;
 
-            if (error) {
-              if ((error.message.includes('timeout') || error.code === '57014') && attempt < 2) {
-                await new Promise(res => setTimeout(res, 500 * attempt));
-                
-                const fallbackQuery = buildOptimizedQuery(supabase, MVS.DEFAULT, filters, sortOrder, page);
-                const { data: fallbackData, error: fallbackError, count: fallbackCount } = await fallbackQuery;
-                
-                if (fallbackError) throw fallbackError;
-                
-                const totalItems = fallbackCount || 0;
-                const loadedItems = page * ITEMS_PER_PAGE + (fallbackData?.length || 0);
-                const moreAvailable = loadedItems < totalItems;
-                
-                startTransition(() => {
-                  setProducts(prev => 
-                    page === 0 
-                      ? (fallbackData as unknown as ProductWithDetails[]) || [] 
-                      : mergeUniqueProducts(prev, (fallbackData as unknown as ProductWithDetails[] || []))
-                  );
-                });
-                
-                setHasMore(moreAvailable);
-                setInitialLoad(false);
-                setError(null);
-                setLoading(false);
-                isFetchingRef.current = false;
-                resolve();
-                return;
-              }
-              throw error;
-            }
-
-            const totalItems = count || 0;
-            const loadedItems = page * ITEMS_PER_PAGE + (data?.length || 0);
-            const moreAvailable = (data?.length || 0) >= ITEMS_PER_PAGE || loadedItems < totalItems;
-              
+            const newData = (data as unknown as ProductWithDetails[]) || [];
+            
+            // 3. Update State
             startTransition(() => {
-              setProducts(prev => 
-                page === 0 
-                  ? (data as unknown as ProductWithDetails[]) || [] 
-                  : mergeUniqueProducts(prev, (data as unknown as ProductWithDetails[] || []))
-              );
-            });
-            
-            if (data && data.length > 0) {
-              const dataArray = (data as ProductWithDetails[]) || [];
-              const ids = dataArray.map((p: ProductWithDetails) => p.id).filter(Boolean);
-              const idsToFetch = page === 0 ? ids.slice(0, 12) : ids;
-              if (idsToFetch.length > 0) {
-                const lcpIds = idsToFetch.slice(0, LCP_PRELOAD_COUNT);
-                if (lcpIds.length > 0) {
-                  fetchBatchPricingFor(lcpIds).catch(e => console.error('Error fetching LCP batch pricing', e));
-                }
-
-                const rest = idsToFetch.slice(LCP_PRELOAD_COUNT);
-                if (rest.length > 0) {
-                  scheduleIdle(() => {
-                    fetchBatchPricingFor(rest).catch(e => console.error('Error fetching batch pricing', e));
-                  });
-                }
+              setProducts(prev => (page === 0 ? newData : mergeUniqueProducts(prev, newData)));
+              
+              // Critical: If we received exactly 0 items but page > 0, stop loading more
+              if (newData.length === 0 && page > 0) {
+                setHasMore(false);
+              } else {
+                // If we got fewer items than requested, we hit the end
+                setHasMore(newData.length === ITEMS_PER_PAGE);
               }
+            });
+
+            // 4. Handle Pricing Fetching (Backgrounded)
+            if (newData.length > 0) {
+              const ids = newData.map(p => p.id).filter(Boolean);
+              scheduleIdle(() => fetchBatchPricingFor(ids));
             }
-            
-            setHasMore(moreAvailable);
+
             setInitialLoad(false);
             setError(null);
-
-            const cacheKeyCurrent = JSON.stringify({ filters, sortOrder });
-            prefetchCacheRef.current[page] = { 
-              key: cacheKeyCurrent, 
-              data: (data as unknown as ProductWithDetails[]) || [], 
-              count: totalItems 
-            };
-
-            isFetchingRef.current = false;
             resolve();
-
-          } catch (error: unknown) {
-            clearTimeout(timeoutId);
-            
-            if (error instanceof Error && error.name !== 'AbortError') {
-              console.error('Fetch error:', error);
-              
-              if (attempt < 2) {
-                await new Promise(resolve => setTimeout(resolve, 500 * attempt));
-                isFetchingRef.current = false;
-                return fetchFilteredProducts(filters, page, sortOrder, attempt + 1);
-              }
-
-              setError(
-                `Failed to load products: ${error instanceof Error ? error.message : 'Unknown error'}`
-              );
-              startTransition(() => {
-                setProducts([]);
-              });
-              setHasMore(false);
-              isFetchingRef.current = false;
-              reject(error);
-            } else {
-              // AbortError - just clean up
-              isFetchingRef.current = false;
-              resolve();
+          } catch (err) {
+          // Check if it's an AbortError - if so, do NOTHING. 
+          // It's a intentional cancellation, not a failure.
+          const maybeErr = err as unknown;
+          if (typeof maybeErr === 'object' && maybeErr !== null) {
+            const name = (maybeErr as { name?: string }).name;
+            const message = (maybeErr as { message?: string }).message;
+            if (name === 'AbortError' || message?.includes('AbortError')) {
+              return;
             }
-          } finally {
-            if (!controller.signal.aborted) {
-              setLoading(false);
-            }
-            pendingRequestsRef.current.delete(requestKey);
           }
+
+          console.error('Fetch error:', err);
+          setError('Failed to load products.');
+          setHasMore(false);
+          reject(err);
+        } finally {
+          // ONLY set loading to false if we weren't aborted.
+          // If we were aborted, a new request is likely already starting.
+          if (!controller.signal.aborted) {
+            setLoading(false);
+            isFetchingRef.current = false;
+          }
+          pendingRequestsRef.current.delete(requestKey);
+        }
         });
       });
-      
+
       pendingRequestsRef.current.set(requestKey, requestPromise);
       return requestPromise;
     },
@@ -787,10 +667,6 @@ export function HomePage() {
   useEffect(() => {
     if (page === 0) return;
 
-    if (currentRequestRef.current) {
-      currentRequestRef.current.abort();
-    }
-
     fetchFilteredProducts(committedFilters, page, sortOrder).catch(err => {
       if ((err as Error)?.name !== 'AbortError') {
         console.error('Error:', err);
@@ -837,26 +713,25 @@ export function HomePage() {
   }, [loading]);
 
   useEffect(() => {
-  const observer = new IntersectionObserver(
-    (entries) => {
-      const isIntersecting = entries[0]?.isIntersecting;
-      // CHANGE: Remove initialLoad check and simplify
-      const shouldLoadMore = isIntersecting && !loading && hasMore;
-      
-      if (shouldLoadMore) {
-        setPage(prev => prev + 1);
-      }
-    },
-    { rootMargin: '400px 0px', threshold: 0.01 }
-  );
+    const observer = new IntersectionObserver(
+      (entries) => {
+        const entry = entries[0];
+        // STRICT CHECK: Ensure we aren't already loading or fetching
+        if (entry.isIntersecting && !loading && !isFetchingRef.current && hasMore) {
+          isFetchingRef.current = true; // Lock immediately
+          setPage(prev => prev + 1);
+        }
+      },
+      { rootMargin: '400px', threshold: 0.1 }
+    );
 
-  const currentRef = observerRef.current;
-  if (currentRef) observer.observe(currentRef);
+    const currentRef = observerRef.current;
+    if (currentRef) observer.observe(currentRef);
 
-  return () => {
-    if (currentRef) observer.unobserve(currentRef);
-  };
-}, [loading, hasMore]);
+    return () => {
+      if (currentRef) observer.unobserve(currentRef);
+    };
+  }, [loading, hasMore]); // isFetchingRef is a ref, so it doesn't need to be a dependency
 
   useEffect(() => {
   return () => {
