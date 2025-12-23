@@ -342,7 +342,7 @@ export function HomePage() {
     const hasShopFilter = filters.selectedShopName.length > 0;
     const hasSizeFilter = filters.selectedSizeGroups.length > 0;
     const hasSaleFilter = filters.onSaleOnly;
-    const hasSearchFilter = !!filters.searchQuery;
+    const hasSearchFilter = !!filters.searchQuery?.trim();
     
     if (hasSearchFilter) {
       return MVS.DEFAULT;
@@ -364,73 +364,74 @@ export function HomePage() {
   }, []);
 
   const buildOptimizedQuery = useCallback((
-  supabase: SupabaseClient,
-  mvName: MaterializedView,
-  filters: FilterOptions,
-  sortOrder: 'asc' | 'desc' | 'discount_desc',
-  page: number
-) => {
-  let query = supabase
-    .from(mvName)
-    .select('id,shop_id,title,shop_name,created_at,url,description,in_stock,min_price,max_discount_percentage,on_sale,size_groups,images,product_type,tags,vendor,handle', { 
-      count: 'exact',
-      head: false
-    })
-    .limit(ITEMS_PER_PAGE);
+    supabase: SupabaseClient,
+    mvName: MaterializedView,
+    filters: FilterOptions,
+    sortOrder: 'asc' | 'desc' | 'discount_desc',
+    page: number
+  ) => {
+    let query = supabase
+      .from(mvName)
+      .select('id,shop_id,title,shop_name,created_at,url,description,in_stock,min_price,max_discount_percentage,on_sale,size_groups,images,product_type,tags,vendor,handle', { 
+        count: 'exact',
+        head: false
+      })
+      .limit(ITEMS_PER_PAGE);
 
-  query = query
-    .gte('min_price', filters.selectedPriceRange[0])
-    .lte('min_price', filters.selectedPriceRange[1]);
+    query = query
+      .gte('min_price', filters.selectedPriceRange[0])
+      .lte('min_price', filters.selectedPriceRange[1]);
 
-  if (filters.inStockOnly) {
-    query = query.eq('in_stock', true);
-  }
+    if (filters.inStockOnly) {
+      query = query.eq('in_stock', true);
+    }
 
-  if (mvName === MVS.SHOP_FILTERED || mvName === MVS.DEFAULT || mvName === MVS.ON_SALE) {
-    if (filters.selectedShopName.length > 0) {
-      const shopIds = filters.selectedShopName
-        .map(s => Number(s))
-        .filter(n => !Number.isNaN(n) && n > 0);
-      
-      if (shopIds.length > 0) {
-        query = query.in('shop_id', shopIds);
+    if (mvName === MVS.SHOP_FILTERED || mvName === MVS.DEFAULT || mvName === MVS.ON_SALE) {
+      if (filters.selectedShopName.length > 0) {
+        const shopIds = filters.selectedShopName
+          .map(s => Number(s))
+          .filter(n => !Number.isNaN(n) && n > 0);
+        
+        if (shopIds.length > 0) {
+          query = query.in('shop_id', shopIds);
+        }
       }
     }
-  }
 
-  if (mvName === MVS.SIZE_FILTERED || mvName === MVS.DEFAULT || mvName === MVS.ON_SALE) {
-    if (filters.selectedSizeGroups.length > 0) {
-      query = query.overlaps('size_groups', filters.selectedSizeGroups);
+    if (mvName === MVS.SIZE_FILTERED || mvName === MVS.DEFAULT || mvName === MVS.ON_SALE) {
+      if (filters.selectedSizeGroups.length > 0) {
+        query = query.overlaps('size_groups', filters.selectedSizeGroups);
+      }
     }
-  }
 
-  if (filters.onSaleOnly && mvName !== MVS.ON_SALE) {
-    query = query.eq('on_sale', true);
-  }
+    if (filters.onSaleOnly && mvName !== MVS.ON_SALE) {
+      query = query.eq('on_sale', true);
+    }
 
-  if (filters.searchQuery) {
-    const cleanSearch = filters.searchQuery.trim();
+    if (filters.searchQuery) {
+      const cleanSearch = filters.searchQuery.trim();
+      
+      // Only add text search if the trimmed query is not empty
+      if (cleanSearch) {
+        query = query.textSearch('fts', cleanSearch, {
+          type: 'websearch',
+          config: 'english'
+        });
+      }
+    }
+
+    if (sortOrder === 'discount_desc') {
+      query = query.order('max_discount_percentage', { ascending: false, nullsFirst: false });
+    } else if (sortOrder === 'asc') {
+      query = query.order('min_price', { ascending: true });
+    } else {
+      query = query.order('min_price', { ascending: false });
+    }
     
-    if (cleanSearch) {
-      query = query.textSearch('fts', cleanSearch, {
-        type: 'websearch',
-        config: 'english'
-      });
-    }
-  }
+    query = query.order('created_at', { ascending: false });
 
-  if (sortOrder === 'discount_desc') {
-    query = query.order('max_discount_percentage', { ascending: false, nullsFirst: false });
-  } else if (sortOrder === 'asc') {
-    query = query.order('min_price', { ascending: true });
-  } else {
-    query = query.order('min_price', { ascending: false });
-  }
-  
-  query = query.order('created_at', { ascending: false });
-
-  return query.range(page * ITEMS_PER_PAGE, (page + 1) * ITEMS_PER_PAGE - 1);
-}, []);
+    return query.range(page * ITEMS_PER_PAGE, (page + 1) * ITEMS_PER_PAGE - 1);
+  }, []);
 
   const fetchFilteredProducts = useCallback(
     async (
