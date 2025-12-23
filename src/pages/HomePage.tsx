@@ -623,11 +623,14 @@ export function HomePage() {
               setHasMore(false);
               isFetchingRef.current = false;
               reject(error);
+            } else {
+              // AbortError - just clean up
+              isFetchingRef.current = false;
+              resolve();
             }
           } finally {
             if (!controller.signal.aborted) {
               setLoading(false);
-              isFetchingRef.current = false;
             }
             pendingRequestsRef.current.delete(requestKey);
           }
@@ -764,6 +767,8 @@ export function HomePage() {
     setPage(0);
     setProducts([]);
     setInitialLoad(true);
+    setHasMore(true);
+    isFetchingRef.current = false;
   }, [committedFiltersKey, sortOrder]);
 
   // Initial load effect
