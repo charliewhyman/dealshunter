@@ -24,19 +24,20 @@ function rangesEqual(a: [number, number], b: [number, number]) {
 import { MultiSelectDropdown, SingleSelectDropdown } from '../components/Dropdowns';
 import TransformSlider from '../components/TransformSlider';
 
-// Slider UI is provided by `TransformSlider` component in `src/components`.
-
 const ITEMS_PER_PAGE = 10;
-// Limit how many product cards we render immediately for the initial page
-// to reduce main-thread work and network concurrency that can delay LCP.
 const INITIAL_RENDER_COUNT = 4;
-// Number of top products to mark as potential LCP candidates (preload + eager)
-// This covers the first row on most viewports so the true LCP image among
-// them is likely to be discovered and prioritized.
 const LCP_PRELOAD_COUNT = INITIAL_RENDER_COUNT;
 
-// Materialized view name for optimized queries
-const PRODUCTS_MATERIALIZED_VIEW = 'products_active_listings_mv';
+// Different MVs for different scenarios
+const MVS = {
+  DEFAULT: 'products_default_mv',
+  SHOP_FILTERED: 'products_by_shop_mv',
+  SIZE_FILTERED: 'products_by_size_mv',
+  ON_SALE: 'products_on_sale_mv',
+  ACTIVE_LISTINGS: 'products_active_listings_mv',
+} as const;
+
+type MaterializedView = typeof MVS[keyof typeof MVS];
 
 export function HomePage() {
   const [products, setProducts] = useState<ProductWithDetails[]>([]);
@@ -79,7 +80,6 @@ export function HomePage() {
     try {
       const saved = localStorage.getItem('selectedShopName');
       const parsed = saved ? JSON.parse(saved) : [];
-      // Normalize to array in case older persisted values were a string
       if (Array.isArray(parsed)) return parsed as string[];
       if (parsed == null) return [];
       return [String(parsed)];
@@ -96,7 +96,6 @@ export function HomePage() {
   );
 
   const PRICE_RANGE = useMemo<[number, number]>(() => [15, 1000], []);
-  // Absolute allowed bounds for manual input (prevents extreme values)
   const ABS_MIN_PRICE = 0;
   const ABS_MAX_PRICE = 100000;
   const [selectedPriceRange, setSelectedPriceRange] = useState<[number, number]>(() => {
@@ -132,10 +131,8 @@ export function HomePage() {
     })()
   );
 
-  // Batch pricing map to avoid per-card network requests
   const [productPricings, setProductPricings] = useState<Record<string, {variantPrice: number | null; compareAtPrice: number | null; offerPrice: number | null;}>>({});
 
-  // Schedule low-priority work off the main critical path.
   const scheduleIdle = useCallback((task: () => void) => {
     if (typeof window === 'undefined') {
       setTimeout(() => { try { task(); } catch (e) { void e; } }, 200);
@@ -159,157 +156,41 @@ export function HomePage() {
     setTimeout(() => { try { task(); } catch (e) { void e; } }, 200);
   }, []);
 
-  // Refs & state for per-card pricing via IntersectionObserver.
   const cardRefs = useRef<Map<string, HTMLDivElement>>(new Map());
   const pricedIdsRef = useRef<Set<string>>(new Set());
-  
-  // Request deduplication
   const pendingRequestsRef = useRef<Map<string, Promise<void>>>(new Map());
   
   const fetchBatchPricingFor = useCallback(async (ids: Array<number | string>) => {
     const uniqueIds = Array.from(new Set(ids.map(String))).filter(Boolean);
     if (uniqueIds.length === 0) return;
 
-    // Skip IDs we already have pricing for to avoid unnecessary load
     const idsToFetch = uniqueIds.filter(id => !(id in productPricings));
     if (idsToFetch.length === 0) return;
 
     const supabase = getSupabase();
     const pricingMap: Record<string, {variantPrice: number | null; compareAtPrice: number | null; offerPrice: number | null;}> = {};
 
-    // Conservative defaults
-    const MAX_ATTEMPTS = 4;
-    const INITIAL_BATCH_SIZE = 100;
+    try {
+      const { data: rpcData, error: rpcError } = await supabase.rpc('get_products_pricing', { 
+        product_ids: idsToFetch 
+      });
 
-    // Helper to process a chunk with retries and split-on-timeout behaviour
-    const processChunk = async (chunk: string[], attempt = 1) => {
-      if (chunk.length === 0) return;
-
-      try {
-        const { data: rpcData, error: rpcError } = await supabase.rpc('get_products_pricing', { product_ids: chunk });
-
-        if (!rpcError && Array.isArray(rpcData)) {
-          for (const row of rpcData) {
-            const pid = String(row.product_id);
-            const variantPrice = row.variant_price != null ? parseFloat(String(row.variant_price)) : null;
-            const compareAtPrice = row.compare_at_price != null ? parseFloat(String(row.compare_at_price)) : null;
-            const offerPrice = row.offer_price != null ? parseFloat(String(row.offer_price)) : null;
-            pricingMap[pid] = { variantPrice, compareAtPrice, offerPrice };
-          }
-          return;
+      if (!rpcError && Array.isArray(rpcData)) {
+        for (const row of rpcData) {
+          const pid = String(row.product_id);
+          const variantPrice = row.variant_price != null ? parseFloat(String(row.variant_price)) : null;
+          const compareAtPrice = row.compare_at_price != null ? parseFloat(String(row.compare_at_price)) : null;
+          const offerPrice = row.offer_price != null ? parseFloat(String(row.offer_price)) : null;
+          pricingMap[pid] = { variantPrice, compareAtPrice, offerPrice };
         }
-
-        // If RPC returned an error, check whether it's likely a statement timeout
-        const extractErrorMessage = (err: unknown): string => {
-          if (!err) return '';
-          if (typeof err === 'string') return err;
-          if (err instanceof Error) return err.message;
-          if (typeof err === 'object' && err !== null && 'message' in err && typeof (err as { message?: unknown }).message === 'string') {
-            return (err as { message?: string }).message || '';
-          }
-          try {
-            return String(err);
-          } catch {
-            return '';
-          }
-        };
-        const errMsg = rpcError ? extractErrorMessage(rpcError) : '';
-        const looksLikeTimeout = /statement timeout|timeout|cancel|504|ETIMEDOUT|ECONNABORTED/i.test(errMsg || '');
-
-        if (looksLikeTimeout && attempt < MAX_ATTEMPTS && chunk.length > 1) {
-          // Split chunk into halves and retry each half (helps reduce DB pressure)
-          const mid = Math.floor(chunk.length / 2) || 1;
-          const left = chunk.slice(0, mid);
-          const right = chunk.slice(mid);
-          // Backoff a bit before retrying
-          await new Promise(res => setTimeout(res, Math.min(1000 * Math.pow(2, attempt - 1), 5000)));
-          await Promise.all([processChunk(left, attempt + 1), processChunk(right, attempt + 1)]);
-          return;
-        }
-
-        // Otherwise fall through to table-based batched queries for this chunk
-        console.warn('RPC get_products_pricing failed for chunk, falling back to batched queries', rpcError);
-      } catch (rpcErr) {
-        const msg = rpcErr instanceof Error ? rpcErr.message : String(rpcErr);
-        const looksLikeTimeout = /statement timeout|timeout|cancel|504|ETIMEDOUT|ECONNABORTED/i.test(msg || '');
-        if (looksLikeTimeout && attempt < MAX_ATTEMPTS && chunk.length > 1) {
-          const mid = Math.floor(chunk.length / 2) || 1;
-          const left = chunk.slice(0, mid);
-          const right = chunk.slice(mid);
-          await new Promise(res => setTimeout(res, Math.min(1000 * Math.pow(2, attempt - 1), 5000)));
-          await Promise.all([processChunk(left, attempt + 1), processChunk(right, attempt + 1)]);
-          return;
-        }
-
-        console.warn('RPC get_products_pricing RPC error for chunk, falling back to batched queries', rpcErr);
       }
-
-      // Fallback per-chunk: fetch variants and offers in two batched queries
-      try {
-        const today = new Date().toISOString().split('T')[0];
-
-        const vRes = await supabase
-          .from('variants')
-          .select('product_id, price, compare_at_price')
-          .in('product_id', chunk);
-
-        const oRes = await supabase
-          .from('offers')
-          .select('product_id, price, price_valid_until')
-          .in('product_id', chunk)
-          .gte('price_valid_until', today);
-
-        const vData = vRes.data as Array<{ product_id: number | string; price?: string | number; compare_at_price?: string | number; }> | null;
-        const oData = oRes.data as Array<{ product_id: number | string; price?: string | number; price_valid_until?: string; }> | null;
-
-        if (vRes.error) console.error('Variant batch fetch error', vRes.error);
-        if (oRes.error) console.error('Offer batch fetch error', oRes.error);
-
-        if (vData) {
-          for (const row of vData) {
-            const pid = String(row.product_id);
-            const price = row.price != null ? parseFloat(String(row.price)) : null;
-            const compare = row.compare_at_price != null ? parseFloat(String(row.compare_at_price)) : null;
-            if (!pricingMap[pid]) pricingMap[pid] = { variantPrice: price, compareAtPrice: compare, offerPrice: null };
-            else {
-              const existing = pricingMap[pid];
-              if (price !== null && (existing.variantPrice === null || price < existing.variantPrice)) {
-                existing.variantPrice = price;
-                existing.compareAtPrice = compare ?? existing.compareAtPrice;
-              }
-            }
-          }
-        }
-
-        if (oData) {
-          for (const row of oData) {
-            const pid = String(row.product_id);
-            const price = row.price != null ? parseFloat(String(row.price)) : null;
-            if (!pricingMap[pid]) pricingMap[pid] = { variantPrice: null, compareAtPrice: null, offerPrice: price };
-            else {
-              const existing = pricingMap[pid];
-              if (price !== null && (existing.offerPrice === null || price < existing.offerPrice)) {
-                existing.offerPrice = price;
-              }
-            }
-          }
-        }
-      } catch (fallbackErr) {
-        console.error('Fallback batch fetch error', fallbackErr);
-      }
-    };
-
-    // Process in batches, but each batch may itself split on timeouts
-    for (let i = 0; i < idsToFetch.length; i += INITIAL_BATCH_SIZE) {
-      const chunk = idsToFetch.slice(i, i + INITIAL_BATCH_SIZE);
-      await processChunk(chunk);
+    } catch (error) {
+      console.error('Error fetching pricing:', error);
     }
 
-    // Merge results into state once all chunks processed
     setProductPricings(prev => ({ ...prev, ...pricingMap }));
   }, [productPricings]);
   
-  // Debounced pricing fetch
   const fetchPricingDebounced = useRef(
     createDebounced((ids: string[]) => {
       if (ids.length > 0) {
@@ -351,7 +232,6 @@ export function HomePage() {
 
   const [allSizeData, setAllSizeData] = useState<{size_group: string}[]>([]);
 
-  // Request queue for preventing concurrent overload
   const requestQueueRef = useRef<Array<() => Promise<void>>>([]);
   const isProcessingRef = useRef(false);
   const currentRequestRef = useRef<AbortController | null>(null);
@@ -359,11 +239,9 @@ export function HomePage() {
   const currentRequestKeyRef = useRef<string>('');
   const prefetchCacheRef = useRef<Record<number, { key: string; data: ProductWithDetails[]; count: number }>>({});
   
-  // Cache for filter dropdowns
   const filterCacheRef = useRef<Map<string, { data: unknown[]; timestamp: number }>>(new Map());
-  // Track in-flight fetch promises to deduplicate concurrent requests for the same key
   const inflightFetchesRef = useRef<Map<string, Promise<unknown>>>(new Map());
-  const CACHE_TTL = 5 * 60 * 1000; // 5 minutes
+  const CACHE_TTL = 5 * 60 * 1000;
 
   const fetchWithCache = useCallback(async <T,>(
     key: string, 
@@ -373,14 +251,13 @@ export function HomePage() {
     if (cached && Date.now() - cached.timestamp < CACHE_TTL) {
       return cached.data as T[];
     }
-    // If another call for this key is already in-flight, wait for it instead
+    
     const inflight = inflightFetchesRef.current.get(key) as Promise<T[]> | undefined;
     if (inflight) {
       try {
-        const data = await inflight;
-        return data as T[];
+        return await inflight;
       } catch {
-        // fall through to attempt a fresh fetch below
+        // fall through
       }
     }
 
@@ -392,14 +269,12 @@ export function HomePage() {
 
     inflightFetchesRef.current.set(key, promise as Promise<unknown>);
     try {
-      const result = await promise;
-      return result;
+      return await promise;
     } finally {
       inflightFetchesRef.current.delete(key);
     }
   }, [CACHE_TTL]);
 
-  // Request queue processor
   const processQueue = useCallback(async () => {
     if (isProcessingRef.current || requestQueueRef.current.length === 0) return;
     
@@ -413,12 +288,11 @@ export function HomePage() {
         console.error('Request queue task failed:', error);
       } finally {
         isProcessingRef.current = false;
-        // Delay between requests to prevent overwhelming the database
         setTimeout(() => {
           if (requestQueueRef.current.length > 0) {
             processQueue();
           }
-        }, 100);
+        }, 50);
       }
     }
   }, []);
@@ -460,20 +334,110 @@ export function HomePage() {
     selectedPriceRange: [number, number];
   }
 
-  // Function to determine which table/view to use based on filters
-  const getTableName = useCallback((filters: FilterOptions): string => {
-    // Use materialized view only for default/common filters
-    const isDefaultFilters = 
-      filters.inStockOnly === true &&
-      filters.onSaleOnly === false &&
-      filters.selectedPriceRange[0] === PRICE_RANGE[0] &&
-      filters.selectedPriceRange[1] === PRICE_RANGE[1] &&
-      filters.selectedShopName.length === 0 &&
-      filters.selectedSizeGroups.length === 0 &&
-      !filters.searchQuery;
+  // Smart MV selection based on active filters
+  const getOptimizedMV = useCallback((filters: FilterOptions): MaterializedView => {
+    // Track which complex filters are active
+    const hasShopFilter = filters.selectedShopName.length > 0;
+    const hasSizeFilter = filters.selectedSizeGroups.length > 0;
+    const hasSaleFilter = filters.onSaleOnly;
+    const hasSearchFilter = !!filters.searchQuery;
     
-    return isDefaultFilters ? PRODUCTS_MATERIALIZED_VIEW : 'products_with_details';
-  }, [PRICE_RANGE]);
+    // Complex combinations - prioritize based on likely performance impact
+    if (hasSearchFilter) {
+      // Search is expensive - use DEFAULT which has full text search index
+      return MVS.DEFAULT;
+    }
+    
+    if (hasSaleFilter && !hasShopFilter && !hasSizeFilter) {
+      // Only on-sale filter
+      return MVS.ON_SALE;
+    }
+    
+    if (hasShopFilter && !hasSizeFilter && !hasSaleFilter) {
+      // Only shop filter
+      return MVS.SHOP_FILTERED;
+    }
+    
+    if (hasSizeFilter && !hasShopFilter && !hasSaleFilter) {
+      // Only size filter
+      return MVS.SIZE_FILTERED;
+    }
+    
+    // Mixed filters or no complex filters - use DEFAULT
+    return MVS.DEFAULT;
+  }, []);
+
+  const buildOptimizedQuery = useCallback((
+    supabase: ReturnType<typeof getSupabase>,
+    mvName: MaterializedView,
+    filters: FilterOptions,
+    sortOrder: 'asc' | 'desc' | 'discount_desc',
+    page: number
+  ) => {
+    let query = supabase
+      .from(mvName)
+      .select('id,title,shop_name,created_at,url,description,in_stock,min_price,max_discount_percentage,on_sale,size_groups,images,product_type,tags,vendor,handle', { 
+        count: 'exact',
+        head: false
+      })
+      .limit(ITEMS_PER_PAGE);
+
+    // Always apply price range (it's selective and well-indexed)
+    query = query
+      .gte('min_price', filters.selectedPriceRange[0])
+      .lte('min_price', filters.selectedPriceRange[1]);
+
+    // Apply in_stock filter (all MVs already have in_stock = true, but check anyway)
+    if (filters.inStockOnly) {
+      query = query.eq('in_stock', true);
+    }
+
+    // Apply additional filters based on the MV
+    if (mvName === MVS.SHOP_FILTERED || mvName === MVS.DEFAULT || mvName === MVS.ON_SALE) {
+      // These MVs can handle shop filtering
+      if (filters.selectedShopName.length > 0) {
+        const shopIds = filters.selectedShopName
+          .map(s => Number(s))
+          .filter(n => !Number.isNaN(n) && n > 0);
+        
+        if (shopIds.length > 0) {
+          query = query.in('shop_id', shopIds);
+        }
+      }
+    }
+
+    if (mvName === MVS.SIZE_FILTERED || mvName === MVS.DEFAULT || mvName === MVS.ON_SALE) {
+      // These MVs can handle size filtering
+      if (filters.selectedSizeGroups.length > 0) {
+        query = query.overlaps('size_groups', filters.selectedSizeGroups);
+      }
+    }
+
+    // Apply on_sale filter (ON_SALE MV already has this, but check for others)
+    if (filters.onSaleOnly && mvName !== MVS.ON_SALE) {
+      query = query.eq('on_sale', true);
+    }
+
+    // Text search - use ILIKE for better performance with MVs
+    if (filters.searchQuery) {
+      query = query.or(`title.ilike.%${filters.searchQuery}%,description.ilike.%${filters.searchQuery}%,product_type.ilike.%${filters.searchQuery}%`);
+    }
+
+    // Apply sorting - use indexes available in each MV
+    if (sortOrder === 'discount_desc') {
+      // Postgrest `order` accepts `nullsFirst` (boolean) rather than `nullsLast`
+      query = query.order('max_discount_percentage', { ascending: false, nullsFirst: false });
+    } else if (sortOrder === 'asc') {
+      query = query.order('min_price', { ascending: true });
+    } else {
+      query = query.order('min_price', { ascending: false });
+    }
+    
+    // Always sort by created_at for deterministic ordering
+    query = query.order('created_at', { ascending: false });
+
+    return query.range(page * ITEMS_PER_PAGE, (page + 1) * ITEMS_PER_PAGE - 1);
+  }, []);
 
   const fetchFilteredProducts = useCallback(
     async (
@@ -482,17 +446,15 @@ export function HomePage() {
       sortOrder: 'asc' | 'desc' | 'discount_desc',
       attempt = 1
     ) => {
-      // Create a unique request key for deduplication
+      const TIMEOUT_MS = 8000;
       const requestKey = `${JSON.stringify(filters)}-${page}-${sortOrder}-${attempt}`;
       
-      // Check if same request is already in flight
       if (pendingRequestsRef.current.has(requestKey)) {
         return pendingRequestsRef.current.get(requestKey)!;
       }
       
       const requestPromise = new Promise<void>((resolve, reject) => {
         enqueueRequest(async () => {
-          // Only abort previous request for top-level changes (page === 0)
           if (page === 0 && currentRequestRef.current) {
             currentRequestRef.current.abort();
           }
@@ -501,13 +463,19 @@ export function HomePage() {
           currentRequestRef.current = controller;
           currentRequestKeyRef.current = requestKey;
 
+          const timeoutId = setTimeout(() => {
+            if (!controller.signal.aborted) {
+              controller.abort();
+            }
+          }, TIMEOUT_MS);
+
           const myRequestId = ++requestIdRef.current;
 
           setLoading(true);
           
           try {
             if (page > 0) {
-              await new Promise(resolve => setTimeout(resolve, 100));
+              await new Promise(resolve => setTimeout(resolve, 30));
             }
             
             const cacheKey = JSON.stringify({ filters, sortOrder });
@@ -515,6 +483,8 @@ export function HomePage() {
             if (cached && cached.key === cacheKey) {
               if (myRequestId !== requestIdRef.current) return;
 
+              clearTimeout(timeoutId);
+              
               startTransition(() => {
                 setProducts(prev => 
                   page === 0 
@@ -523,153 +493,44 @@ export function HomePage() {
                 );
               });
               
-              {
-                const ids = ((cached.data as unknown as ProductWithDetails[]) || []).map(p => p.id).filter(Boolean);
-                if (ids.length > 0) {
-                  const lcpIds = ids.slice(0, LCP_PRELOAD_COUNT);
-                  if (lcpIds.length > 0) {
-                      fetchBatchPricingFor(lcpIds).catch(e => console.error('Error fetching LCP batch pricing for cached page items', e));
-                    }
+              const ids = ((cached.data as unknown as ProductWithDetails[]) || []).map(p => p.id).filter(Boolean);
+              if (ids.length > 0) {
+                const lcpIds = ids.slice(0, LCP_PRELOAD_COUNT);
+                if (lcpIds.length > 0) {
+                  fetchBatchPricingFor(lcpIds).catch(e => console.error('Error fetching LCP batch pricing for cached page items', e));
+                }
 
-                    const rest = ids.slice(LCP_PRELOAD_COUNT);
-                    if (rest.length > 0) {
-                      scheduleIdle(() => fetchBatchPricingFor(rest));
-                    }
+                const rest = ids.slice(LCP_PRELOAD_COUNT);
+                if (rest.length > 0) {
+                  scheduleIdle(() => fetchBatchPricingFor(rest));
                 }
               }
               
               setHasMore((page + 1) * ITEMS_PER_PAGE < (cached.count || 0));
               setInitialLoad(false);
               setError(null);
-
-              // Prefetch next page
-              if ((page + 1) * ITEMS_PER_PAGE < (cached.count || 0)) {
-                scheduleIdle(() => {
-                  (async () => {
-                    try {
-                      const tableName = getTableName(filters);
-                      const supabase = getSupabase();
-                      let prefetchQuery = supabase
-                        .from(tableName)
-                        .select('id,title,shop_name,created_at,url,description,in_stock,min_price,max_discount_percentage,on_sale,size_groups,images,product_type,tags,vendor,handle', { 
-                          count: 'exact',
-                          head: false 
-                        })
-                        .limit(ITEMS_PER_PAGE);
-
-                      if (tableName === 'products_with_details') {
-                        if (filters.selectedShopName.length > 0) {
-                          const ids = Array.from(new Set(filters.selectedShopName.map(s => Number(s)).filter(n => !Number.isNaN(n) && n > 0)));
-                          if (ids.length > 0) prefetchQuery = prefetchQuery.in('shop_id', ids);
-                        }
-                        if (filters.inStockOnly) prefetchQuery = prefetchQuery.eq('in_stock', true);
-                        if (filters.onSaleOnly) prefetchQuery = prefetchQuery.eq('on_sale', true);
-                        if (filters.searchQuery) prefetchQuery = prefetchQuery.textSearch('fts', filters.searchQuery, { type: 'plain', config: 'english' });
-                        if (filters.selectedPriceRange) prefetchQuery = prefetchQuery.gte('min_price', filters.selectedPriceRange[0]).lte('min_price', filters.selectedPriceRange[1]);
-                        if (filters.selectedSizeGroups.length > 0) prefetchQuery = prefetchQuery.overlaps('size_groups', filters.selectedSizeGroups);
-                      } else {
-                        // Materialized view may not enforce the default price range — apply range and on-sale here too.
-                        if (filters.selectedPriceRange) {
-                          prefetchQuery = prefetchQuery.gte('min_price', filters.selectedPriceRange[0]).lte('min_price', filters.selectedPriceRange[1]);
-                        }
-                        if (filters.onSaleOnly) {
-                          prefetchQuery = prefetchQuery.eq('on_sale', true);
-                        }
-                      }
-
-                      if (sortOrder === 'discount_desc') {
-                        prefetchQuery = prefetchQuery.order('max_discount_percentage', { ascending: false, nullsFirst: false }).order('created_at', { ascending: false });
-                      } else {
-                        prefetchQuery = prefetchQuery.order('min_price', { ascending: sortOrder === 'asc' }).order('created_at', { ascending: false });
-                      }
-
-                      const { data: pData, count: pCount, error: pError } = await prefetchQuery.range((page + 1) * ITEMS_PER_PAGE, (page + 2) * ITEMS_PER_PAGE - 1);
-                      if (!pError && pData) {
-                        prefetchCacheRef.current[page + 1] = { key: cacheKey, data: pData as unknown as ProductWithDetails[], count: pCount || 0 };
-                      }
-                    } catch {
-                      // silent
-                    }
-                  })();
-                });
-              }
-
-              if (!controller.signal.aborted) setLoading(false);
+              setLoading(false);
               resolve();
               return;
             }
 
             const supabase = getSupabase();
-            const tableName = getTableName(filters);
+            const mvName = getOptimizedMV(filters);
+            
+            console.log(`Using MV: ${mvName} for filters:`, {
+              shops: filters.selectedShopName.length,
+              sizes: filters.selectedSizeGroups.length,
+              onSale: filters.onSaleOnly,
+              search: filters.searchQuery ? 'yes' : 'no'
+            });
 
-            // Only select columns actually used in the UI
-            let query = supabase
-              .from(tableName)
-              .select('id,title,shop_name,created_at,url,description,in_stock,min_price,max_discount_percentage,on_sale,size_groups,images,product_type,tags,vendor,handle', { 
-                count: 'exact',
-                head: false
-              })
-              .limit(ITEMS_PER_PAGE)
-              .abortSignal(controller.signal);
+            // Build optimized query
+            const query = buildOptimizedQuery(supabase, mvName, filters, sortOrder, page);
+            query.abortSignal(controller.signal);
 
-            // Apply filters only if using the full view
-            if (tableName === 'products_with_details') {
-              if (filters.selectedShopName.length > 0) {
-                const ids = Array.from(new Set(filters.selectedShopName.map(s => Number(s)).filter(n => !Number.isNaN(n) && n > 0)));
-                if (ids.length > 0) query = query.in('shop_id', ids);
-              }
+            const { data, error, count } = await query;
 
-              if (filters.inStockOnly) {
-                query = query.eq('in_stock', true);
-              }
-
-              if (filters.onSaleOnly) {
-                query = query.eq('on_sale', true);
-              }
-
-              if (filters.searchQuery) {
-                query = query.textSearch('fts', filters.searchQuery, {
-                  type: 'plain',
-                  config: 'english'
-                });
-              }
-
-              if (filters.selectedPriceRange) {
-                query = query
-                  .gte('min_price', filters.selectedPriceRange[0])
-                  .lte('min_price', filters.selectedPriceRange[1]);
-              }
-
-              if (filters.selectedSizeGroups.length > 0) {
-                query = query.overlaps('size_groups', filters.selectedSizeGroups);
-              }
-              } else {
-                // Materialized view may not reliably enforce the default price range,
-                // so always apply the selected price range and the on-sale filter here too.
-                if (filters.selectedPriceRange) {
-                  query = query
-                    .gte('min_price', filters.selectedPriceRange[0])
-                    .lte('min_price', filters.selectedPriceRange[1]);
-                }
-
-                if (filters.onSaleOnly) {
-                  query = query.eq('on_sale', true);
-                }
-              }
-
-            // Apply sorting
-            if (sortOrder === 'discount_desc') {
-              query = query
-                .order('max_discount_percentage', { ascending: false, nullsFirst: false })
-                .order('created_at', { ascending: false });
-            } else {
-              query = query
-                .order('min_price', { ascending: sortOrder === 'asc' })
-                .order('created_at', { ascending: false });
-            }
-
-            const { data, error, count } = await query
-              .range(page * ITEMS_PER_PAGE, (page + 1) * ITEMS_PER_PAGE - 1);
+            clearTimeout(timeoutId);
 
             if (currentRequestKeyRef.current !== requestKey) {
               resolve();
@@ -677,13 +538,34 @@ export function HomePage() {
             }
 
             if (error) {
-              if (error.message.includes('JWT') || error.code === 'PGRST301') {
-                console.error('Auth error, attempting to refresh session');
-                const { error: refreshError } = await supabase.auth.refreshSession();
-                if (refreshError) throw refreshError;
-                if (attempt < 3) {
-                  return fetchFilteredProducts(filters, page, sortOrder, attempt + 1);
-                }
+              if ((error.message.includes('timeout') || error.code === '57014') && attempt < 2) {
+                console.warn(`Query timeout on attempt ${attempt}, retrying with DEFAULT MV...`);
+                await new Promise(res => setTimeout(res, 500 * attempt));
+                
+                // Fallback to DEFAULT MV on timeout
+                const fallbackQuery = buildOptimizedQuery(supabase, MVS.DEFAULT, filters, sortOrder, page);
+                const { data: fallbackData, error: fallbackError, count: fallbackCount } = await fallbackQuery;
+                
+                if (fallbackError) throw fallbackError;
+                
+                const totalItems = fallbackCount || 0;
+                const loadedItems = page * ITEMS_PER_PAGE + (fallbackData?.length || 0);
+                const moreAvailable = loadedItems < totalItems;
+                
+                startTransition(() => {
+                  setProducts(prev => 
+                    page === 0 
+                      ? (fallbackData as unknown as ProductWithDetails[]) || [] 
+                      : mergeUniqueProducts(prev, (fallbackData as unknown as ProductWithDetails[] || []))
+                  );
+                });
+                
+                setHasMore(moreAvailable);
+                setInitialLoad(false);
+                setError(null);
+                setLoading(false);
+                resolve();
+                return;
               }
               throw error;
             }
@@ -700,22 +582,19 @@ export function HomePage() {
               );
             });
             
-            {
-              const ids = ((data as unknown as ProductWithDetails[]) || []).map(p => p.id).filter(Boolean);
+            if (data && data.length > 0) {
+              const ids = data.map(p => p.id).filter(Boolean);
               const idsToFetch = page === 0 ? ids.slice(0, 12) : ids;
               if (idsToFetch.length > 0) {
-                // Fetch pricing for LCP candidates immediately so discount badges
-                // and accurate prices appear quickly when sorting or changing filters.
                 const lcpIds = idsToFetch.slice(0, LCP_PRELOAD_COUNT);
                 if (lcpIds.length > 0) {
-                  fetchBatchPricingFor(lcpIds).catch(e => console.error('Error fetching LCP batch pricing for page items', e));
+                  fetchBatchPricingFor(lcpIds).catch(e => console.error('Error fetching LCP batch pricing', e));
                 }
 
-                // Fetch remaining page items at low priority to avoid blocking
                 const rest = idsToFetch.slice(LCP_PRELOAD_COUNT);
                 if (rest.length > 0) {
                   scheduleIdle(() => {
-                    fetchBatchPricingFor(rest).catch(e => console.error('Error fetching batch pricing for page items', e));
+                    fetchBatchPricingFor(rest).catch(e => console.error('Error fetching batch pricing', e));
                   });
                 }
               }
@@ -726,74 +605,22 @@ export function HomePage() {
             setError(null);
 
             const cacheKeyCurrent = JSON.stringify({ filters, sortOrder });
-            prefetchCacheRef.current[page] = { key: cacheKeyCurrent, data: (data as unknown as ProductWithDetails[]) || [], count: totalItems };
-
-            // Prefetch next page
-            if (moreAvailable) {
-              scheduleIdle(() => {
-                (async () => {
-                  try {
-                    const nextPageTableName = getTableName(filters);
-                    const supabase = getSupabase();
-                    let prefetchQuery = supabase
-                      .from(nextPageTableName)
-                      .select('id,title,shop_name,created_at,url,description,in_stock,min_price,max_discount_percentage,on_sale,size_groups,images,product_type,tags,vendor,handle', { 
-                        count: 'exact', 
-                        head: false 
-                      })
-                      .limit(ITEMS_PER_PAGE);
-
-                    if (nextPageTableName === 'products_with_details') {
-                      if (filters.selectedShopName.length > 0) {
-                        const ids = Array.from(new Set(filters.selectedShopName.map(s => Number(s)).filter(n => !Number.isNaN(n) && n > 0)));
-                        if (ids.length > 0) prefetchQuery = prefetchQuery.in('shop_id', ids);
-                      }
-                      if (filters.inStockOnly) prefetchQuery = prefetchQuery.eq('in_stock', true);
-                      if (filters.onSaleOnly) prefetchQuery = prefetchQuery.eq('on_sale', true);
-                      if (filters.searchQuery) prefetchQuery = prefetchQuery.textSearch('fts', filters.searchQuery, { type: 'plain', config: 'english' });
-                      if (filters.selectedPriceRange) prefetchQuery = prefetchQuery.gte('min_price', filters.selectedPriceRange[0]).lte('min_price', filters.selectedPriceRange[1]);
-                      if (filters.selectedSizeGroups.length > 0) prefetchQuery = prefetchQuery.overlaps('size_groups', filters.selectedSizeGroups);
-                    } else {
-                      // Materialized view may not enforce the default price range — apply range and on-sale here too.
-                      if (filters.selectedPriceRange) {
-                        prefetchQuery = prefetchQuery.gte('min_price', filters.selectedPriceRange[0]).lte('min_price', filters.selectedPriceRange[1]);
-                      }
-                      if (filters.onSaleOnly) {
-                        prefetchQuery = prefetchQuery.eq('on_sale', true);
-                      }
-                    }
-
-                    if (sortOrder === 'discount_desc') {
-                      prefetchQuery = prefetchQuery.order('max_discount_percentage', { ascending: false, nullsFirst: false }).order('created_at', { ascending: false });
-                    } else {
-                      prefetchQuery = prefetchQuery.order('min_price', { ascending: sortOrder === 'asc' }).order('created_at', { ascending: false });
-                    }
-
-                    const { data: pData, count: pCount, error: pError } = await prefetchQuery.range((page + 1) * ITEMS_PER_PAGE, (page + 2) * ITEMS_PER_PAGE - 1);
-                    if (!pError && pData) {
-                      prefetchCacheRef.current[page + 1] = { key: cacheKeyCurrent, data: pData as unknown as ProductWithDetails[], count: pCount || 0 };
-                    }
-                  } catch {
-                    // silent
-                  }
-                })();
-              });
-            }
+            prefetchCacheRef.current[page] = { 
+              key: cacheKeyCurrent, 
+              data: (data as unknown as ProductWithDetails[]) || [], 
+              count: totalItems 
+            };
 
             resolve();
 
           } catch (error: unknown) {
+            clearTimeout(timeoutId);
+            
             if (error instanceof Error && error.name !== 'AbortError') {
               console.error('Fetch error:', error);
               
-              if (
-                (error instanceof TypeError ||
-                  (typeof error === 'object' && error !== null && 'code' in error && (error as { code?: string }).code === 'ETIMEDOUT') ||
-                  (typeof error === 'object' && error !== null && 'code' in error && (error as { code?: string }).code === 'ECONNABORTED')
-                ) && attempt < 3
-              ) {
-                console.log(`Retrying... attempt ${attempt + 1}`);
-                await new Promise(resolve => setTimeout(resolve, 1000 * attempt));
+              if (attempt < 2) {
+                await new Promise(resolve => setTimeout(resolve, 500 * attempt));
                 return fetchFilteredProducts(filters, page, sortOrder, attempt + 1);
               }
 
@@ -810,7 +637,6 @@ export function HomePage() {
             if (!controller.signal.aborted) {
               setLoading(false);
             }
-            // Clean up from pending requests
             pendingRequestsRef.current.delete(requestKey);
           }
         });
@@ -819,7 +645,7 @@ export function HomePage() {
       pendingRequestsRef.current.set(requestKey, requestPromise);
       return requestPromise;
     },
-    [fetchBatchPricingFor, scheduleIdle, mergeUniqueProducts, enqueueRequest, getTableName]
+    [fetchBatchPricingFor, scheduleIdle, mergeUniqueProducts, enqueueRequest, getOptimizedMV, buildOptimizedQuery]
   );
 
   // Update shop names to use caching
@@ -828,7 +654,6 @@ export function HomePage() {
       try {
         const supabase = getSupabase();
 
-        // Fetch distinct shops (id + name) from materialized view for performance
         const shopData = await fetchWithCache('distinct_shops_mv', async () => {
           const { data, error } = await supabase
             .from('distinct_shops_mv')
@@ -847,10 +672,9 @@ export function HomePage() {
           );
         }
       
-        // Fetch size data with cache
         const sizeData = await fetchWithCache('size_groups', async () => {
           const { data, error } = await supabase
-            .from('distinct_size_groups_mv') // Use materialized view for size groups
+            .from('distinct_size_groups_mv')
             .select('size_group');
           
           if (error) throw error;
@@ -878,7 +702,6 @@ export function HomePage() {
   useEffect(() => {
     if (!shopList || shopList.length === 0) return;
 
-    // If selectedShopName contains non-numeric values (previously stored names), map them to ids
     const needsMapping = selectedShopName.some(s => !/^\d+$/.test(s));
     if (!needsMapping) return;
 
@@ -902,22 +725,19 @@ export function HomePage() {
     selectedPriceRange,
   }));
 
-  // Debounced commit (immediate UI updates, but wait before requesting)
+  // Debounced commit
   const commitFiltersDebounced = useRef(createDebounced((filters: FilterOptions) => {
     setCommittedFilters(filters);
-  }, 700)).current;
+  }, 500)).current;
 
-  // Create stable keys for complex dependencies so the effect deps can be statically checked
+  // Create stable keys for complex dependencies
   const selectedShopNameKey = useMemo(() => JSON.stringify(selectedShopName), [selectedShopName]);
   const selectedSizeGroupsKey = useMemo(() => JSON.stringify(selectedSizeGroups), [selectedSizeGroups]);
   const selectedPriceRangeKey = useMemo(() => JSON.stringify(selectedPriceRange), [selectedPriceRange]);
-
-  // Reset page when committed filters or sort order change.
   const committedFiltersKey = useMemo(() => JSON.stringify(committedFilters), [committedFilters]);
   
-  // FIXED: Simplified filter commitment logic
+  // Filter commitment logic
   useEffect(() => {
-    // Create a single, stable pending filters object
     const pendingFilters = {
       selectedShopName: JSON.parse(selectedShopNameKey),
       selectedSizeGroups: JSON.parse(selectedSizeGroupsKey),
@@ -929,15 +749,12 @@ export function HomePage() {
 
     const pendingKey = JSON.stringify(pendingFilters);
 
-    // Only update if truly different
     if (pendingKey === committedFiltersKey) return;
 
-    // Cancel previous debounce
     if (commitFiltersDebounced.cancel) {
       commitFiltersDebounced.cancel();
     }
 
-    // Update immediately for initial load, debounce for subsequent changes
     if (page === 0 && products.length === 0) {
       setCommittedFilters(pendingFilters);
     } else {
@@ -956,14 +773,12 @@ export function HomePage() {
     commitFiltersDebounced,
   ]);
 
-  
   useEffect(() => {
     setPage(0);
   }, [committedFiltersKey, sortOrder]);
 
   // Fetch whenever committed filters, sortOrder or page change.
   useEffect(() => {
-    // Abort previous request for top-level changes
     if (currentRequestRef.current) {
       currentRequestRef.current.abort();
     }
@@ -1034,11 +849,10 @@ export function HomePage() {
 
   // Cleanup on unmount
   useEffect(() => {
-    // Capture ref.current values here so the cleanup uses the same objects
     const capturedPendingRequests = pendingRequestsRef.current;
     const capturedInflightFetches = inflightFetchesRef.current;
     const capturedCommitCancel = commitFiltersDebounced?.cancel;
-    // Type-safe access to optional `cancel` on the debounced function
+    
     type CancelableDebounced = { cancel?: () => void };
     const capturedFetchPricingCancel =
       typeof fetchPricingDebounced !== 'undefined' && typeof (fetchPricingDebounced as CancelableDebounced).cancel === 'function'
@@ -1056,8 +870,6 @@ export function HomePage() {
         capturedFetchPricingCancel();
       }
 
-      // Clear captured containers rather than accessing ref.current directly,
-      // and reset the live refs to empty structures to avoid retaining references.
       try {
         if (capturedPendingRequests && typeof (capturedPendingRequests as Map<string, Promise<void>>).clear === 'function') {
           (capturedPendingRequests as Map<string, Promise<void>>).clear();
@@ -1074,7 +886,6 @@ export function HomePage() {
         /* ignore */
       }
 
-      // Reset the live refs to fresh empty containers to avoid holding onto stale data.
       requestQueueRef.current = [];
       prefetchCacheRef.current = {};
     };
@@ -1105,14 +916,10 @@ export function HomePage() {
     navigate(`/?search=${searchQuery}`);
   };
 
-
-  // Accept simple string value from our `SingleSelectDropdown` component.
   const handleSortChange = (value: string) => {
     const parsed = value as 'asc' | 'desc' | 'discount_desc';
     setSortOrder(parsed);
 
-    // Immediately commit current UI filters so the sort is applied together
-    // with the latest (possibly uncommitted) filter UI state such as On Sale.
     const pendingFilters: FilterOptions = {
       selectedShopName,
       selectedSizeGroups,
@@ -1122,19 +929,14 @@ export function HomePage() {
       selectedPriceRange,
     };
 
-    // Cancel any pending debounce and commit right away to ensure fetch uses
-    // the currently visible filter toggles.
     if (commitFiltersDebounced?.cancel) commitFiltersDebounced.cancel();
     setCommittedFilters(pendingFilters);
-    // Reset to first page when changing sort
     setPage(0);
   };
 
-  // Called when the user finishes dragging / releases the slider handle.
   const handleSliderChangeEnd = (values: number[]) => {
     const [minValue, maxValue] = values;
     setSelectedPriceRange([minValue, maxValue]);
-    // Commit immediately on drag end
     setCommittedFilters({
       selectedShopName,
       selectedSizeGroups,
@@ -1150,22 +952,17 @@ export function HomePage() {
     if (isNaN(numericValue)) return;
 
     if (type === 'min') {
-      // Allow users to enter values below the default PRICE_RANGE[0], but clamp to ABS_MIN_PRICE
       const newMin = Math.min(Math.max(numericValue, ABS_MIN_PRICE), selectedPriceRange[1]);
       setSelectedPriceRange([newMin, selectedPriceRange[1]]);
     } else {
-      // Allow values above default PRICE_RANGE[1], but clamp to ABS_MAX_PRICE
       const newMax = Math.max(Math.min(numericValue, ABS_MAX_PRICE), selectedPriceRange[0]);
       setSelectedPriceRange([selectedPriceRange[0], newMax]);
     }
   };
   
   const getCurrentSizeOptions = () => {
-    const filteredSizes = allSizeData;
-    
-    // Get unique size groups from the filtered data
     const uniqueSizeGroups = Array.from(
-      new Set(filteredSizes.map(item => item.size_group))
+      new Set(allSizeData.map(item => item.size_group))
     ).filter(Boolean);
     
     return uniqueSizeGroups.map(size => ({
@@ -1194,8 +991,6 @@ export function HomePage() {
     );
   };
 
-  // When products array is empty but a fetch is in-flight (or queued),
-  // prefer showing a loading spinner rather than the 'No products' message.
   const isFetchingEmpty = products.length === 0 && (
     loading ||
     (pendingRequestsRef.current && pendingRequestsRef.current.size > 0) ||
@@ -1208,6 +1003,7 @@ export function HomePage() {
     setOnSaleOnly(false);
     setSelectedSizeGroups([]);
     setSelectedPriceRange([...PRICE_RANGE]);
+    setSearchQuery('');
   };
 
   function ProductCardSkeleton() {
@@ -1445,7 +1241,7 @@ export function HomePage() {
                       </div>
                       
                       <button
-                        onClick= {handleClearAllFilters}
+                        onClick={handleClearAllFilters}
                         className="text-xs font-medium text-blue-600 hover:text-blue-800 dark:text-blue-400 dark:hover:text-blue-300 w-full text-left sm:text-sm"
                       >
                         Clear all filters
@@ -1472,7 +1268,6 @@ export function HomePage() {
               </div>
             </div>
 
-  
             {/* Products List */}
             <div className="grid gap-x-3 gap-y-4 min-h-[400px] grid-cols-[repeat(auto-fit,minmax(220px,1fr))] sm:gap-x-4 sm:gap-y-6 xl:grid-cols-4 xl:gap-x-6">
               {error ? (
