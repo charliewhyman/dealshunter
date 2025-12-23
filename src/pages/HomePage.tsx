@@ -461,24 +461,28 @@ export function HomePage() {
             const query = buildOptimizedQuery(supabase, mvName, filters, sortOrder, page);
             query.abortSignal(controller.signal);
 
-            const { data, error } = await query;
+            const { data, error, count } = await query;
             clearTimeout(timeoutId);
 
             if (error) throw error;
 
             const newData = (data as unknown as ProductWithDetails[]) || [];
             
-            // 3. Update State
+            // 3. Update State - FIXED LOGIC
             startTransition(() => {
               setProducts(prev => (page === 0 ? newData : mergeUniqueProducts(prev, newData)));
               
-              // Critical: If we received exactly 0 items but page > 0, stop loading more
-              if (newData.length === 0 && page > 0) {
-                setHasMore(false);
-              } else {
-                // If we got fewer items than requested, we hit the end
-                setHasMore(newData.length === ITEMS_PER_PAGE);
-              }
+              // CRITICAL FIX: Properly calculate if there are more items
+              // We received 'count' from the query (total matching items)
+              // Calculate if we've loaded all items
+              const loadedItemsCount = (page + 1) * ITEMS_PER_PAGE;
+              const hasMoreItems = count !== null && loadedItemsCount < count;
+              
+              // Also check if we received fewer items than requested
+              const receivedFullPage = newData.length === ITEMS_PER_PAGE;
+              
+              // Set hasMore based on both conditions
+              setHasMore(hasMoreItems || receivedFullPage);
             });
 
             // 4. Handle Pricing Fetching (Backgrounded)
@@ -491,30 +495,27 @@ export function HomePage() {
             setError(null);
             resolve();
           } catch (err) {
-          // Check if it's an AbortError - if so, do NOTHING. 
-          // It's a intentional cancellation, not a failure.
-          const maybeErr = err as unknown;
-          if (typeof maybeErr === 'object' && maybeErr !== null) {
-            const name = (maybeErr as { name?: string }).name;
-            const message = (maybeErr as { message?: string }).message;
-            if (name === 'AbortError' || message?.includes('AbortError')) {
-              return;
+            // Check if it's an AbortError
+            const maybeErr = err as unknown;
+            if (typeof maybeErr === 'object' && maybeErr !== null) {
+              const name = (maybeErr as { name?: string }).name;
+              const message = (maybeErr as { message?: string }).message;
+              if (name === 'AbortError' || message?.includes('AbortError')) {
+                return;
+              }
             }
-          }
 
-          console.error('Fetch error:', err);
-          setError('Failed to load products.');
-          setHasMore(false);
-          reject(err);
-        } finally {
-          // ONLY set loading to false if we weren't aborted.
-          // If we were aborted, a new request is likely already starting.
-          if (!controller.signal.aborted) {
-            setLoading(false);
-            isFetchingRef.current = false;
+            console.error('Fetch error:', err);
+            setError('Failed to load products.');
+            setHasMore(false);
+            reject(err);
+          } finally {
+            if (!controller.signal.aborted) {
+              setLoading(false);
+              isFetchingRef.current = false;
+            }
+            pendingRequestsRef.current.delete(requestKey);
           }
-          pendingRequestsRef.current.delete(requestKey);
-        }
         });
       });
 
@@ -650,6 +651,7 @@ export function HomePage() {
     setInitialLoad(true);
     setHasMore(true);
     isFetchingRef.current = false;
+    observerLockRef.current = false;
   }, [committedFiltersKey, sortOrder]);
 
   // Initial load effect
@@ -712,26 +714,46 @@ export function HomePage() {
     }
   }, [loading]);
 
+  const observerLockRef = useRef(false);
+
   useEffect(() => {
     const observer = new IntersectionObserver(
       (entries) => {
         const entry = entries[0];
-        // STRICT CHECK: Ensure we aren't already loading or fetching
-        if (entry.isIntersecting && !loading && !isFetchingRef.current && hasMore) {
-          isFetchingRef.current = true; // Lock immediately
-          setPage(prev => prev + 1);
+        
+        // Check all conditions including the lock
+        if (
+          entry.isIntersecting && 
+          !loading && 
+          !isFetchingRef.current && 
+          hasMore &&
+          !observerLockRef.current // Check lock
+        ) {
+          // Set lock immediately to prevent duplicate calls
+          observerLockRef.current = true;
+          isFetchingRef.current = true;
+          
+          // Use startTransition for better performance
+          startTransition(() => {
+            setPage(prev => prev + 1);
+          });
+          
+          // Release lock after a short delay (prevents rapid successive calls)
+          setTimeout(() => {
+            observerLockRef.current = false;
+          }, 500);
         }
       },
       { rootMargin: '400px', threshold: 0.1 }
     );
 
-    const currentRef = observerRef.current;
-    if (currentRef) observer.observe(currentRef);
+  const currentRef = observerRef.current;
+  if (currentRef) observer.observe(currentRef);
 
-    return () => {
-      if (currentRef) observer.unobserve(currentRef);
-    };
-  }, [loading, hasMore]); // isFetchingRef is a ref, so it doesn't need to be a dependency
+  return () => {
+    if (currentRef) observer.unobserve(currentRef);
+  };
+}, [loading, hasMore]);
 
   useEffect(() => {
   return () => {
