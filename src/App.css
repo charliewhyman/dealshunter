@@ -40,3 +40,13 @@
 .read-the-docs {
   color: #888;
 }
+
+.product-grid-container {
+  content-visibility: auto;
+  contain-intrinsic-size: 400px; /* Approximate height of 2 rows */
+}
+
+.product-card-container {
+  content-visibility: auto;
+  contain-intrinsic-size: 320px; /* Approximate card height */
+}

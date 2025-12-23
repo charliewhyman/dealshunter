@@ -162,6 +162,7 @@ export function HomePage() {
   const pendingRequestsRef = useRef<Map<string, Promise<void>>>(new Map());
   
   const isFetchingRef = useRef(false);
+  const observerLockRef = useRef(false);
   
   const fetchBatchPricingFor = useCallback(async (ids: Array<number | string>) => {
     const uniqueIds = Array.from(new Set(ids.map(String))).filter(Boolean);
@@ -464,25 +465,39 @@ export function HomePage() {
             const { data, error, count } = await query;
             clearTimeout(timeoutId);
 
-            if (error) throw error;
+            if (error) {
+              // Specifically handle 416 Range Not Satisfiable errors
+              const errCode = (error as { code?: string }).code;
+              const errStatus = (error as { status?: number }).status;
+              if (errCode === 'PGRST116' || errStatus === 416) {
+                console.log('No more items available (416 error)');
+                startTransition(() => {
+                  setHasMore(false);
+                });
+                setInitialLoad(false);
+                setError(null);
+                resolve();
+                return;
+              }
+              throw error;
+            }
 
             const newData = (data as unknown as ProductWithDetails[]) || [];
             
-            // 3. Update State - FIXED LOGIC
+            // 3. Update State
             startTransition(() => {
               setProducts(prev => (page === 0 ? newData : mergeUniqueProducts(prev, newData)));
               
-              // CRITICAL FIX: Properly calculate if there are more items
-              // We received 'count' from the query (total matching items)
-              // Calculate if we've loaded all items
+              // Calculate if there are more items
               const loadedItemsCount = (page + 1) * ITEMS_PER_PAGE;
-              const hasMoreItems = count !== null && loadedItemsCount < count;
               
-              // Also check if we received fewer items than requested
-              const receivedFullPage = newData.length === ITEMS_PER_PAGE;
-              
-              // Set hasMore based on both conditions
-              setHasMore(hasMoreItems || receivedFullPage);
+              // If count is null or we got no data, assume no more items
+              if (count === null || newData.length === 0) {
+                setHasMore(false);
+              } else {
+                // Otherwise check if loaded items < total count
+                setHasMore(loadedItemsCount < count);
+              }
             });
 
             // 4. Handle Pricing Fetching (Backgrounded)
@@ -495,12 +510,24 @@ export function HomePage() {
             setError(null);
             resolve();
           } catch (err) {
-            // Check if it's an AbortError
+            // Check if it's an AbortError - if so, do NOTHING. 
+            // It's a intentional cancellation, not a failure.
             const maybeErr = err as unknown;
             if (typeof maybeErr === 'object' && maybeErr !== null) {
               const name = (maybeErr as { name?: string }).name;
               const message = (maybeErr as { message?: string }).message;
               if (name === 'AbortError' || message?.includes('AbortError')) {
+                return;
+              }
+              
+              // Also handle Supabase 416 errors
+              const code = (maybeErr as { code?: string }).code;
+              const status = (maybeErr as { status?: number }).status;
+              if (code === 'PGRST116' || status === 416) {
+                console.log('No more items available');
+                setHasMore(false);
+                setInitialLoad(false);
+                setError(null);
                 return;
               }
             }
@@ -510,9 +537,12 @@ export function HomePage() {
             setHasMore(false);
             reject(err);
           } finally {
+            // ONLY set loading to false if we weren't aborted.
+            // If we were aborted, a new request is likely already starting.
             if (!controller.signal.aborted) {
               setLoading(false);
               isFetchingRef.current = false;
+              observerLockRef.current = false;
             }
             pendingRequestsRef.current.delete(requestKey);
           }
@@ -711,23 +741,22 @@ export function HomePage() {
   useEffect(() => {
     if (!loading) {
       isFetchingRef.current = false;
+      observerLockRef.current = false;
     }
   }, [loading]);
-
-  const observerLockRef = useRef(false);
 
   useEffect(() => {
     const observer = new IntersectionObserver(
       (entries) => {
         const entry = entries[0];
-        
         // Check all conditions including the lock
         if (
           entry.isIntersecting && 
           !loading && 
           !isFetchingRef.current && 
           hasMore &&
-          !observerLockRef.current // Check lock
+          !observerLockRef.current &&
+          products.length > 0 // Also check we actually have products loaded
         ) {
           // Set lock immediately to prevent duplicate calls
           observerLockRef.current = true;
@@ -737,27 +766,23 @@ export function HomePage() {
           startTransition(() => {
             setPage(prev => prev + 1);
           });
-          
-          // Release lock after a short delay (prevents rapid successive calls)
-          setTimeout(() => {
-            observerLockRef.current = false;
-          }, 500);
         }
       },
       { rootMargin: '400px', threshold: 0.1 }
     );
 
-  const currentRef = observerRef.current;
-  if (currentRef) observer.observe(currentRef);
+    const currentRef = observerRef.current;
+    if (currentRef) observer.observe(currentRef);
 
-  return () => {
-    if (currentRef) observer.unobserve(currentRef);
-  };
-}, [loading, hasMore]);
+    return () => {
+      if (currentRef) observer.unobserve(currentRef);
+    };
+  }, [loading, hasMore, products.length]);
 
   useEffect(() => {
   return () => {
     isFetchingRef.current = false;
+    observerLockRef.current = false;
     };
   }, []);
 
@@ -921,13 +946,39 @@ export function HomePage() {
 
   function ProductCardSkeleton() {
     return (
-      <div className="w-full bg-gray-100 dark:bg-gray-800 rounded-lg p-3 animate-pulse sm:p-4">
+      <div 
+        className="w-full bg-gray-100 dark:bg-gray-800 rounded-lg p-3 animate-pulse sm:p-4"
+        style={{ 
+          minHeight: '320px',
+          contain: 'layout size style'
+        }}
+      >
         <div className="h-5 sm:h-6 bg-gray-300 dark:bg-gray-700 rounded w-3/4 mb-2"></div>
         <div className="h-3 sm:h-4 bg-gray-300 dark:bg-gray-700 rounded w-1/2 mb-3 sm:mb-4"></div>
         <div className="h-3 sm:h-4 bg-gray-300 dark:bg-gray-700 rounded w-full mb-1"></div>
         <div className="h-3 sm:h-4 bg-gray-300 dark:bg-gray-700 rounded w-5/6 mb-1"></div>
         <div className="h-3 sm:h-4 bg-gray-300 dark:bg-gray-700 rounded w-2/3"></div>
       </div>
+    );
+  }
+
+  function ProductGridSkeleton({ count }: { count: number }) {
+    return (
+      <>
+        {Array.from({ length: count }).map((_, i) => (
+          <div 
+            key={`skeleton-${i}`} 
+            className="h-full"
+            style={{ 
+              contain: 'layout size style',
+              contentVisibility: 'auto',
+              containIntrinsicSize: '320px'
+            }}
+          >
+            <ProductCardSkeleton />
+          </div>
+        ))}
+      </>
     );
   }
   
@@ -1170,86 +1221,118 @@ export function HomePage() {
               </div>
             </div>
 
-            <div className="grid gap-x-3 gap-y-4 min-h-[400px] grid-cols-[repeat(auto-fit,minmax(220px,1fr))] sm:gap-x-4 sm:gap-y-6 xl:grid-cols-4 xl:gap-x-6">
-              {error ? (
-                <div className="col-span-full text-center py-6">
-                  <p className="text-red-500 dark:text-red-400 mb-2 text-sm sm:text-base">{error}</p>
-                  <button
-                    onClick={() => {
-                      setPage(0);
-                      setProducts([]);
-                      setInitialLoad(true);
-                    }}
-                    className="text-blue-600 dark:text-blue-400 hover:underline text-xs sm:text-sm"
-                  >
-                    Retry
-                  </button>
-                </div>
-              ) : initialLoad ? (
-                Array.from({ length: 8 }).map((_, i) => (
-                  <ProductCardSkeleton key={i} />
-                ))
-              ) : isFetchingEmpty ? (
-                <div className="col-span-full flex flex-col items-center justify-center min-h-[150px] sm:min-h-[200px]">
-                  <AsyncLucideIcon name="Loader2" className="animate-spin h-8 w-8 text-gray-600 dark:text-gray-300 mb-3" />
-                  <p className="text-gray-900 dark:text-gray-100 text-sm sm:text-base">Loading products…</p>
-                </div>
-              ) : products.length === 0 ? (
-                <div className="col-span-full flex flex-col items-center justify-center min-h-[150px] space-y-1 sm:min-h-[200px] sm:space-y-2">
-                  <p className="text-gray-900 dark:text-gray-100 text-sm sm:text-base">
-                    {searchQuery || selectedShopName.length > 0
-                      ? "No products match your filters."
-                      : "No products available at the moment."}
-                  </p>
-                  <button
-                    onClick={() => {
-                      setPage(0);
-                      setProducts([]);
-                      setInitialLoad(true);
-                    }}
-                    className="text-blue-600 dark:text-blue-400 hover:underline text-xs sm:text-sm"
-                  >
-                    Retry
-                  </button>
-                </div>
-              ) : (
-                <>
-                  {(
-                    page === 0 ? products.slice(0, Math.min(INITIAL_RENDER_COUNT, products.length)) : products
-                  ).map((product, index) => {
-                    const pid = String(product.id);
-                    return (
-                      <div
-                        key={`${product.id}-${product.shop_id}`}
-                        className="h-full"
-                        data-prod-id={pid}
-                        ref={(el) => {
-                          if (el) {
-                            cardRefs.current.set(pid, el);
-                          } else {
-                            cardRefs.current.delete(pid);
-                          }
-                        }}
+            {/* Main Product Grid Container with Stable Layout */}
+            <div 
+              className="relative min-h-[400px]"
+              style={{ 
+                contain: 'layout',
+                contentVisibility: 'auto',
+                containIntrinsicSize: '400px 1000px'
+              }}
+            >
+              <div 
+                className="grid gap-x-3 gap-y-4 grid-cols-[repeat(auto-fit,minmax(220px,1fr))] sm:gap-x-4 sm:gap-y-6 xl:grid-cols-4 xl:gap-x-6"
+                style={{
+                  gridAutoRows: 'minmax(320px, auto)'
+                }}
+              >
+                {error ? (
+                  <div className="col-span-full text-center py-6">
+                    <p className="text-red-500 dark:text-red-400 mb-2 text-sm sm:text-base">{error}</p>
+                    <button
+                      onClick={() => {
+                        setPage(0);
+                        setProducts([]);
+                        setInitialLoad(true);
+                      }}
+                      className="text-blue-600 dark:text-blue-400 hover:underline text-xs sm:text-sm"
+                    >
+                      Retry
+                    </button>
+                  </div>
+                ) : initialLoad ? (
+                  <ProductGridSkeleton count={8} />
+                ) : isFetchingEmpty ? (
+                  <div className="col-span-full flex flex-col items-center justify-center min-h-[150px] sm:min-h-[200px]">
+                    <AsyncLucideIcon name="Loader2" className="animate-spin h-8 w-8 text-gray-600 dark:text-gray-300 mb-3" />
+                    <p className="text-gray-900 dark:text-gray-100 text-sm sm:text-base">Loading products…</p>
+                  </div>
+                ) : products.length === 0 ? (
+                  <div className="col-span-full flex flex-col items-center justify-center min-h-[150px] space-y-1 sm:min-h-[200px] sm:space-y-2">
+                    <p className="text-gray-900 dark:text-gray-100 text-sm sm:text-base">
+                      {searchQuery || selectedShopName.length > 0
+                        ? "No products match your filters."
+                        : "No products available at the moment."}
+                    </p>
+                    <button
+                      onClick={() => {
+                        setPage(0);
+                        setProducts([]);
+                        setInitialLoad(true);
+                      }}
+                      className="text-blue-600 dark:text-blue-400 hover:underline text-xs sm:text-sm"
+                    >
+                      Retry
+                    </button>
+                  </div>
+                ) : (
+                  <>
+                    {products.map((product, index) => {
+                      const pid = String(product.id);
+                      return (
+                        <div
+                          key={`${product.id}-${product.shop_id}`}
+                          className="h-full"
+                          data-prod-id={pid}
+                          style={{ 
+                            contain: 'layout size style',
+                            contentVisibility: 'auto',
+                            containIntrinsicSize: '320px'
+                          }}
+                          ref={(el) => {
+                            if (el) {
+                              cardRefs.current.set(pid, el);
+                            } else {
+                              cardRefs.current.delete(pid);
+                            }
+                          }}
+                        >
+                          <ProductCard
+                            product={product}
+                            pricing={productPricings[pid]}
+                            isLcp={page === 0 && index < LCP_PRELOAD_COUNT}
+                          />
+                        </div>
+                      );
+                    })}
+                    
+                    {/* Loading Skeletons - Invisible but maintaining layout */}
+                    {hasMore && (
+                      <div 
+                        className="absolute inset-0 pointer-events-none opacity-0"
+                        style={{ zIndex: -1 }}
                       >
-                        <ProductCard
-                          product={product}
-                          pricing={productPricings[pid]}
-                          isLcp={page === 0 && index < LCP_PRELOAD_COUNT}
-                        />
+                        <div className="grid gap-x-3 gap-y-4 grid-cols-[repeat(auto-fit,minmax(220px,1fr))] sm:gap-x-4 sm:gap-y-6 xl:grid-cols-4 xl:gap-x-6">
+                          <ProductGridSkeleton count={ITEMS_PER_PAGE} />
+                        </div>
                       </div>
-                    );
-                  })}
-                  {loading && page > 0 && (
-                    Array.from({ length: ITEMS_PER_PAGE }).map((_, i) => (
-                      <div key={`skeleton-${page}-${i}`} className="h-full">
-                        <ProductCardSkeleton />
-                      </div>
-                    ))
-                  )}
-                </>
+                    )}
+                  </>
+                )}
+              </div>
+              
+              {/* Loading Indicator - Positioned absolutely to avoid layout shifts */}
+              {loading && page > 0 && (
+                <div className="absolute bottom-0 left-0 right-0 flex justify-center py-4 z-10">
+                  <div className="bg-white dark:bg-gray-800 p-3 rounded-lg shadow-lg">
+                    <AsyncLucideIcon name="Loader2" className="animate-spin h-6 w-6 text-gray-600 dark:text-gray-300" />
+                  </div>
+                </div>
               )}
+              
+              {/* Observer ref at bottom */}
+              <div ref={observerRef} className="h-10" />
             </div>
-            <div ref={observerRef} className="h-1" />
           </div>
         </div>
       </div>
