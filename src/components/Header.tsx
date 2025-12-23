@@ -1,6 +1,6 @@
 import { Link } from 'react-router-dom';
 import AsyncLucideIcon from './AsyncLucideIcon';
-import { ChangeEvent, FormEvent } from 'react';
+import { ChangeEvent, FormEvent, useEffect, useRef, useState } from 'react';
 import React from 'react';
 
 interface HeaderProps {
@@ -10,6 +10,36 @@ interface HeaderProps {
 }
 
 export const Header = React.memo(({ searchQuery, handleSearchChange, handleSearchSubmit }: HeaderProps) => {
+  const [localQuery, setLocalQuery] = useState<string>(searchQuery || '');
+  const debounceRef = useRef<number | null>(null);
+  const DEBOUNCE_MS = 300;
+
+  // keep local input in sync when parent updates searchQuery
+  useEffect(() => {
+    setLocalQuery(searchQuery || '');
+  }, [searchQuery]);
+
+  useEffect(() => {
+    return () => {
+      if (debounceRef.current) {
+        window.clearTimeout(debounceRef.current);
+        debounceRef.current = null;
+      }
+    };
+  }, []);
+
+  const scheduleChange = (value: string) => {
+    if (debounceRef.current) {
+      window.clearTimeout(debounceRef.current);
+    }
+    debounceRef.current = window.setTimeout(() => {
+      // construct a minimal event-like object that callers expect
+      const fakeEvent = { target: { value } } as unknown as ChangeEvent<HTMLInputElement>;
+      handleSearchChange(fakeEvent);
+      debounceRef.current = null;
+    }, DEBOUNCE_MS) as unknown as number;
+  };
+
   return (
     <header className="bg-white dark:bg-gray-800 shadow-sm w-full h-16">
       <div className="max-w-screen-2xl mx-auto px-4 sm:px-6 lg:px-8 h-full">
@@ -35,8 +65,12 @@ export const Header = React.memo(({ searchQuery, handleSearchChange, handleSearc
             <input
               type="text"
               placeholder="Search..."
-              value={searchQuery}
-              onChange={handleSearchChange}
+              value={localQuery}
+              onChange={(e) => {
+                const v = (e.target as HTMLInputElement).value;
+                setLocalQuery(v);
+                scheduleChange(v);
+              }}
               className="w-full pl-10 pr-3 py-1.5 border border-gray-300 dark:border-gray-600 rounded-md text-sm bg-white dark:bg-gray-700 placeholder-gray-500 dark:placeholder-gray-400 focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500 text-gray-900 dark:text-gray-100"
             />
           </form>
