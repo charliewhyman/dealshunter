@@ -1194,6 +1194,14 @@ export function HomePage() {
     );
   };
 
+  // When products array is empty but a fetch is in-flight (or queued),
+  // prefer showing a loading spinner rather than the 'No products' message.
+  const isFetchingEmpty = products.length === 0 && (
+    loading ||
+    (pendingRequestsRef.current && pendingRequestsRef.current.size > 0) ||
+    currentRequestRef.current !== null
+  );
+
   const handleClearAllFilters = () => {
     setSelectedShopName([]);
     setInStockOnly(true);
@@ -1485,6 +1493,11 @@ export function HomePage() {
                 Array.from({ length: 8 }).map((_, i) => (
                   <ProductCardSkeleton key={i} />
                 ))
+              ) : isFetchingEmpty ? (
+                <div className="col-span-full flex flex-col items-center justify-center min-h-[150px] sm:min-h-[200px]">
+                  <AsyncLucideIcon name="Loader2" className="animate-spin h-8 w-8 text-gray-600 dark:text-gray-300 mb-3" />
+                  <p className="text-gray-900 dark:text-gray-100 text-sm sm:text-base">Loading products…</p>
+                </div>
               ) : products.length === 0 ? (
                 <div className="col-span-full flex flex-col items-center justify-center min-h-[150px] space-y-1 sm:min-h-[200px] sm:space-y-2">
                   <p className="text-gray-900 dark:text-gray-100 text-sm sm:text-base">
