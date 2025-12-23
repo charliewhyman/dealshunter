@@ -161,6 +161,8 @@ export function HomePage() {
   const pricedIdsRef = useRef<Set<string>>(new Set());
   const pendingRequestsRef = useRef<Map<string, Promise<void>>>(new Map());
   
+  const isFetchingRef = useRef(false);
+  
   const fetchBatchPricingFor = useCallback(async (ids: Array<number | string>) => {
     const uniqueIds = Array.from(new Set(ids.map(String))).filter(Boolean);
     if (uniqueIds.length === 0) return;
@@ -337,34 +339,27 @@ export function HomePage() {
 
   // Smart MV selection based on active filters
   const getOptimizedMV = useCallback((filters: FilterOptions): MaterializedView => {
-    // Track which complex filters are active
     const hasShopFilter = filters.selectedShopName.length > 0;
     const hasSizeFilter = filters.selectedSizeGroups.length > 0;
     const hasSaleFilter = filters.onSaleOnly;
     const hasSearchFilter = !!filters.searchQuery;
     
-    // Complex combinations - prioritize based on likely performance impact
     if (hasSearchFilter) {
-      // Search is expensive - use DEFAULT which has full text search index
       return MVS.DEFAULT;
     }
     
     if (hasSaleFilter && !hasShopFilter && !hasSizeFilter) {
-      // Only on-sale filter
       return MVS.ON_SALE;
     }
     
     if (hasShopFilter && !hasSizeFilter && !hasSaleFilter) {
-      // Only shop filter
       return MVS.SHOP_FILTERED;
     }
     
     if (hasSizeFilter && !hasShopFilter && !hasSaleFilter) {
-      // Only size filter
       return MVS.SIZE_FILTERED;
     }
     
-    // Mixed filters or no complex filters - use DEFAULT
     return MVS.DEFAULT;
   }, []);
 
@@ -383,19 +378,15 @@ export function HomePage() {
     })
     .limit(ITEMS_PER_PAGE);
 
-  // Always apply price range (it's selective and well-indexed)
   query = query
     .gte('min_price', filters.selectedPriceRange[0])
     .lte('min_price', filters.selectedPriceRange[1]);
 
-  // Apply in_stock filter (all MVs already have in_stock = true, but check anyway)
   if (filters.inStockOnly) {
     query = query.eq('in_stock', true);
   }
 
-  // Apply additional filters based on the MV
   if (mvName === MVS.SHOP_FILTERED || mvName === MVS.DEFAULT || mvName === MVS.ON_SALE) {
-    // These MVs can handle shop filtering
     if (filters.selectedShopName.length > 0) {
       const shopIds = filters.selectedShopName
         .map(s => Number(s))
@@ -408,18 +399,15 @@ export function HomePage() {
   }
 
   if (mvName === MVS.SIZE_FILTERED || mvName === MVS.DEFAULT || mvName === MVS.ON_SALE) {
-    // These MVs can handle size filtering
     if (filters.selectedSizeGroups.length > 0) {
       query = query.overlaps('size_groups', filters.selectedSizeGroups);
     }
   }
 
-  // Apply on_sale filter (ON_SALE MV already has this, but check for others)
   if (filters.onSaleOnly && mvName !== MVS.ON_SALE) {
     query = query.eq('on_sale', true);
   }
 
-  // Use Supabase websearch on FTS
   if (filters.searchQuery) {
     const cleanSearch = filters.searchQuery.trim();
     
@@ -431,7 +419,6 @@ export function HomePage() {
     }
   }
 
-  // Apply sorting - use indexes available in each MV
   if (sortOrder === 'discount_desc') {
     query = query.order('max_discount_percentage', { ascending: false, nullsFirst: false });
   } else if (sortOrder === 'asc') {
@@ -440,7 +427,6 @@ export function HomePage() {
     query = query.order('min_price', { ascending: false });
   }
   
-  // Always sort by created_at for deterministic ordering
   query = query.order('created_at', { ascending: false });
 
   return query.range(page * ITEMS_PER_PAGE, (page + 1) * ITEMS_PER_PAGE - 1);
@@ -478,6 +464,7 @@ export function HomePage() {
 
           const myRequestId = ++requestIdRef.current;
 
+          isFetchingRef.current = true;
           setLoading(true);
           
           try {
@@ -513,25 +500,18 @@ export function HomePage() {
                 }
               }
               
-              setHasMore((page + 1) * ITEMS_PER_PAGE < (cached.count || 0));
+              setHasMore((cached.data?.length || 0) >= ITEMS_PER_PAGE || (page + 1) * ITEMS_PER_PAGE < (cached.count || 0));
               setInitialLoad(false);
               setError(null);
               setLoading(false);
+              isFetchingRef.current = false;
               resolve();
               return;
             }
 
             const supabase = getSupabase();
             const mvName = getOptimizedMV(filters);
-            
-            console.log(`Using MV: ${mvName} for filters:`, {
-              shops: filters.selectedShopName.length,
-              sizes: filters.selectedSizeGroups.length,
-              onSale: filters.onSaleOnly,
-              search: filters.searchQuery ? 'yes' : 'no'
-            });
 
-            // Build optimized query
             const query = buildOptimizedQuery(supabase, mvName, filters, sortOrder, page);
             query.abortSignal(controller.signal);
 
@@ -540,16 +520,15 @@ export function HomePage() {
             clearTimeout(timeoutId);
 
             if (currentRequestKeyRef.current !== requestKey) {
+              isFetchingRef.current = false;
               resolve();
               return;
             }
 
             if (error) {
               if ((error.message.includes('timeout') || error.code === '57014') && attempt < 2) {
-                console.warn(`Query timeout on attempt ${attempt}, retrying with DEFAULT MV...`);
                 await new Promise(res => setTimeout(res, 500 * attempt));
                 
-                // Fallback to DEFAULT MV on timeout
                 const fallbackQuery = buildOptimizedQuery(supabase, MVS.DEFAULT, filters, sortOrder, page);
                 const { data: fallbackData, error: fallbackError, count: fallbackCount } = await fallbackQuery;
                 
@@ -571,6 +550,7 @@ export function HomePage() {
                 setInitialLoad(false);
                 setError(null);
                 setLoading(false);
+                isFetchingRef.current = false;
                 resolve();
                 return;
               }
@@ -579,7 +559,7 @@ export function HomePage() {
 
             const totalItems = count || 0;
             const loadedItems = page * ITEMS_PER_PAGE + (data?.length || 0);
-            const moreAvailable = loadedItems < totalItems;
+            const moreAvailable = (data?.length || 0) >= ITEMS_PER_PAGE || loadedItems < totalItems;
               
             startTransition(() => {
               setProducts(prev => 
@@ -619,6 +599,7 @@ export function HomePage() {
               count: totalItems 
             };
 
+            isFetchingRef.current = false;
             resolve();
 
           } catch (error: unknown) {
@@ -629,6 +610,7 @@ export function HomePage() {
               
               if (attempt < 2) {
                 await new Promise(resolve => setTimeout(resolve, 500 * attempt));
+                isFetchingRef.current = false;
                 return fetchFilteredProducts(filters, page, sortOrder, attempt + 1);
               }
 
@@ -639,11 +621,13 @@ export function HomePage() {
                 setProducts([]);
               });
               setHasMore(false);
+              isFetchingRef.current = false;
               reject(error);
             }
           } finally {
             if (!controller.signal.aborted) {
               setLoading(false);
+              isFetchingRef.current = false;
             }
             pendingRequestsRef.current.delete(requestKey);
           }
@@ -656,7 +640,6 @@ export function HomePage() {
     [fetchBatchPricingFor, scheduleIdle, mergeUniqueProducts, enqueueRequest, getOptimizedMV, buildOptimizedQuery]
   );
 
-  // Update shop names to use caching
   useEffect(() => {
     async function fetchInitialData() {
       try {
@@ -706,7 +689,6 @@ export function HomePage() {
     fetchInitialData();
   }, [fetchWithCache]);
 
-  // After we load the shop list, reconcile any saved shop names (legacy) to their IDs.
   useEffect(() => {
     if (!shopList || shopList.length === 0) return;
 
@@ -723,7 +705,6 @@ export function HomePage() {
     else setSelectedShopName([]);
   }, [shopList, selectedShopName]);
 
-  // Commit vs UI (pending) filters
   const [committedFilters, setCommittedFilters] = useState<FilterOptions>(() => ({
     selectedShopName,
     selectedSizeGroups,
@@ -733,18 +714,15 @@ export function HomePage() {
     selectedPriceRange,
   }));
 
-  // Debounced commit
   const commitFiltersDebounced = useRef(createDebounced((filters: FilterOptions) => {
     setCommittedFilters(filters);
   }, 500)).current;
 
-  // Create stable keys for complex dependencies
   const selectedShopNameKey = useMemo(() => JSON.stringify(selectedShopName), [selectedShopName]);
   const selectedSizeGroupsKey = useMemo(() => JSON.stringify(selectedSizeGroups), [selectedSizeGroups]);
   const selectedPriceRangeKey = useMemo(() => JSON.stringify(selectedPriceRange), [selectedPriceRange]);
   const committedFiltersKey = useMemo(() => JSON.stringify(committedFilters), [committedFilters]);
   
-  // Filter commitment logic
   useEffect(() => {
     const pendingFilters = {
       selectedShopName: JSON.parse(selectedShopNameKey),
@@ -781,19 +759,30 @@ export function HomePage() {
     commitFiltersDebounced,
   ]);
 
+  // Reset page when filters or sort order change
   useEffect(() => {
     setPage(0);
+    setProducts([]);
+    setInitialLoad(true);
   }, [committedFiltersKey, sortOrder]);
 
-  // Fetch whenever committed filters, sortOrder or page change.
+  // Initial load effect
   useEffect(() => {
+    if (initialLoad) {
+      fetchFilteredProducts(committedFilters, 0, sortOrder).catch(err => {
+        if ((err as Error)?.name !== 'AbortError') {
+          console.error('Initial load error:', err);
+        }
+      });
+    }
+  }, [initialLoad, committedFilters, sortOrder, fetchFilteredProducts]);
+
+  // Fetch when page changes (for infinite scroll)
+  useEffect(() => {
+    if (page === 0) return;
+
     if (currentRequestRef.current) {
       currentRequestRef.current.abort();
-    }
-
-    if (page === 0) {
-      setProducts([]);
-      setInitialLoad(true);
     }
 
     fetchFilteredProducts(committedFilters, page, sortOrder).catch(err => {
@@ -801,9 +790,8 @@ export function HomePage() {
         console.error('Error:', err);
       }
     });
-  }, [committedFiltersKey, sortOrder, page, fetchFilteredProducts, committedFilters]);
+  }, [page, committedFiltersKey, sortOrder, fetchFilteredProducts, committedFilters]);
 
-  // Local storage effects
   useEffect(() => {
     localStorage.setItem('selectedShopName', JSON.stringify(selectedShopName));
   }, [selectedShopName]);
@@ -836,26 +824,40 @@ export function HomePage() {
     localStorage.setItem('selectedSizeGroups', JSON.stringify(selectedSizeGroups));
   }, [selectedSizeGroups]);
 
-  // Intersection observer for infinite scroll
   useEffect(() => {
-    const observer = new IntersectionObserver(
-      (entries) => {
-        if (entries[0]?.isIntersecting && !loading && hasMore && !initialLoad && products.length > 0) {
-          setPage(prev => prev + 1);
-        }
-      },
-      { rootMargin: '600px 0px' }
-    );
+    if (!loading) {
+      isFetchingRef.current = false;
+    }
+  }, [loading]);
 
-    const currentRef = observerRef.current;
-    if (currentRef) observer.observe(currentRef);
+  useEffect(() => {
+  const observer = new IntersectionObserver(
+    (entries) => {
+      const isIntersecting = entries[0]?.isIntersecting;
+      // CHANGE: Remove initialLoad check and simplify
+      const shouldLoadMore = isIntersecting && !loading && hasMore;
+      
+      if (shouldLoadMore) {
+        setPage(prev => prev + 1);
+      }
+    },
+    { rootMargin: '400px 0px', threshold: 0.01 }
+  );
 
-    return () => {
-      if (currentRef) observer.unobserve(currentRef);
+  const currentRef = observerRef.current;
+  if (currentRef) observer.observe(currentRef);
+
+  return () => {
+    if (currentRef) observer.unobserve(currentRef);
+  };
+}, [loading, hasMore]);
+
+  useEffect(() => {
+  return () => {
+    isFetchingRef.current = false;
     };
-  }, [loading, hasMore, initialLoad, products.length]);
+  }, []);
 
-  // Cleanup on unmount
   useEffect(() => {
     const capturedPendingRequests = pendingRequestsRef.current;
     const capturedInflightFetches = inflightFetchesRef.current;
@@ -1036,7 +1038,6 @@ export function HomePage() {
       
       <div className="mx-auto px-4 py-4 mt-4 sm:px-6 sm:py-6 lg:px-8 max-w-screen-2xl">
         <div className="flex flex-col lg:flex-row gap-4 sm:gap-6">
-          {/* Vertical Filters Sidebar - Mobile Toggle */}
           <div className="w-full lg:w-80 xl:w-96">
             <div className="lg:hidden mb-3">
               <button
@@ -1065,10 +1066,8 @@ export function HomePage() {
               </button>
             </div>
   
-            {/* Filters Container */}
             <div className={`${showFilters ? 'block' : 'hidden'} lg:block lg:sticky lg:top-24 lg:self-start`}>
               <div className="bg-white dark:bg-gray-800 rounded-lg shadow-sm p-3 space-y-4 sm:p-4 sm:space-y-6 max-h-[calc(100vh-6rem)] overflow-auto pr-2 lg:mr-4">
-                {/* Shop Filter */}
                 <div>
                   <h3 className="text-xs font-medium text-gray-700 dark:text-gray-300 mb-2 sm:text-sm sm:mb-3">
                     Shops {selectedShopName.length > 0 && (
@@ -1085,7 +1084,6 @@ export function HomePage() {
                   />
                 </div>
   
-                {/* Price Range Filter */}
                 <div>
                   <h3 className="text-xs font-medium text-gray-700 dark:text-gray-300 mb-2 sm:text-sm sm:mb-3">
                     Price Range
@@ -1126,14 +1124,11 @@ export function HomePage() {
                   </div>
                 </div>
 
-                {/* Size Groups Filter */}
                 <SizeGroupsFilter />
                 
-                {/* Combined Filters Section */}
                 <div>
                   <h3 className="text-xs font-medium text-gray-700 dark:text-gray-300 mb-2 sm:text-sm sm:mb-3">Filters</h3>
                   <div className="flex gap-4 sm:gap-6">
-                    {/* Availability */}
                     <div className="space-y-2">
                       <label className="flex items-center gap-2">
                         <input
@@ -1146,7 +1141,6 @@ export function HomePage() {
                       </label>
                     </div>
 
-                    {/* Deals */}
                     <div className="space-y-2">
                       <label className="flex items-center gap-2">
                         <input
@@ -1161,7 +1155,6 @@ export function HomePage() {
                   </div>
                 </div>
   
-                {/* Active Filters & Reset */}
                 {(selectedShopName.length > 0 || 
                   inStockOnly !== false || 
                   onSaleOnly !== false || 
@@ -1261,9 +1254,7 @@ export function HomePage() {
             </div>
           </div>
   
-          {/* Main Content Area */}
           <div className="flex-1 will-change-transform">
-            {/* Sort Dropdown */}
             <div className="mb-3 flex justify-end sm:mb-4">
               <div className="w-40 sm:w-48">
                 <label className="sr-only">Sort By</label>
@@ -1276,7 +1267,6 @@ export function HomePage() {
               </div>
             </div>
 
-            {/* Products List */}
             <div className="grid gap-x-3 gap-y-4 min-h-[400px] grid-cols-[repeat(auto-fit,minmax(220px,1fr))] sm:gap-x-4 sm:gap-y-6 xl:grid-cols-4 xl:gap-x-6">
               {error ? (
                 <div className="col-span-full text-center py-6">
