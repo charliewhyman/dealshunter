@@ -23,6 +23,7 @@ function rangesEqual(a: [number, number], b: [number, number]) {
 
 import { MultiSelectDropdown, SingleSelectDropdown } from '../components/Dropdowns';
 import TransformSlider from '../components/TransformSlider';
+import { SupabaseClient } from '@supabase/supabase-js';
 
 const ITEMS_PER_PAGE = 10;
 const INITIAL_RENDER_COUNT = 4;
@@ -368,76 +369,82 @@ export function HomePage() {
   }, []);
 
   const buildOptimizedQuery = useCallback((
-    supabase: ReturnType<typeof getSupabase>,
-    mvName: MaterializedView,
-    filters: FilterOptions,
-    sortOrder: 'asc' | 'desc' | 'discount_desc',
-    page: number
-  ) => {
-    let query = supabase
-      .from(mvName)
-      .select('id,title,shop_name,created_at,url,description,in_stock,min_price,max_discount_percentage,on_sale,size_groups,images,product_type,tags,vendor,handle', { 
-        count: 'exact',
-        head: false
-      })
-      .limit(ITEMS_PER_PAGE);
+  supabase: SupabaseClient,
+  mvName: MaterializedView,
+  filters: FilterOptions,
+  sortOrder: 'asc' | 'desc' | 'discount_desc',
+  page: number
+) => {
+  let query = supabase
+    .from(mvName)
+    .select('id,shop_id,title,shop_name,created_at,url,description,in_stock,min_price,max_discount_percentage,on_sale,size_groups,images,product_type,tags,vendor,handle', { 
+      count: 'exact',
+      head: false
+    })
+    .limit(ITEMS_PER_PAGE);
 
-    // Always apply price range (it's selective and well-indexed)
-    query = query
-      .gte('min_price', filters.selectedPriceRange[0])
-      .lte('min_price', filters.selectedPriceRange[1]);
+  // Always apply price range (it's selective and well-indexed)
+  query = query
+    .gte('min_price', filters.selectedPriceRange[0])
+    .lte('min_price', filters.selectedPriceRange[1]);
 
-    // Apply in_stock filter (all MVs already have in_stock = true, but check anyway)
-    if (filters.inStockOnly) {
-      query = query.eq('in_stock', true);
-    }
+  // Apply in_stock filter (all MVs already have in_stock = true, but check anyway)
+  if (filters.inStockOnly) {
+    query = query.eq('in_stock', true);
+  }
 
-    // Apply additional filters based on the MV
-    if (mvName === MVS.SHOP_FILTERED || mvName === MVS.DEFAULT || mvName === MVS.ON_SALE) {
-      // These MVs can handle shop filtering
-      if (filters.selectedShopName.length > 0) {
-        const shopIds = filters.selectedShopName
-          .map(s => Number(s))
-          .filter(n => !Number.isNaN(n) && n > 0);
-        
-        if (shopIds.length > 0) {
-          query = query.in('shop_id', shopIds);
-        }
+  // Apply additional filters based on the MV
+  if (mvName === MVS.SHOP_FILTERED || mvName === MVS.DEFAULT || mvName === MVS.ON_SALE) {
+    // These MVs can handle shop filtering
+    if (filters.selectedShopName.length > 0) {
+      const shopIds = filters.selectedShopName
+        .map(s => Number(s))
+        .filter(n => !Number.isNaN(n) && n > 0);
+      
+      if (shopIds.length > 0) {
+        query = query.in('shop_id', shopIds);
       }
     }
+  }
 
-    if (mvName === MVS.SIZE_FILTERED || mvName === MVS.DEFAULT || mvName === MVS.ON_SALE) {
-      // These MVs can handle size filtering
-      if (filters.selectedSizeGroups.length > 0) {
-        query = query.overlaps('size_groups', filters.selectedSizeGroups);
-      }
+  if (mvName === MVS.SIZE_FILTERED || mvName === MVS.DEFAULT || mvName === MVS.ON_SALE) {
+    // These MVs can handle size filtering
+    if (filters.selectedSizeGroups.length > 0) {
+      query = query.overlaps('size_groups', filters.selectedSizeGroups);
     }
+  }
 
-    // Apply on_sale filter (ON_SALE MV already has this, but check for others)
-    if (filters.onSaleOnly && mvName !== MVS.ON_SALE) {
-      query = query.eq('on_sale', true);
-    }
+  // Apply on_sale filter (ON_SALE MV already has this, but check for others)
+  if (filters.onSaleOnly && mvName !== MVS.ON_SALE) {
+    query = query.eq('on_sale', true);
+  }
 
-    // Text search - use ILIKE for better performance with MVs
-    if (filters.searchQuery) {
-      query = query.or(`title.ilike.%${filters.searchQuery}%,description.ilike.%${filters.searchQuery}%,product_type.ilike.%${filters.searchQuery}%`);
-    }
-
-    // Apply sorting - use indexes available in each MV
-    if (sortOrder === 'discount_desc') {
-      // Postgrest `order` accepts `nullsFirst` (boolean) rather than `nullsLast`
-      query = query.order('max_discount_percentage', { ascending: false, nullsFirst: false });
-    } else if (sortOrder === 'asc') {
-      query = query.order('min_price', { ascending: true });
-    } else {
-      query = query.order('min_price', { ascending: false });
-    }
+  // Use Supabase websearch on FTS
+  if (filters.searchQuery) {
+    const cleanSearch = filters.searchQuery.trim();
     
-    // Always sort by created_at for deterministic ordering
-    query = query.order('created_at', { ascending: false });
+    if (cleanSearch) {
+      query = query.textSearch('fts', cleanSearch, {
+        type: 'websearch',
+        config: 'english'
+      });
+    }
+  }
 
-    return query.range(page * ITEMS_PER_PAGE, (page + 1) * ITEMS_PER_PAGE - 1);
-  }, []);
+  // Apply sorting - use indexes available in each MV
+  if (sortOrder === 'discount_desc') {
+    query = query.order('max_discount_percentage', { ascending: false, nullsFirst: false });
+  } else if (sortOrder === 'asc') {
+    query = query.order('min_price', { ascending: true });
+  } else {
+    query = query.order('min_price', { ascending: false });
+  }
+  
+  // Always sort by created_at for deterministic ordering
+  query = query.order('created_at', { ascending: false });
+
+  return query.range(page * ITEMS_PER_PAGE, (page + 1) * ITEMS_PER_PAGE - 1);
+}, []);
 
   const fetchFilteredProducts = useCallback(
     async (
@@ -583,7 +590,8 @@ export function HomePage() {
             });
             
             if (data && data.length > 0) {
-              const ids = data.map(p => p.id).filter(Boolean);
+              const dataArray = (data as ProductWithDetails[]) || [];
+              const ids = dataArray.map((p: ProductWithDetails) => p.id).filter(Boolean);
               const idsToFetch = page === 0 ? ids.slice(0, 12) : ids;
               if (idsToFetch.length > 0) {
                 const lcpIds = idsToFetch.slice(0, LCP_PRELOAD_COUNT);
