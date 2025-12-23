@@ -1204,7 +1204,7 @@ export function HomePage() {
 
   const handleClearAllFilters = () => {
     setSelectedShopName([]);
-    setInStockOnly(true);
+    setInStockOnly(false);
     setOnSaleOnly(false);
     setSelectedSizeGroups([]);
     setSelectedPriceRange([...PRICE_RANGE]);
