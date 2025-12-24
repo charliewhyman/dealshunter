@@ -239,7 +239,8 @@ export function HomePage() {
   const requestQueueRef = useRef<Array<() => Promise<void>>>([]);
   const isProcessingRef = useRef(false);
   const currentRequestRef = useRef<AbortController | null>(null);
-  const prefetchCacheRef = useRef<Record<number, { key: string; data: ProductWithDetails[]; count: number }>>({});
+  // key is a stringified requestKey: `${JSON.stringify(filters)}-${page}-${sortOrder}`
+  const prefetchCacheRef = useRef<Record<string, { key: string; data: ProductWithDetails[]; count: number | null }>>({});
   
   const filterCacheRef = useRef<Map<string, { data: unknown[]; timestamp: number }>>(new Map());
   const inflightFetchesRef = useRef<Map<string, Promise<unknown>>>(new Map());
@@ -440,7 +441,51 @@ export function HomePage() {
     ) => {
       const TIMEOUT_MS = 10000;
       const requestKey = `${JSON.stringify(filters)}-${page}-${sortOrder}`;
-      
+
+      // FAST PATH: if we prefetched this page, use it immediately for instant append
+      const cached = prefetchCacheRef.current[requestKey];
+      if (cached) {
+        startTransition(() => {
+          setProducts(prev => (page === 0 ? cached.data : mergeUniqueProducts(prev, cached.data)));
+          const loadedItemsCount = (page + 1) * ITEMS_PER_PAGE;
+          if (cached.count == null || cached.data.length === 0) {
+            setHasMore(false);
+          } else {
+            setHasMore(loadedItemsCount < cached.count);
+          }
+        });
+
+        setInitialLoad(false);
+        setError(null);
+
+        // Ensure we release the observer lock and fetching flag
+        setLoading(false);
+        isFetchingRef.current = false;
+        observerLockRef.current = false;
+
+        // Background prefetch next page and pricing
+        (async () => {
+          try {
+            const nextKey = `${JSON.stringify(filters)}-${page + 1}-${sortOrder}`;
+            if (!prefetchCacheRef.current[nextKey]) {
+              const supabase = getSupabase();
+              const mvName = getOptimizedMV(filters);
+              const nextQuery = buildOptimizedQuery(supabase, mvName, filters, sortOrder, page + 1);
+              const { data: nextData, error: nextError, count: nextCount } = await nextQuery;
+              if (!nextError && Array.isArray(nextData)) {
+                prefetchCacheRef.current[nextKey] = { key: nextKey, data: nextData as ProductWithDetails[], count: nextCount as number | null };
+                const ids = (nextData as ProductWithDetails[]).map(p => p.id).filter(Boolean);
+                if (ids.length) scheduleIdle(() => fetchBatchPricingFor(ids));
+              }
+            }
+          } catch {
+            /* ignore prefetch failures */
+          }
+        })();
+
+        return;
+      }
+
       // Prevent duplicate triggers for the exact same page/filter combo
       if (pendingRequestsRef.current.has(requestKey)) return;
 
@@ -483,7 +528,33 @@ export function HomePage() {
             }
 
             const newData = (data as unknown as ProductWithDetails[]) || [];
-            
+
+            // Cache this page for fast subsequent navigation/appends
+            try {
+              prefetchCacheRef.current[requestKey] = { key: requestKey, data: newData, count: count as number | null };
+            } catch (e) {
+              void e;
+              /* ignore */
+            }
+
+            // PREFETCH next page in background + pricing
+            (async () => {
+              try {
+                const nextKey = `${JSON.stringify(filters)}-${page + 1}-${sortOrder}`;
+                if (!prefetchCacheRef.current[nextKey]) {
+                  const nextQuery = buildOptimizedQuery(getSupabase(), mvName, filters, sortOrder, page + 1);
+                  const { data: nextData, error: nextError, count: nextCount } = await nextQuery;
+                  if (!nextError && Array.isArray(nextData)) {
+                    prefetchCacheRef.current[nextKey] = { key: nextKey, data: nextData as ProductWithDetails[], count: nextCount as number | null };
+                    const nextIds = (nextData as ProductWithDetails[]).map(p => p.id).filter(Boolean);
+                    if (nextIds.length) scheduleIdle(() => fetchBatchPricingFor(nextIds));
+                  }
+                }
+              } catch {
+                /* ignore prefetch failures */
+              }
+            })();
+
             // 3. Update State
             startTransition(() => {
               setProducts(prev => (page === 0 ? newData : mergeUniqueProducts(prev, newData)));
