@@ -12,6 +12,7 @@ interface MultiSelectDropdownProps {
   selected: string[];
   onChange: (selected: string[]) => void;
   placeholder?: string;
+  isLoading?: boolean;
   label?: string;
 }
 
@@ -28,6 +29,7 @@ const MultiSelectDropdown: React.FC<MultiSelectDropdownProps> = ({
   selected, 
   onChange, 
   placeholder = "Select options",
+  isLoading = false,
 }) => {
   const [isOpen, setIsOpen] = useState<boolean>(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
@@ -119,13 +121,19 @@ const MultiSelectDropdown: React.FC<MultiSelectDropdownProps> = ({
             selected.map((item) => {
               // find label for selected value from options
               const opt = options.find(o => (typeof o === 'string' ? o === item : o.value === item));
-              const label = typeof opt === 'string' ? opt : opt ? opt.label : item;
+              const labelNode: React.ReactNode = typeof opt === 'string' ? opt : opt ? opt.label : (typeof (item) === 'string' ? item : String(item));
+
+              // If options are still loading and we don't have a label, show a neutral loading label
+              const displayLabel = (!opt && (typeof (labelNode) === 'string') && labelNode === String(item) && isLoading)
+                ? 'Loading…'
+                : labelNode;
+
               return (
                 <span
                   key={item}
                   className="inline-flex items-center gap-1 px-2 py-1 bg-gray-100 dark:bg-gray-700 text-gray-800 dark:text-gray-200 text-xs rounded-md"
                 >
-                  {label}
+                  {displayLabel}
                   <button
                     onClick={(e) => {
                       e.stopPropagation();

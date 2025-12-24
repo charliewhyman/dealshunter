@@ -1134,6 +1134,7 @@ export function HomePage() {
                     selected={selectedShopName}
                     onChange={setSelectedShopName}
                     placeholder="All shops"
+                    isLoading={shopOptions.length === 0 && selectedShopName.length > 0}
                   />
                 </div>
   
