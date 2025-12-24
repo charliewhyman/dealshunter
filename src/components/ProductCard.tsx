@@ -50,9 +50,9 @@ function ProductCardComponent({ product, pricing, isLcp }: ProductCardProps) {
     return (url?: string) => {
       if (!url) return { src: undefined as string | undefined, srcSet: undefined as string | undefined, webpSrcSet: undefined as string | undefined };
       try {
-        // CRITICAL: Use smaller sizes optimized for card rendering
-        // Card renders ~316px on desktop; target 1x, 1.5x, and 2x DPR
-        const sizes = [316, 474, 632];
+        // CRITICAL: Use sizes optimized for mobile-first card rendering
+        // Target rendered widths around ~220px on mobile and provide DPR multiples
+        const sizes = [220, 440, 880];
         const parsed = new URL(url);
         const base = parsed.origin + parsed.pathname;
         const originalParams = parsed.searchParams;
@@ -74,9 +74,9 @@ function ProductCardComponent({ product, pricing, isLcp }: ProductCardProps) {
           })
           .join(', ');
 
-        // CRITICAL: Use card width (316px) as fallback, not 2x size
+        // CRITICAL: Use compact card width (220px) as fallback for mobile
         const fallbackParams = new URLSearchParams(originalParams.toString());
-        fallbackParams.set('width', String(316));
+        fallbackParams.set('width', String(220));
         const src = `${base}?${fallbackParams.toString()}`;
 
         return { src, srcSet, webpSrcSet };
@@ -248,7 +248,7 @@ function ProductCardComponent({ product, pricing, isLcp }: ProductCardProps) {
       )}
 
       {/* Image Container */}
-      <div className="relative w-full pt-[100%] sm:pt-[70%] overflow-hidden">
+      <div className="relative w-full pt-[56%] sm:pt-[70%] overflow-hidden">
         {productImage ? (
           <picture>
             {/* CRITICAL: WebP first for best compression */}
@@ -298,14 +298,14 @@ function ProductCardComponent({ product, pricing, isLcp }: ProductCardProps) {
       </div>
 
       {/* Product Info */}
-      <div className="p-2 sm:p-3 flex flex-col flex-grow">
+      <div className="p-1.5 sm:p-3 flex flex-col flex-grow min-h-0">
         {/* Shop Name */}
         <p className="text-xs text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-1">
           {product.shop_name}
         </p>
 
         {/* Title and External Link */}
-        <div className="flex items-start justify-between mb-1 sm:mb-2">
+          <div className="flex items-start justify-between mb-1 sm:mb-2">
           <h3
             className={`text-sm font-medium text-gray-900 dark:text-gray-100 text-left line-clamp-2 ${
               !isAvailable ? 'line-through' : ''
@@ -321,14 +321,14 @@ function ProductCardComponent({ product, pricing, isLcp }: ProductCardProps) {
             onClick={(e) => e.stopPropagation()}
             title="View on original site"
           >
-            <AsyncLucideIcon name="ExternalLink" className="w-3 h-3 sm:w-4 sm:h-4" />
+            <AsyncLucideIcon name="ExternalLink" className="w-4 h-4 sm:w-5 sm:h-5" />
           </a>
         </div>
 
         {/* Price Information */}
         <div className="mt-auto">
           <div className="flex items-baseline gap-1">
-            <span className="text-base sm:text-lg font-bold text-gray-900 dark:text-gray-100">
+            <span className="text-base sm:text-lg font-bold text-gray-900 dark:text-gray-100 whitespace-nowrap overflow-hidden">
               ${offerPrice?.toFixed(2) ?? variantPrice?.toFixed(2) ?? product.min_price?.toFixed(2) ?? '0.00'}
             </span>
             {compareAtPrice && compareAtPrice > ((offerPrice ?? variantPrice) ?? 0) && (

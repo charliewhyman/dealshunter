@@ -1048,7 +1048,7 @@ export function HomePage() {
       <div 
         className="w-full bg-gray-100 dark:bg-gray-800 rounded-lg p-3 animate-pulse sm:p-4"
         style={{ 
-          minHeight: '320px',
+          minHeight: '260px',
           contain: 'layout size style'
         }}
       >
@@ -1071,7 +1071,7 @@ export function HomePage() {
             style={{ 
               contain: 'layout size style',
               contentVisibility: 'auto',
-              containIntrinsicSize: '320px'
+              containIntrinsicSize: '260px'
             }}
           >
             <ProductCardSkeleton />
@@ -1335,7 +1335,7 @@ export function HomePage() {
               <div 
                 className="grid gap-x-3 gap-y-4 grid-cols-[repeat(auto-fit,minmax(220px,1fr))] sm:gap-x-4 sm:gap-y-6 xl:grid-cols-4 xl:gap-x-6"
                 style={{
-                  gridAutoRows: 'minmax(320px, auto)'
+                  gridAutoRows: 'minmax(260px, auto)'
                 }}
               >
                 {error ? (
