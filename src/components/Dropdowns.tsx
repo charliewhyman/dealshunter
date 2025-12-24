@@ -21,6 +21,7 @@ interface SingleSelectDropdownProps {
   selected: string;
   onChange: (value: string) => void;
   placeholder?: string;
+  className?: string;
 }
 
 // Multi-select dropdown for shops and sizes
@@ -201,7 +202,8 @@ const SingleSelectDropdown: React.FC<SingleSelectDropdownProps> = ({
   options, 
   selected, 
   onChange, 
-  placeholder = "Select option" 
+  placeholder = "Select option",
+  className,
 }) => {
   const [isOpen, setIsOpen] = useState<boolean>(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
@@ -278,9 +280,12 @@ const SingleSelectDropdown: React.FC<SingleSelectDropdownProps> = ({
         onClick={(e) => e.preventDefault()}
         className="w-full min-h-[34px] px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 cursor-pointer flex items-center justify-between hover:border-gray-400 dark:hover:border-gray-500 transition-colors"
       >
-        <span className="text-gray-900 dark:text-gray-100 text-sm">
-          {selectedOption ? selectedOption.label : placeholder}
-        </span>
+        <div className="flex items-center gap-2 min-w-0 flex-1">
+          <AsyncLucideIcon name="ChevronsUpDown" className="h-4 w-4 text-gray-500 dark:text-gray-400" />
+          <span className={`text-gray-900 dark:text-gray-100 text-sm ${className || ''}`}>
+            {selectedOption ? selectedOption.label : placeholder}
+          </span>
+        </div>
         <AsyncLucideIcon
           name="ChevronDown"
           className={`h-4 w-4 text-gray-500 dark:text-gray-400 transition-transform ${

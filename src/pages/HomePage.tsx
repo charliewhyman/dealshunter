@@ -929,9 +929,9 @@ export function HomePage() {
   }, [commitFiltersDebounced, fetchPricingDebounced]);
 
   const sortOptions = [
-    { value: 'asc', label: 'Price: Low to High' },
-    { value: 'desc', label: 'Price: High to Low' },
-    { value: 'discount_desc', label: 'Discount: High to Low' },
+    { value: 'asc', label: '$ Low-High' },
+    { value: 'desc', label: '$ High-Low' },
+    { value: 'discount_desc', label: '% High-Low' },
   ];
 
   const shopOptions = shopList.map((s) => ({
@@ -1310,13 +1310,15 @@ export function HomePage() {
   
           <div className="flex-1 will-change-transform">
             <div className="mb-3 flex justify-end sm:mb-4">
-              <div className="w-40 sm:w-48">
+              <div className="w-40 sm:w-48 min-w-0">
                 <label className="sr-only">Sort By</label>
                 <SingleSelectDropdown
                   options={sortOptions}
                   selected={sortOrder}
                   onChange={handleSortChange}
                   placeholder="Featured"
+                  // truncate long option labels with ellipsis instead of overflowing
+                  className="truncate"
                 />
               </div>
             </div>
