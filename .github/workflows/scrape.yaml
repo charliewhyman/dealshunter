@@ -1,12 +1,27 @@
 name: Shopify Scraper
 on:
   schedule:
-    - cron: '0 */6 * * *'
+    - cron: '0 */6 * * *'  # Every 6 hours at minute 0
   workflow_dispatch:
+    inputs:
+      mode:
+        description: 'Run mode'
+        required: false
+        default: 'all'
+        type: choice
+        options:
+          - all
+          - scrape
+          - upload
+      shop_id:
+        description: 'Shop IDs (comma separated)'
+        required: false
+        type: string
 
 jobs:
   scrape:
     runs-on: ubuntu-latest
+    timeout-minutes: 60
     
     steps:
       - name: Checkout code
@@ -15,7 +30,7 @@ jobs:
       - name: Install uv
         uses: astral-sh/setup-uv@v3
         
-      - name: Set up Python
+      - name: Set up Python 3.11
         run: uv python install 3.11
         
       - name: Cache uv dependencies
@@ -24,7 +39,7 @@ jobs:
           path: |
             ~/.cache/uv
             .venv
-          key: ${{ runner.os }}-uv-${{ hashFiles('**/pyproject.toml', '**/requirements.txt') }}
+          key: ${{ runner.os }}-uv-${{ hashFiles('scraping/pyproject.toml', 'scraping/requirements.txt') }}
           restore-keys: |
             ${{ runner.os }}-uv-
             
@@ -33,11 +48,73 @@ jobs:
           cd scraping
           uv sync --frozen
           
-      - name: Run scraper
-        env:
-          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
-          SUPABASE_KEY: ${{ secrets.SUPABASE_PUBLISHABLE_KEY }}
-          ENVIRONMENT: production
+      - name: Create .env file
         run: |
           cd scraping
-          uv run python run.py --mode=all
+          cat > .env << EOF
+          SUPABASE_URL=${{ secrets.SUPABASE_URL }}
+          SUPABASE_PUBLISHABLE_KEY=${{ secrets.SUPABASE_PUBLISHABLE_KEY }}
+          ENVIRONMENT=production
+          EOF
+          
+          # Show file was created (safely)
+          echo "   Created .env file with:"
+          echo "   SUPABASE_URL: ***"
+          echo "   SUPABASE_PUBLISHABLE_KEY: ***"
+          echo "   ENVIRONMENT: production"
+          
+      - name: Verify environment variables
+        run: |
+          cd scraping
+          cat > check_env.py << 'EOF'
+          import os
+          from dotenv import load_dotenv
+          
+          load_dotenv()
+          
+          print("Checking environment variables:")
+          url = os.getenv('SUPABASE_URL')
+          key = os.getenv('SUPABASE_PUBLISHABLE_KEY')
+          
+          if url:
+              print(f"SUPABASE_URL is set (length: {len(url)})")
+          else:
+              print("SUPABASE_URL is NOT set")
+              
+          if key:
+              print(f"SUPABASE_PUBLISHABLE_KEY is set (length: {len(key)})")
+          else:
+              print("SUPABASE_PUBLISHABLE_KEY is NOT set")
+              
+          if url and key:
+              print("\nAll required environment variables are set!")
+          else:
+              print("\nMissing required environment variables")
+          EOF
+          
+          python check_env.py
+          
+      - name: Run scraper
+        run: |
+          cd scraping
+          
+          # Build command based on inputs
+          CMD="uv run python run.py --mode=${{ github.event.inputs.mode || 'all' }}"
+          
+          # Add shop_id if provided
+          if [ -n "${{ github.event.inputs.shop_id }}" ]; then
+            CMD="$CMD --shop-id='${{ github.event.inputs.shop_id }}'"
+          fi
+          
+          echo "Running command: $CMD"
+          eval $CMD
+          
+      - name: Upload results as artifact (optional)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: scrape-results
+          path: |
+            scraping/data/
+            scraping/*.log
+          retention-days: 7
