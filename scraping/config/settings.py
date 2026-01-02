@@ -30,6 +30,7 @@ SCRAPER_CONFIG = {
     'max_delay': 30.0,
     'retry_attempts': 3,
     'batch_size': 250,
+    'concurrent_variants': 5,
     'max_pages': {
         'collections': 10,
         'products': 50,

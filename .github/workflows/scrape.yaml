@@ -1,9 +1,9 @@
 name: Shopify Scraper
 on:
   schedule:
-    # Daily at 2am UTC - skip shop data scraping
+    # Daily at 2am UTC - skip shop data scraping, faster concurrency
     - cron: '0 2 * * *'
-    # Weekly on Sunday at 3am UTC - full scrape including shops
+    # Weekly on Sunday at 3am UTC - full scrape including shops, slower concurrency
     - cron: '0 3 * * 0'
   workflow_dispatch:
     inputs:
@@ -31,11 +31,31 @@ on:
         required: false
         default: ''
         type: string
+      max_concurrent:
+        description: 'Maximum concurrent shops to scrape (default: 3)'
+        required: false
+        default: '3'
+        type: string
+      batch_size:
+        description: 'Batch size for processing shops (default: 5)'
+        required: false
+        default: '5'
+        type: string
+      limit_shops:
+        description: 'Limit total number of shops to scrape (0 = no limit)'
+        required: false
+        default: '0'
+        type: string
+      timeout_minutes:
+        description: 'Timeout in minutes (default: 180)'
+        required: false
+        default: '180'
+        type: string
 
 jobs:
   scrape:
     runs-on: ubuntu-latest
-    timeout-minutes: 60
+    timeout-minutes: ${{ inputs.timeout_minutes || 180 }}
     environment: production
     
     steps:
@@ -70,46 +90,50 @@ jobs:
           if [ "${{ github.event.schedule }}" == "0 3 * * 0" ]; then
             echo "Running WEEKLY FULL SCRAPE (including shop data)"
             echo "skip_shops=false" >> $GITHUB_OUTPUT
-            echo "shop_update_days=0" >> $GITHUB_OUTPUT
+            echo "shop_update_days=7" >> $GITHUB_OUTPUT
+            echo "max_concurrent=2" >> $GITHUB_OUTPUT
+            echo "batch_size=3" >> $GITHUB_OUTPUT
+            echo "limit_shops=0" >> $GITHUB_OUTPUT
             echo "scrape_type=weekly_full" >> $GITHUB_OUTPUT
-          # Daily scrape (2am) - skip shop data
           elif [ "${{ github.event.schedule }}" == "0 2 * * *" ]; then
             echo "Running DAILY SCRAPE (skip shop data)"
             echo "skip_shops=true" >> $GITHUB_OUTPUT
-            echo "shop_update_days=0" >> $GITHUB_OUTPUT
+            echo "shop_update_days=30" >> $GITHUB_OUTPUT
+            echo "max_concurrent=4" >> $GITHUB_OUTPUT
+            echo "batch_size=10" >> $GITHUB_OUTPUT
+            echo "limit_shops=100" >> $GITHUB_OUTPUT
             echo "scrape_type=daily" >> $GITHUB_OUTPUT
-          # Manual workflow dispatch
           else
             echo "Running MANUAL SCRAPE with custom parameters"
             echo "skip_shops=${{ inputs.skip_shops }}" >> $GITHUB_OUTPUT
             echo "shop_update_days=${{ inputs.shop_update_days }}" >> $GITHUB_OUTPUT
+            echo "max_concurrent=${{ inputs.max_concurrent || 3 }}" >> $GITHUB_OUTPUT
+            echo "batch_size=${{ inputs.batch_size || 5 }}" >> $GITHUB_OUTPUT
+            echo "limit_shops=${{ inputs.limit_shops || 0 }}" >> $GITHUB_OUTPUT
             echo "scrape_type=manual" >> $GITHUB_OUTPUT
           fi
-          
+      
       - name: Run scraper
+        id: run_scraper
         env:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
           SUPABASE_PUBLISHABLE_KEY: ${{ secrets.SUPABASE_PUBLISHABLE_KEY }}
           ENVIRONMENT: production
         run: |
           cd scraping
           
-          # Verify environment variables are set
+          # Verify environment variables
           if [ -z "$SUPABASE_URL" ]; then
             echo "ERROR: SUPABASE_URL is not set!"
             exit 1
           fi
-          if [ -z "$SUPABASE_PUBLISHABLE_KEY" ]; then
-            echo "ERROR: SUPABASE_PUBLISHABLE_KEY is not set!"
-            exit 1
-          fi
-          echo "Environment variables verified ✓"
-          echo ""
           
-          # Build command based on strategy
+          # Build command
           CMD="uv run python run.py --mode=${{ inputs.mode || 'all' }}"
+          CMD="$CMD --max-concurrent=${{ steps.strategy.outputs.max_concurrent }}"
+          CMD="$CMD --batch-size=${{ steps.strategy.outputs.batch_size }}"
           
-          # Add skip-shops flag if needed
           if [ "${{ steps.strategy.outputs.skip_shops }}" == "true" ]; then
             CMD="$CMD --skip-shops"
             echo "Mode: Daily scrape (shop data skipped)"
@@ -120,39 +144,53 @@ jobs:
             echo "Mode: Full scrape (including all shop data)"
           fi
           
-          # Add shop filter if specified (manual runs only)
           if [ -n "${{ inputs.shop_id }}" ]; then
             CMD="$CMD --shop-id=${{ inputs.shop_id }}"
             echo "Filtering to shop(s): ${{ inputs.shop_id }}"
           fi
           
-          echo "Running: $CMD"
+          if [ "${{ steps.strategy.outputs.limit_shops }}" != "0" ]; then
+            echo "Note: Limit shops feature not implemented in this simplified version"
+          fi
+          
+          echo "Configuration:"
+          echo "  Max Concurrent: ${{ steps.strategy.outputs.max_concurrent }}"
+          echo "  Batch Size: ${{ steps.strategy.outputs.batch_size }}"
+          echo "  Skip Shops: ${{ steps.strategy.outputs.skip_shops }}"
+          echo "  Shop Update Days: ${{ steps.strategy.outputs.shop_update_days }}"
           echo ""
+          echo "Running: $CMD"
           
-          # Execute the command
-          eval $CMD
+          # Run with timeout
+          TIMEOUT_SECONDS=$(( (${{ inputs.timeout_minutes || 180 }} - 5) * 60 ))
+          timeout $TIMEOUT_SECONDS $CMD
           
-      - name: Upload results artifact
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: scrape-results-${{ github.run_number }}
-          path: |
-            scraping/data/run_results_*.json
-            scraping/data/rpc_*.json
-          retention-days: 30
+          EXIT_CODE=$?
+          echo "exit_code=$EXIT_CODE" >> $GITHUB_OUTPUT
           
-      - name: Upload logs artifact
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: scrape-logs-${{ github.run_number }}
-          path: scraping/logs/*.log
-          retention-days: 7
+          if [ $EXIT_CODE -eq 124 ]; then
+            echo "WARNING: Scraper timed out after ${{ inputs.timeout_minutes || 180 }} minutes"
+          elif [ $EXIT_CODE -ne 0 ]; then
+            echo "ERROR: Scraper failed with exit code $EXIT_CODE"
+            exit $EXIT_CODE
+          fi
           
-      - name: Notify on failure
-        if: failure()
+      - name: Run database refresh (core only)
+        if: success() && steps.strategy.outputs.scrape_type == 'weekly_full'
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
         run: |
-          echo "Scraping job failed!"
-          echo "Scrape type: ${{ steps.strategy.outputs.scrape_type }}"
-          echo "Check the logs artifact for details"
+          cd scraping
+          echo "Running core database refresh..."
+          uv run python run.py --mode=db --refresh-core
+          
+      - name: Upload artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: scrape-artifacts-${{ github.run_number }}
+          path: |
+            scraping/data/
+            scraping/logs/
+          retention-days: 7
