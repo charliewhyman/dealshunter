@@ -34,14 +34,11 @@ jobs:
           cd scraping
           uv sync --frozen
           
-      - name: Create .env file
-        run: |
-          cd scraping
-          echo "SUPABASE_URL=${{ secrets.SUPABASE_URL }}" > .env
-          echo "SUPABASE_PUBLISHABLE_KEY=${{ secrets.SUPABASE_PUBLISHABLE_KEY }}" >> .env
-          echo "ENVIRONMENT=production" >> .env
-          
       - name: Run scraper
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_PUBLISHABLE_KEY: ${{ secrets.SUPABASE_PUBLISHABLE_KEY }}
+          ENVIRONMENT: production
         run: |
           cd scraping
           uv run python run.py --mode=all
