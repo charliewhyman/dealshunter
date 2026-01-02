@@ -8,6 +8,7 @@ jobs:
   scrape:
     runs-on: ubuntu-latest
     timeout-minutes: 60
+    environment: production
     
     steps:
       - name: Checkout code
@@ -41,4 +42,15 @@ jobs:
           ENVIRONMENT: production
         run: |
           cd scraping
+          # Verify environment variables are set
+          if [ -z "$SUPABASE_URL" ]; then
+            echo "ERROR: SUPABASE_URL is not set!"
+            exit 1
+          fi
+          if [ -z "$SUPABASE_PUBLISHABLE_KEY" ]; then
+            echo "ERROR: SUPABASE_PUBLISHABLE_KEY is not set!"
+            exit 1
+          fi
+          echo "Environment variables verified ✓"
+          # Run with uv
           uv run python run.py --mode=all
