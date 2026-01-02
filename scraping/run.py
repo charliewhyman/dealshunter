@@ -8,7 +8,7 @@ import sys
 import json
 import argparse
 from pathlib import Path
-from datetime import datetime
+from datetime import datetime, timedelta
 
 # Add project root to path
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
@@ -26,6 +26,43 @@ def setup_environment():
     print(f"\n{'='*60}")
     print("SHOPIFY SCRAPER SYSTEM")
     print(f"{'='*60}")
+
+def filter_shops_needing_update(shops, days_threshold=7):
+    """Filter shops that haven't been scraped recently.
+    
+    Args:
+        shops: List of shop dictionaries
+        days_threshold: Only return shops older than this many days
+        
+    Returns:
+        List of shops that need updating
+    """
+    cutoff = datetime.now() - timedelta(days=days_threshold)
+    shops_to_update = []
+    
+    for shop in shops:
+        # Check various possible timestamp fields
+        last_scraped = (shop.get('last_scraped_at') or 
+                       shop.get('updated_at') or 
+                       shop.get('last_updated'))
+        
+        if not last_scraped:
+            # No timestamp found, needs scraping
+            shops_to_update.append(shop)
+        else:
+            try:
+                # Handle ISO format timestamps
+                last_dt = datetime.fromisoformat(last_scraped.replace('Z', '+00:00'))
+                if last_dt < cutoff:
+                    shops_to_update.append(shop)
+                else:
+                    shop_id = shop.get('id') or shop.get('url', 'unknown')
+                    print(f"  Skipping shop {shop_id} (last scraped: {last_scraped})")
+            except (ValueError, AttributeError):
+                # Invalid timestamp, include for scraping
+                shops_to_update.append(shop)
+    
+    return shops_to_update
 
 def run_scraping_only(args):
     """Run only scraping. Supports per-scraper flags in `args`.
@@ -63,7 +100,10 @@ def run_scraping_only(args):
     # If no specific scraper flags provided, run the full scraping pipeline
     flags = [getattr(args, 'scrape_shops', False), getattr(args, 'scrape_collections', False),
              getattr(args, 'scrape_products', False), getattr(args, 'scrape_collection_products', False)]
-    if not any(flags):
+    
+    skip_shops = getattr(args, 'skip_shops', False)
+    
+    if not any(flags) and not skip_shops:
         return orchestrator.run_scraping_pipeline(shops)
 
     results = {
@@ -74,20 +114,44 @@ def run_scraping_only(args):
 
     collection_results = {}
 
-    # Shops
-    if getattr(args, 'scrape_shops', False):
-        print("\nStep: Scraping shops...")
-        shop_results = orchestrator.shop_scraper.scrape_multiple(shops)
-        results['steps']['shops'] = {
-            'shops_scraped': len(shop_results),
-            'total_records': sum(len(data) for data in shop_results.values())
-        }
-        for shop_id, data in shop_results.items():
-            if data:
-                orchestrator.shop_scraper.save_results(shop_id, data, results['timestamp'])
+    # Shops - with smart update logic
+    should_scrape_shops = getattr(args, 'scrape_shops', False) or (not any(flags) and not skip_shops)
+    
+    if should_scrape_shops:
+        # Check if we should filter by last update time
+        shop_update_days = getattr(args, 'shop_update_days', None)
+        
+        if shop_update_days is not None and shop_update_days > 0:
+            print(f"\nFiltering shops: only scraping those older than {shop_update_days} days...")
+            shops_to_scrape = filter_shops_needing_update(shops, days_threshold=shop_update_days)
+            print(f"Found {len(shops_to_scrape)} shops needing update (out of {len(shops)} total)")
+        else:
+            shops_to_scrape = shops
+        
+        if shops_to_scrape:
+            print(f"\nStep: Scraping {len(shops_to_scrape)} shops...")
+            shop_results = orchestrator.shop_scraper.scrape_multiple(shops_to_scrape)
+            results['steps']['shops'] = {
+                'shops_scraped': len(shop_results),
+                'shops_skipped': len(shops) - len(shops_to_scrape),
+                'total_records': sum(len(data) for data in shop_results.values())
+            }
+            for shop_id, data in shop_results.items():
+                if data:
+                    orchestrator.shop_scraper.save_results(shop_id, data, results['timestamp'])
+        else:
+            print("\nStep: All shops recently updated, skipping shop scraping")
+            results['steps']['shops'] = {
+                'shops_scraped': 0,
+                'shops_skipped': len(shops),
+                'total_records': 0
+            }
 
     # Collections
-    if getattr(args, 'scrape_collections', False):
+    should_scrape_collections = (getattr(args, 'scrape_collections', False) or 
+                                 (not any(flags) and not skip_shops))
+    
+    if should_scrape_collections:
         print("\nStep: Scraping collections...")
         collection_results = orchestrator.collection_scraper.scrape_multiple(shops)
         results['steps']['collections'] = {
@@ -99,7 +163,10 @@ def run_scraping_only(args):
                 orchestrator.collection_scraper.save_results(shop_id, data, results['timestamp'])
 
     # Products
-    if getattr(args, 'scrape_products', False):
+    should_scrape_products = (getattr(args, 'scrape_products', False) or 
+                             (not any(flags) and not skip_shops))
+    
+    if should_scrape_products:
         print("\nStep: Scraping products...")
         product_results = orchestrator.product_scraper.scrape_multiple(shops)
         results['steps']['products'] = {
@@ -111,7 +178,10 @@ def run_scraping_only(args):
                 orchestrator.product_scraper.save_results(shop_id, data, results['timestamp'])
 
     # Collection -> Product mappings
-    if getattr(args, 'scrape_collection_products', False):
+    should_scrape_mappings = (getattr(args, 'scrape_collection_products', False) or 
+                             (not any(flags) and not skip_shops))
+    
+    if should_scrape_mappings:
         print("\nStep: Scraping collection->product mappings...")
 
         # Prefer using collections scraped in this run; otherwise load from processed collections files
@@ -219,10 +289,9 @@ def run_upload_only(args):
     return results
 
 def run_complete_pipeline(args):
-    """Run complete pipeline."""
+    """Run complete pipeline with smart shop updating."""
     print("\nRunning complete pipeline...")
     orchestrator = PipelineOrchestrator()
-    
     
     # Optionally load and filter shops when --shop-id is provided
     shops = None
@@ -243,10 +312,92 @@ def run_complete_pipeline(args):
             orchestrator.logger.error(f"No matching shops found for --shop-id={args.shop_id}")
             return {}
         shops = filtered
+    else:
+        shops = orchestrator.load_shops()
+
+    # Check smart shop scraping settings
+    skip_shops = getattr(args, 'skip_shops', False)
+    shop_update_days = getattr(args, 'shop_update_days', None)
+    
+    # Determine which shops to scrape
+    shops_to_scrape_for_shop_data = None
+    if not skip_shops:
+        if shop_update_days is not None and shop_update_days > 0:
+            print(f"\nFiltering shops: only scraping shop data for those older than {shop_update_days} days...")
+            shops_to_scrape_for_shop_data = filter_shops_needing_update(shops, days_threshold=shop_update_days)
+            print(f"Found {len(shops_to_scrape_for_shop_data)} shops needing update (out of {len(shops)} total)")
+        else:
+            shops_to_scrape_for_shop_data = shops
 
     # Run scraping pipeline
     print("\n=== Running Scraping Pipeline ===")
-    scrape_results = orchestrator.run_scraping_pipeline(shops=shops)
+    
+    if skip_shops:
+        print("Skipping shop data scraping (--skip-shops flag)")
+        print("Scraping products, collections, and mappings only...\n")
+    elif shops_to_scrape_for_shop_data:
+        print(f"Scraping shop data for {len(shops_to_scrape_for_shop_data)} shops")
+        print(f"Scraping products/collections for all {len(shops)} shops\n")
+    
+    # For now, we'll make multiple calls to handle selective shop scraping
+    scrape_results = {'timestamp': datetime.now().strftime('%Y%m%d_%H%M%S'), 'steps': {}}
+    
+    # Scrape shop data only for filtered shops
+    if not skip_shops and shops_to_scrape_for_shop_data:
+        print("Step 1: Scraping shop data...")
+        shop_scrape_result = orchestrator.shop_scraper.scrape_multiple(shops_to_scrape_for_shop_data)
+        scrape_results['steps']['shops'] = {
+            'shops_scraped': len(shop_scrape_result),
+            'shops_skipped': len(shops) - len(shops_to_scrape_for_shop_data),
+            'total_records': sum(len(data) for data in shop_scrape_result.values())
+        }
+        for shop_id, data in shop_scrape_result.items():
+            if data:
+                orchestrator.shop_scraper.save_results(shop_id, data, scrape_results['timestamp'])
+    elif not skip_shops:
+        scrape_results['steps']['shops'] = {
+            'shops_scraped': 0,
+            'shops_skipped': len(shops),
+            'total_records': 0
+        }
+    
+    # Always scrape collections, products, and mappings for all shops
+    print("\nStep 2: Scraping collections...")
+    collection_results = orchestrator.collection_scraper.scrape_multiple(shops)
+    scrape_results['steps']['collections'] = {
+        'shops_scraped': len(collection_results),
+        'total_records': sum(len(data) for data in collection_results.values())
+    }
+    for shop_id, data in collection_results.items():
+        if data:
+            orchestrator.collection_scraper.save_results(shop_id, data, scrape_results['timestamp'])
+    
+    print("\nStep 3: Scraping products...")
+    product_results = orchestrator.product_scraper.scrape_multiple(shops)
+    scrape_results['steps']['products'] = {
+        'shops_scraped': len(product_results),
+        'total_records': sum(len(data) for data in product_results.values())
+    }
+    for shop_id, data in product_results.items():
+        if data:
+            orchestrator.product_scraper.save_results(shop_id, data, scrape_results['timestamp'])
+    
+    print("\nStep 4: Scraping collection->product mappings...")
+    collections_for_mapping = {}
+    for shop_id, collections in collection_results.items():
+        collections_for_mapping[shop_id] = [
+            {'id': coll.get('id'), 'handle': coll.get('handle')}
+            for coll in collections
+        ]
+    orchestrator.collection_products_scraper.set_collections_data(collections_for_mapping)
+    mapping_results = orchestrator.collection_products_scraper.scrape_multiple(shops)
+    scrape_results['steps']['collection_products'] = {
+        'shops_scraped': len(mapping_results),
+        'total_records': sum(len(data) for data in mapping_results.values())
+    }
+    for shop_id, data in mapping_results.items():
+        if data:
+            orchestrator.collection_products_scraper.save_results(shop_id, data, scrape_results['timestamp'])
     
     # Run upload pipeline
     print("\n=== Running Upload Pipeline ===")
@@ -344,6 +495,13 @@ def main():
     parser.add_argument("--shops-file", type=str, 
                        default=str(settings.SHOP_URLS_FILE),
                        help="Path to shops JSON file")
+    
+    # Smart shop scraping options
+    parser.add_argument("--skip-shops", action="store_true",
+                       help="Skip scraping shop data (only scrape products/collections)")
+    parser.add_argument("--shop-update-days", type=int, default=None,
+                       help="Only re-scrape shops older than N days (e.g., 7 for weekly shop updates)")
+    
     # Per-scraper flags (used when --mode scrape)
     parser.add_argument("--scrape-shops", action="store_true",
                        help="Run only the shops scraper")
@@ -357,6 +515,7 @@ def main():
     # Optional shop filter (single id or comma-separated list). Matches shop `id` or `url`.
     parser.add_argument("--shop-id", type=str,
                        help="Comma-separated shop id(s) or shop url(s) to limit operations to specific shop(s)")
+    
     # Per-entity upload flags (used when --mode upload)
     parser.add_argument("--upload-shops", action="store_true",
                        help="Upload only shops to the target (skip other entities)")
