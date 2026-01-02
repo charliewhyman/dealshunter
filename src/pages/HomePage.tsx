@@ -337,7 +337,7 @@ export function HomePage() {
     selectedPriceRange: [number, number];
   }
 
-  // NEW: Build RPC parameters from filters
+  // Build RPC parameters from filters
   const buildRpcParams = useCallback((filters: FilterOptions, page: number, sortOrder: SortOrder) => {
     const shopIds = filters.selectedShopName
       .map(s => s.trim())
@@ -563,7 +563,7 @@ export function HomePage() {
     [fetchBatchPricingFor, scheduleIdle, mergeUniqueProducts, enqueueRequest, buildRpcParams]
   );
 
-  // NEW: Updated initial data fetching using views instead of MVs
+  // Updated initial data fetching using views instead of MVs
   useEffect(() => {
     async function fetchInitialData() {
       try {
