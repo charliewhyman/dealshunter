@@ -1,8 +1,36 @@
 name: Shopify Scraper
 on:
   schedule:
+    # Daily at 2am UTC - skip shop data scraping
     - cron: '0 2 * * *'
+    # Weekly on Sunday at 3am UTC - full scrape including shops
+    - cron: '0 3 * * 0'
   workflow_dispatch:
+    inputs:
+      mode:
+        description: 'Scraping mode'
+        required: false
+        default: 'all'
+        type: choice
+        options:
+          - all
+          - scrape
+          - upload
+      skip_shops:
+        description: 'Skip shop data scraping'
+        required: false
+        default: false
+        type: boolean
+      shop_update_days:
+        description: 'Only scrape shops older than N days (0 = scrape all)'
+        required: false
+        default: '0'
+        type: string
+      shop_id:
+        description: 'Specific shop ID(s) to scrape (comma-separated)'
+        required: false
+        default: ''
+        type: string
 
 jobs:
   scrape:
@@ -34,6 +62,29 @@ jobs:
         run: |
           cd scraping
           uv sync --frozen
+      
+      - name: Determine scraping strategy
+        id: strategy
+        run: |
+          # Determine if this is the weekly full scrape (Sunday 3am)
+          if [ "${{ github.event.schedule }}" == "0 3 * * 0" ]; then
+            echo "Running WEEKLY FULL SCRAPE (including shop data)"
+            echo "skip_shops=false" >> $GITHUB_OUTPUT
+            echo "shop_update_days=0" >> $GITHUB_OUTPUT
+            echo "scrape_type=weekly_full" >> $GITHUB_OUTPUT
+          # Daily scrape (2am) - skip shop data
+          elif [ "${{ github.event.schedule }}" == "0 2 * * *" ]; then
+            echo "Running DAILY SCRAPE (skip shop data)"
+            echo "skip_shops=true" >> $GITHUB_OUTPUT
+            echo "shop_update_days=0" >> $GITHUB_OUTPUT
+            echo "scrape_type=daily" >> $GITHUB_OUTPUT
+          # Manual workflow dispatch
+          else
+            echo "Running MANUAL SCRAPE with custom parameters"
+            echo "skip_shops=${{ inputs.skip_shops }}" >> $GITHUB_OUTPUT
+            echo "shop_update_days=${{ inputs.shop_update_days }}" >> $GITHUB_OUTPUT
+            echo "scrape_type=manual" >> $GITHUB_OUTPUT
+          fi
           
       - name: Run scraper
         env:
@@ -42,6 +93,7 @@ jobs:
           ENVIRONMENT: production
         run: |
           cd scraping
+          
           # Verify environment variables are set
           if [ -z "$SUPABASE_URL" ]; then
             echo "ERROR: SUPABASE_URL is not set!"
@@ -52,5 +104,55 @@ jobs:
             exit 1
           fi
           echo "Environment variables verified ✓"
-          # Run with uv
-          uv run python run.py --mode=all
+          echo ""
+          
+          # Build command based on strategy
+          CMD="uv run python run.py --mode=${{ inputs.mode || 'all' }}"
+          
+          # Add skip-shops flag if needed
+          if [ "${{ steps.strategy.outputs.skip_shops }}" == "true" ]; then
+            CMD="$CMD --skip-shops"
+            echo "Mode: Daily scrape (shop data skipped)"
+          elif [ "${{ steps.strategy.outputs.shop_update_days }}" != "0" ]; then
+            CMD="$CMD --shop-update-days=${{ steps.strategy.outputs.shop_update_days }}"
+            echo "Mode: Scraping shops older than ${{ steps.strategy.outputs.shop_update_days }} days"
+          else
+            echo "Mode: Full scrape (including all shop data)"
+          fi
+          
+          # Add shop filter if specified (manual runs only)
+          if [ -n "${{ inputs.shop_id }}" ]; then
+            CMD="$CMD --shop-id=${{ inputs.shop_id }}"
+            echo "Filtering to shop(s): ${{ inputs.shop_id }}"
+          fi
+          
+          echo "Running: $CMD"
+          echo ""
+          
+          # Execute the command
+          eval $CMD
+          
+      - name: Upload results artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: scrape-results-${{ github.run_number }}
+          path: |
+            scraping/data/run_results_*.json
+            scraping/data/rpc_*.json
+          retention-days: 30
+          
+      - name: Upload logs artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: scrape-logs-${{ github.run_number }}
+          path: scraping/logs/*.log
+          retention-days: 7
+          
+      - name: Notify on failure
+        if: failure()
+        run: |
+          echo "Scraping job failed!"
+          echo "Scrape type: ${{ steps.strategy.outputs.scrape_type }}"
+          echo "Check the logs artifact for details"
