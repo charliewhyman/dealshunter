@@ -1,74 +1,43 @@
 name: Shopify Scraper
 on:
   schedule:
-    # Every 6 hours at minute 0 (0,6,12,18 UTC)
     - cron: '0 */6 * * *'
-  
-  # Allow manual triggers
   workflow_dispatch:
-    inputs:
-      mode:
-        description: 'Run mode'
-        required: false
-        default: 'all'
-        type: choice
-        options:
-        - all
-        - scrape
-        - upload
-      shop_id:
-        description: 'Optional shop IDs (comma-separated)'
-        required: false
-        type: string
 
 jobs:
-  scrape-and-upload:
+  scrape:
     runs-on: ubuntu-latest
-    timeout-minutes: 30  # Prevent hanging
     
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
         
-      - name: Setup Python
-        uses: actions/setup-python@v5
+      - name: Install uv
+        uses: astral-sh/setup-uv@v3
+        
+      - name: Set up Python
+        run: uv python install 3.11
+        
+      - name: Cache uv dependencies
+        uses: actions/cache@v4
         with:
-          python-version: '3.11'
-          cache: 'pip'
-          
+          path: |
+            ~/.cache/uv
+            .venv
+          key: ${{ runner.os }}-uv-${{ hashFiles('**/pyproject.toml', '**/requirements.txt') }}
+          restore-keys: |
+            ${{ runner.os }}-uv-
+            
       - name: Install dependencies
         run: |
-          pip install -r requirements.txt
-          # Install any additional packages
-          pip install requests beautifulsoup4 selenium pandas
+          cd scraping
+          uv sync --frozen
           
-      - name: Create environment file
-        run: |
-          cat > .env << EOF
-          SUPABASE_URL=${{ secrets.SUPABASE_URL }}
-          SUPABASE_KEY=${{ secrets.SUPABASE_KEY }}
-          # Add other environment variables
-          EOF
-        
       - name: Run scraper
-        run: |
-          cd scraping  # Change to your scraping directory
-          python runner.py --mode=${{ github.event.inputs.mode || 'all' }} \
-            ${{ github.event.inputs.shop_id && format('--shop-id={0}', github.event.inputs.shop_id) || '' }}
-            
-      - name: Archive results (optional)
-        if: always()
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
+          ENVIRONMENT: production
         run: |
           cd scraping
-          # Create archive of results
-          tar -czf ../scrape_results_$(date +%Y%m%d_%H%M%S).tar.gz data/
-          
-      - name: Upload artifacts (optional)
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: scrape-results
-          path: |
-            scraping/data/
-            scrape_results_*.tar.gz
-          retention-days: 7
+          uv run python runner.py --mode=all
