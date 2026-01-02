@@ -47,6 +47,17 @@ jobs:
         run: |
           cd scraping
           uv sync --frozen
+
+      - name: Install python-dotenv if needed
+        run: |
+          cd scraping
+          # Check if dotenv is already in requirements
+          if ! uv pip list | grep -q python-dotenv; then
+            echo "Installing python-dotenv..."
+            uv pip install python-dotenv
+          else
+            echo "python-dotenv already installed"
+          fi
           
       - name: Create .env file
         run: |
