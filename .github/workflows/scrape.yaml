@@ -7,31 +7,41 @@ on:
 jobs:
   scrape:
     runs-on: ubuntu-latest
+    timeout-minutes: 60
     
     steps:
-      - uses: actions/checkout@v4
-      
+      - name: Checkout code
+        uses: actions/checkout@v4
+        
+      - name: Install uv
+        uses: astral-sh/setup-uv@v3
+        
       - name: Set up Python
-        uses: actions/setup-python@v5
+        run: uv python install 3.11
+        
+      - name: Cache uv dependencies
+        uses: actions/cache@v4
         with:
-          python-version: '3.11'
-          
+          path: |
+            ~/.cache/uv
+            .venv
+          key: ${{ runner.os }}-uv-${{ hashFiles('scraping/uv.lock', 'scraping/pyproject.toml') }}
+          restore-keys: |
+            ${{ runner.os }}-uv-
+            
       - name: Install dependencies
         run: |
           cd scraping
-          pip install -r requirements.txt
+          uv sync --frozen
           
       - name: Create .env file
-        env:
-          SB_URL: ${{ secrets.SUPABASE_URL }}
-          SB_KEY: ${{ secrets.SUPABASE_PUBLISHABLE_KEY }}
         run: |
           cd scraping
-          echo "SUPABASE_URL=$SB_URL" > .env
-          echo "SUPABASE_PUBLISHABLE_KEY=$SB_KEY" >> .env
-          cat .env
+          echo "SUPABASE_URL=${{ secrets.SUPABASE_URL }}" > .env
+          echo "SUPABASE_PUBLISHABLE_KEY=${{ secrets.SUPABASE_PUBLISHABLE_KEY }}" >> .env
+          echo "ENVIRONMENT=production" >> .env
           
       - name: Run scraper
         run: |
           cd scraping
-          python run.py --mode=all
+          uv run python run.py --mode=all
