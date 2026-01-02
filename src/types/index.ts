@@ -59,32 +59,7 @@ export interface Product {
   offers?: ProductOffer[];
 }
 
-// Supabase view response type
-export interface ProductFromView {
-  id: string;
-  title: string;
-  shop_id: string;
-  shop_name: string;
-  created_at: string;
-  url: string;
-  description: string;
-  updated_at_external: string;
-  in_stock: boolean;
-  min_price: number;
-  max_discount_percentage: number | null;
-  on_sale: boolean;
-}
-
-// Helper function to convert view response to Product
-export function toProduct(viewProduct: ProductFromView): Product {
-  return {
-    ...viewProduct,
-    id: parseInt(viewProduct.id),
-    variants: [],
-    offers: []
-  };
-}
-
+// Supabase
 
 export type Json =
   | string
@@ -482,20 +457,6 @@ export type Database = {
             foreignKeyName: "products_enriched_data_product_id_fkey"
             columns: ["product_id"]
             isOneToOne: true
-            referencedRelation: "products_active_listings_mv"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "products_enriched_data_product_id_fkey"
-            columns: ["product_id"]
-            isOneToOne: true
-            referencedRelation: "products_with_details"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "products_enriched_data_product_id_fkey"
-            columns: ["product_id"]
-            isOneToOne: true
             referencedRelation: "products_with_details_core"
             referencedColumns: ["id"]
           },
@@ -643,97 +604,43 @@ export type Database = {
         Row: {
           available: boolean | null
           compare_at_price: number | null
-          created_at: string | null
-          created_at_external: string | null
           discount_percentage: number | null
-          grams: number | null
           id: number
-          inventory_quantity: number | null
-          is_price_lower: boolean | null
-          last_modified: string
-          last_size_group_update: string | null
-          last_updated: string
-          option1: string | null
-          option2: string | null
-          option3: string | null
-          position: number | null
           price: number | null
           product_id: number | null
-          requires_shipping: boolean | null
-          size_group: string | null
-          sku: string | null
-          taxable: boolean | null
           title: string | null
           updated_at: string | null
-          updated_at_external: string | null
-          variant_type: string | null
         }
         Insert: {
           available?: boolean | null
           compare_at_price?: number | null
-          created_at?: string | null
-          created_at_external?: string | null
           discount_percentage?: number | null
-          grams?: number | null
           id: number
-          inventory_quantity?: number | null
-          is_price_lower?: boolean | null
-          last_modified?: string
-          last_size_group_update?: string | null
-          last_updated?: string
-          option1?: string | null
-          option2?: string | null
-          option3?: string | null
-          position?: number | null
           price?: number | null
           product_id?: number | null
-          requires_shipping?: boolean | null
-          size_group?: string | null
-          sku?: string | null
-          taxable?: boolean | null
           title?: string | null
           updated_at?: string | null
-          updated_at_external?: string | null
-          variant_type?: string | null
         }
         Update: {
           available?: boolean | null
           compare_at_price?: number | null
-          created_at?: string | null
-          created_at_external?: string | null
           discount_percentage?: number | null
-          grams?: number | null
           id?: number
-          inventory_quantity?: number | null
-          is_price_lower?: boolean | null
-          last_modified?: string
-          last_size_group_update?: string | null
-          last_updated?: string
-          option1?: string | null
-          option2?: string | null
-          option3?: string | null
-          position?: number | null
           price?: number | null
           product_id?: number | null
-          requires_shipping?: boolean | null
-          size_group?: string | null
-          sku?: string | null
-          taxable?: boolean | null
           title?: string | null
           updated_at?: string | null
-          updated_at_external?: string | null
-          variant_type?: string | null
         }
         Relationships: [
           {
-            foreignKeyName: "variants_product_id_fkey"
+            foreignKeyName: "variants_optimized_product_id_fkey"
             columns: ["product_id"]
             isOneToOne: false
             referencedRelation: "product_min_prices"
             referencedColumns: ["id"]
           },
           {
-            foreignKeyName: "variants_product_id_fkey"
+            foreignKeyName: "variants_optimized_product_id_fkey"
             columns: ["product_id"]
             isOneToOne: false
             referencedRelation: "products"
@@ -743,16 +650,18 @@ export type Database = {
       }
     }
     Views: {
-      distinct_shops_mv: {
+      distinct_shops: {
         Row: {
           shop_id: number | null
           shop_name: string | null
         }
         Relationships: []
       }
-      distinct_size_groups_mv: {
+      distinct_size_groups: {
         Row: {
           size_group: string | null
+          sort_order_1: number | null
+          sort_order_2: number | null
         }
         Relationships: []
       }
@@ -772,57 +681,6 @@ export type Database = {
         Row: {
           id: number | null
           min_price: number | null
-        }
-        Relationships: []
-      }
-      products_active_listings_mv: {
-        Row: {
-          created_at: string | null
-          description: string | null
-          handle: string | null
-          id: number | null
-          images: Json | null
-          in_stock: boolean | null
-          max_discount_percentage: number | null
-          min_price: number | null
-          on_sale: boolean | null
-          product_type: string | null
-          shop_id: number | null
-          shop_name: string | null
-          size_groups: string[] | null
-          tags: string[] | null
-          title: string | null
-          url: string | null
-          vendor: string | null
-        }
-        Relationships: []
-      }
-      products_with_details: {
-        Row: {
-          categories: string[] | null
-          created_at: string | null
-          description: string | null
-          fts: unknown
-          handle: string | null
-          id: number | null
-          images: Json | null
-          in_stock: boolean | null
-          last_modified: string | null
-          last_updated: string | null
-          max_discount_percentage: number | null
-          min_price: number | null
-          on_sale: boolean | null
-          product_type: string | null
-          published_at_external: string | null
-          shop_id: number | null
-          shop_name: string | null
-          size_groups: string[] | null
-          tags: string[] | null
-          title: string | null
-          updated_at: string | null
-          updated_at_external: string | null
-          url: string | null
-          vendor: string | null
         }
         Relationships: []
       }
@@ -856,30 +714,42 @@ export type Database = {
       }
       get_filtered_products: {
         Args: {
-          p_in_stock?: boolean
+          p_estimate_total?: boolean
+          p_in_stock_only?: boolean
           p_limit?: number
           p_max_price?: number
           p_min_price?: number
           p_offset?: number
-          p_on_sale?: boolean
+          p_on_sale_only?: boolean
+          p_search_query?: string
+          p_shop_ids?: string[]
+          p_size_groups?: string[]
           p_sort_order?: string
         }
         Returns: {
           categories: string[]
           created_at: string
+          current_row_number: number
           description: string
+          fts: unknown
           handle: string
           id: number
           images: Json
           in_stock: boolean
+          last_modified: string
+          last_updated: string
           max_discount_percentage: number
           min_price: number
           on_sale: boolean
           product_type: string
+          published_at_external: string
+          shop_id: number
           shop_name: string
           size_groups: string[]
           tags: string[]
           title: string
+          total_estimated_count: number
+          updated_at: string
           url: string
           vendor: string
         }[]
@@ -918,6 +788,96 @@ export type Database = {
         }[]
       }
       get_missing_products_count: { Args: never; Returns: number }
+      get_products_by_shop: {
+        Args: { p_limit?: number; p_offset?: number; p_shop_ids: string[] }
+        Returns: {
+          categories: string[]
+          created_at: string
+          current_row_number: number
+          description: string
+          fts: unknown
+          handle: string
+          id: number
+          images: Json
+          in_stock: boolean
+          last_modified: string
+          last_updated: string
+          max_discount_percentage: number
+          min_price: number
+          on_sale: boolean
+          product_type: string
+          published_at_external: string
+          shop_id: number
+          shop_name: string
+          size_groups: string[]
+          tags: string[]
+          title: string
+          total_estimated_count: number
+          updated_at: string
+          url: string
+          vendor: string
+        }[]
+      }
+      get_products_by_size: {
+        Args: { p_limit?: number; p_offset?: number; p_size_groups: string[] }
+        Returns: {
+          categories: string[]
+          created_at: string
+          current_row_number: number
+          description: string
+          fts: unknown
+          handle: string
+          id: number
+          images: Json
+          in_stock: boolean
+          last_modified: string
+          last_updated: string
+          max_discount_percentage: number
+          min_price: number
+          on_sale: boolean
+          product_type: string
+          published_at_external: string
+          shop_id: number
+          shop_name: string
+          size_groups: string[]
+          tags: string[]
+          title: string
+          total_estimated_count: number
+          updated_at: string
+          url: string
+          vendor: string
+        }[]
+      }
+      get_products_default: {
+        Args: { p_limit?: number; p_offset?: number; p_sort_order?: string }
+        Returns: {
+          categories: string[]
+          created_at: string
+          current_row_number: number
+          description: string
+          fts: unknown
+          handle: string
+          id: number
+          images: Json
+          in_stock: boolean
+          last_modified: string
+          last_updated: string
+          max_discount_percentage: number
+          min_price: number
+          on_sale: boolean
+          product_type: string
+          published_at_external: string
+          shop_id: number
+          shop_name: string
+          size_groups: string[]
+          tags: string[]
+          title: string
+          total_estimated_count: number
+          updated_at: string
+          url: string
+          vendor: string
+        }[]
+      }
       get_products_needing_size_groups: {
         Args: never
         Returns: {
@@ -925,12 +885,42 @@ export type Database = {
           size_groups: string[]
         }[]
       }
+      get_products_on_sale: {
+        Args: { p_limit?: number; p_offset?: number }
+        Returns: {
+          categories: string[]
+          created_at: string
+          current_row_number: number
+          description: string
+          fts: unknown
+          handle: string
+          id: number
+          images: Json
+          in_stock: boolean
+          last_modified: string
+          last_updated: string
+          max_discount_percentage: number
+          min_price: number
+          on_sale: boolean
+          product_type: string
+          published_at_external: string
+          shop_id: number
+          shop_name: string
+          size_groups: string[]
+          tags: string[]
+          title: string
+          total_estimated_count: number
+          updated_at: string
+          url: string
+          vendor: string
+        }[]
+      }
       get_products_pricing: {
-        Args: { product_ids: string[] }
+        Args: { p_product_ids: number[] }
         Returns: {
           compare_at_price: number
           offer_price: number
-          product_id: string
+          product_id: number
           variant_price: number
         }[]
       }
@@ -939,15 +929,6 @@ export type Database = {
       normalize_size_groups: {
         Args: { size_groups_arr: string[] }
         Returns: string[]
-      }
-      populate_all_products_auto: {
-        Args: never
-        Returns: {
-          batch_number: number
-          estimated_remaining: number
-          products_processed: number
-          total_processed: number
-        }[]
       }
       populate_all_products_simple: { Args: never; Returns: undefined }
       populate_batch: {
@@ -991,6 +972,43 @@ export type Database = {
           estimated_remaining: number
           products_processed: number
           total_processed: number
+        }[]
+      }
+      safe_text_to_bigint_array: {
+        Args: { text_array: string[] }
+        Returns: number[]
+      }
+      search_products_filterable: {
+        Args: {
+          in_stock_filter?: boolean
+          limit_count?: number
+          max_price_filter?: number
+          min_price_filter?: number
+          offset_count?: number
+          on_sale_filter?: boolean
+          search_query?: string
+          shop_ids?: number[]
+          size_groups_filter?: string[]
+          sort_by?: string
+        }
+        Returns: {
+          created_at: string
+          description: string
+          handle: string
+          id: number
+          images: string[]
+          in_stock: boolean
+          max_discount_percentage: number
+          min_price: number
+          on_sale: boolean
+          product_type: string
+          shop_name: string
+          size_groups: string[]
+          tags: string[]
+          title: string
+          total_count: number
+          url: string
+          vendor: string
         }[]
       }
       update_product_enriched_data: {

@@ -23,22 +23,14 @@ function rangesEqual(a: [number, number], b: [number, number]) {
 
 import { MultiSelectDropdown, SingleSelectDropdown } from '../components/Dropdowns';
 import TransformSlider from '../components/TransformSlider';
-import { SupabaseClient } from '@supabase/supabase-js';
-
 const ITEMS_PER_PAGE = 10;
 const INITIAL_RENDER_COUNT = 4;
 const LCP_PRELOAD_COUNT = INITIAL_RENDER_COUNT;
 
-// Different MVs for different scenarios
-const MVS = {
-  DEFAULT: 'products_default_mv',
-  SHOP_FILTERED: 'products_by_shop_mv',
-  SIZE_FILTERED: 'products_by_size_mv',
-  ON_SALE: 'products_on_sale_mv',
-  ACTIVE_LISTINGS: 'products_active_listings_mv',
-} as const;
+// Remove MV constants - we'll use RPC functions instead
+// const MVS = {...} // DELETE THIS
 
-type MaterializedView = typeof MVS[keyof typeof MVS];
+type SortOrder = 'asc' | 'desc' | 'discount_desc';
 
 export function HomePage() {
   const [products, setProducts] = useState<ProductWithDetails[]>([]);
@@ -47,11 +39,11 @@ export function HomePage() {
   const [hasMore, setHasMore] = useState(true);
   const [page, setPage] = useState(0);
   const [shopList, setShopList] = useState<Array<{id: number; shop_name: string}>>([]);
-  const [sortOrder, setSortOrder] = useState<'asc' | 'desc' | 'discount_desc'>(() => {
+  const [sortOrder, setSortOrder] = useState<SortOrder>(() => {
     try {
       if (typeof window === 'undefined') return 'discount_desc';
       const stored = localStorage.getItem('sortOrder');
-      if (stored === 'asc' || stored === 'desc' || stored === 'discount_desc') return stored;
+      if (stored === 'asc' || stored === 'desc' || stored === 'discount_desc') return stored as SortOrder;
     } catch {
       /* ignore */
     }
@@ -167,18 +159,26 @@ export function HomePage() {
   const fetchBatchPricingFor = useCallback(async (ids: Array<number | string>) => {
     const uniqueIds = Array.from(new Set(ids.map(String))).filter(Boolean);
     if (uniqueIds.length === 0) return;
-
+  
     const idsToFetch = uniqueIds.filter(id => !(id in productPricings));
     if (idsToFetch.length === 0) return;
-
+  
     const supabase = getSupabase();
     const pricingMap: Record<string, {variantPrice: number | null; compareAtPrice: number | null; offerPrice: number | null;}> = {};
-
+  
     try {
+      // Convert string IDs to numbers for the RPC call
+      const numericIds = idsToFetch.map(id => {
+        const num = Number(id);
+        return isNaN(num) ? 0 : num;
+      }).filter(id => id > 0);
+  
+      if (numericIds.length === 0) return;
+  
       const { data: rpcData, error: rpcError } = await supabase.rpc('get_products_pricing', { 
-        product_ids: idsToFetch 
+        p_product_ids: numericIds
       });
-
+  
       if (!rpcError && Array.isArray(rpcData)) {
         for (const row of rpcData) {
           const pid = String(row.product_id);
@@ -191,7 +191,7 @@ export function HomePage() {
     } catch (error) {
       console.error('Error fetching pricing:', error);
     }
-
+  
     setProductPricings(prev => ({ ...prev, ...pricingMap }));
   }, [productPricings]);
   
@@ -239,9 +239,7 @@ export function HomePage() {
   const requestQueueRef = useRef<Array<() => Promise<void>>>([]);
   const isProcessingRef = useRef(false);
   const currentRequestRef = useRef<AbortController | null>(null);
-  // key is a stringified requestKey: `${JSON.stringify(filters)}-${page}-${sortOrder}`
   const prefetchCacheRef = useRef<Record<string, { key: string; data: ProductWithDetails[]; count: number | null }>>({});
-  // Store total counts per filters+sort key (no page) to avoid requesting out-of-range pages
   const totalCountRef = useRef<Record<string, number | null>>({});
   
   const filterCacheRef = useRef<Map<string, { data: unknown[]; timestamp: number }>>(new Map());
@@ -339,116 +337,44 @@ export function HomePage() {
     selectedPriceRange: [number, number];
   }
 
-  // Smart MV selection based on active filters
-  const getOptimizedMV = useCallback((filters: FilterOptions): MaterializedView => {
-    const hasShopFilter = filters.selectedShopName.length > 0;
-    const hasSizeFilter = filters.selectedSizeGroups.length > 0;
-    const hasSaleFilter = filters.onSaleOnly;
-    const hasSearchFilter = !!filters.searchQuery?.trim();
+  // NEW: Build RPC parameters from filters
+  const buildRpcParams = useCallback((filters: FilterOptions, page: number, sortOrder: SortOrder) => {
+    const shopIds = filters.selectedShopName
+      .map(s => s.trim())
+      .filter(s => s.length > 0);
     
-    if (hasSearchFilter) {
-      return MVS.DEFAULT;
-    }
+    const sizeGroups = filters.selectedSizeGroups
+      .map(s => s.trim())
+      .filter(s => s.length > 0);
     
-    if (hasSaleFilter && !hasShopFilter && !hasSizeFilter) {
-      return MVS.ON_SALE;
-    }
-    
-    if (hasShopFilter && !hasSizeFilter && !hasSaleFilter) {
-      return MVS.SHOP_FILTERED;
-    }
-    
-    if (hasSizeFilter && !hasShopFilter && !hasSaleFilter) {
-      return MVS.SIZE_FILTERED;
-    }
-    
-    return MVS.DEFAULT;
-  }, []);
-
-  const buildOptimizedQuery = useCallback((
-    supabase: SupabaseClient,
-    mvName: MaterializedView,
-    filters: FilterOptions,
-    sortOrder: 'asc' | 'desc' | 'discount_desc',
-    page: number
-  ) => {
-    let query = supabase
-      .from(mvName)
-      .select('id,shop_id,title,shop_name,created_at,url,description,in_stock,min_price,max_discount_percentage,on_sale,size_groups,images,product_type,tags,vendor,handle', { 
-        count: 'exact',
-        head: false
-      })
-      .limit(ITEMS_PER_PAGE);
-
-    query = query
-      .gte('min_price', filters.selectedPriceRange[0])
-      .lte('min_price', filters.selectedPriceRange[1]);
-
-    if (filters.inStockOnly) {
-      query = query.eq('in_stock', true);
-    }
-
-    if (mvName === MVS.SHOP_FILTERED || mvName === MVS.DEFAULT || mvName === MVS.ON_SALE) {
-      if (filters.selectedShopName.length > 0) {
-        const shopIds = filters.selectedShopName
-          .map(s => Number(s))
-          .filter(n => !Number.isNaN(n) && n > 0);
-        
-        if (shopIds.length > 0) {
-          query = query.in('shop_id', shopIds);
-        }
-      }
-    }
-
-    if (mvName === MVS.SIZE_FILTERED || mvName === MVS.DEFAULT || mvName === MVS.ON_SALE) {
-      if (filters.selectedSizeGroups.length > 0) {
-        query = query.overlaps('size_groups', filters.selectedSizeGroups);
-      }
-    }
-
-    if (filters.onSaleOnly && mvName !== MVS.ON_SALE) {
-      query = query.eq('on_sale', true);
-    }
-
-    if (filters.searchQuery) {
-      const cleanSearch = filters.searchQuery.trim();
-      
-      // Only add text search if the trimmed query is not empty
-      if (cleanSearch) {
-        query = query.textSearch('fts', cleanSearch, {
-          type: 'websearch',
-          config: 'english'
-        });
-      }
-    }
-
-    if (sortOrder === 'discount_desc') {
-      query = query.order('max_discount_percentage', { ascending: false, nullsFirst: false });
-    } else if (sortOrder === 'asc') {
-      query = query.order('min_price', { ascending: true });
-    } else {
-      query = query.order('min_price', { ascending: false });
-    }
-    
-    query = query.order('created_at', { ascending: false });
-
-    return query.range(page * ITEMS_PER_PAGE, (page + 1) * ITEMS_PER_PAGE - 1);
+    // IMPORTANT: Supabase requires exact parameter names
+    return {
+      p_shop_ids: shopIds.length > 0 ? shopIds : null,
+      p_size_groups: sizeGroups.length > 0 ? sizeGroups : null,
+      p_in_stock_only: filters.inStockOnly,
+      p_on_sale_only: filters.onSaleOnly,
+      p_min_price: filters.selectedPriceRange[0],
+      p_max_price: filters.selectedPriceRange[1],
+      p_search_query: filters.searchQuery?.trim() || null,
+      p_limit: ITEMS_PER_PAGE,
+      p_offset: page * ITEMS_PER_PAGE,
+      p_sort_order: sortOrder
+    };
   }, []);
 
   const fetchFilteredProducts = useCallback(
     async (
       filters: FilterOptions,
       page: number,
-      sortOrder: 'asc' | 'desc' | 'discount_desc',
+      sortOrder: SortOrder,
     ) => {
       const TIMEOUT_MS = 10000;
       const requestKey = `${JSON.stringify(filters)}-${page}-${sortOrder}`;
-      const filtersKey = `${JSON.stringify(filters)}-${sortOrder}`; // key for total count across pages
+      const filtersKey = `${JSON.stringify(filters)}-${sortOrder}`;
 
-      // FAST PATH: if we prefetched this page, use it immediately for instant append
+      // FAST PATH: Use prefetch cache
       const cached = prefetchCacheRef.current[requestKey];
       if (cached) {
-        // if cache has a count, record it as the total for these filters
         if (cached.count != null) totalCountRef.current[filtersKey] = cached.count;
         startTransition(() => {
           setProducts(prev => (page === 0 ? cached.data : mergeUniqueProducts(prev, cached.data)));
@@ -462,14 +388,12 @@ export function HomePage() {
 
         setInitialLoad(false);
         setError(null);
-
-        // Ensure we release the observer lock and fetching flag
         setLoading(false);
         isFetchingRef.current = false;
         observerLockRef.current = false;
 
-        // Background prefetch next page and pricing, but only if we don't know it's out-of-range
-        (async () => {
+        // Prefetch next page
+        scheduleIdle(async () => {
           try {
             const nextPage = page + 1;
             const knownTotal = totalCountRef.current[filtersKey];
@@ -478,30 +402,36 @@ export function HomePage() {
             const nextKey = `${JSON.stringify(filters)}-${nextPage}-${sortOrder}`;
             if (!prefetchCacheRef.current[nextKey]) {
               const supabase = getSupabase();
-              const mvName = getOptimizedMV(filters);
-              const nextQuery = buildOptimizedQuery(supabase, mvName, filters, sortOrder, nextPage);
-              const { data: nextData, error: nextError, count: nextCount } = await nextQuery;
+              const params = buildRpcParams(filters, nextPage, sortOrder);
+              const { data: nextData, error: nextError } = await supabase.rpc('get_products_filtered', params);
+              
               if (!nextError && Array.isArray(nextData)) {
-                prefetchCacheRef.current[nextKey] = { key: nextKey, data: nextData as ProductWithDetails[], count: nextCount as number | null };
-                if (nextCount != null) totalCountRef.current[filtersKey] = nextCount as number;
-                const ids = (nextData as ProductWithDetails[]).map(p => p.id).filter(Boolean);
-                if (ids.length) scheduleIdle(() => fetchBatchPricingFor(ids));
+                // Extract total count from first row if available
+                const count = nextData[0]?.total_estimated_count || null;
+                prefetchCacheRef.current[nextKey] = { 
+                  key: nextKey, 
+                  data: nextData as ProductWithDetails[], 
+                  count 
+                };
+                if (count != null) totalCountRef.current[filtersKey] = count;
+                
+                const ids = nextData.map(p => p.id).filter(Boolean);
+                if (ids.length) fetchBatchPricingFor(ids);
               }
             }
           } catch {
             /* ignore prefetch failures */
           }
-        })();
+        });
 
         return;
       }
 
-      // Prevent duplicate triggers for the exact same page/filter combo
+      // Prevent duplicate requests
       if (pendingRequestsRef.current.has(requestKey)) return;
 
       const requestPromise = new Promise<void>((resolve, reject) => {
         enqueueRequest(async () => {
-          // 1. Create Abort Signal
           const controller = new AbortController();
           currentRequestRef.current = controller;
           
@@ -511,17 +441,13 @@ export function HomePage() {
 
           try {
             const supabase = getSupabase();
-            const mvName = getOptimizedMV(filters);
+            const params = buildRpcParams(filters, page, sortOrder);
             
-            // 2. Build and Execute Query
-            const query = buildOptimizedQuery(supabase, mvName, filters, sortOrder, page);
-            query.abortSignal(controller.signal);
-
-            const { data, error, count } = await query;
+            const { data, error } = await supabase.rpc('get_products_filtered', params);
             clearTimeout(timeoutId);
 
             if (error) {
-              // Specifically handle 416 Range Not Satisfiable errors
+              // Handle specific Supabase errors
               const errCode = (error as { code?: string }).code;
               const errStatus = (error as { status?: number }).status;
               if (errCode === 'PGRST116' || errStatus === 416) {
@@ -537,57 +463,56 @@ export function HomePage() {
               throw error;
             }
 
-            const newData = (data as unknown as ProductWithDetails[]) || [];
+            const newData = (data as (ProductWithDetails & { total_count: number })[]) || [];
+            const totalCount = newData[0]?.total_count || 0;
 
-            // record total count for this filters+sort so we can avoid out-of-range requests
-            try {
-              if (count != null) totalCountRef.current[filtersKey] = count as number;
-            } catch { /* ignore */ }
+            // Store in cache
+            if (totalCount != null) totalCountRef.current[filtersKey] = totalCount;
+            prefetchCacheRef.current[requestKey] = { 
+              key: requestKey, 
+              data: newData, 
+              count: totalCount 
+            };
 
-            // Cache this page for fast subsequent navigation/appends
-            try {
-              prefetchCacheRef.current[requestKey] = { key: requestKey, data: newData, count: count as number | null };
-            } catch (e) {
-              void e;
-              /* ignore */
-            }
-
-            // PREFETCH next page in background + pricing
-            (async () => {
+            // Prefetch next page
+            scheduleIdle(async () => {
               try {
                 const nextKey = `${JSON.stringify(filters)}-${page + 1}-${sortOrder}`;
                 if (!prefetchCacheRef.current[nextKey]) {
-                  const nextQuery = buildOptimizedQuery(getSupabase(), mvName, filters, sortOrder, page + 1);
-                  const { data: nextData, error: nextError, count: nextCount } = await nextQuery;
+                  const nextParams = buildRpcParams(filters, page + 1, sortOrder);
+                  const { data: nextData, error: nextError } = await supabase.rpc('get_products_filtered', nextParams);
                   if (!nextError && Array.isArray(nextData)) {
-                    prefetchCacheRef.current[nextKey] = { key: nextKey, data: nextData as ProductWithDetails[], count: nextCount as number | null };
-                    if (nextCount != null) totalCountRef.current[filtersKey] = nextCount as number;
-                    const nextIds = (nextData as ProductWithDetails[]).map(p => p.id).filter(Boolean);
-                    if (nextIds.length) scheduleIdle(() => fetchBatchPricingFor(nextIds));
+                    const nextCount = nextData[0]?.total_estimated_count || null;
+                    prefetchCacheRef.current[nextKey] = { 
+                      key: nextKey, 
+                      data: nextData as ProductWithDetails[], 
+                      count: nextCount 
+                    };
+                    if (nextCount != null) totalCountRef.current[filtersKey] = nextCount;
+                    
+                    const nextIds = nextData.map(p => p.id).filter(Boolean);
+                    if (nextIds.length) fetchBatchPricingFor(nextIds);
                   }
                 }
               } catch {
                 /* ignore prefetch failures */
               }
-            })();
+            });
 
-            // 3. Update State
+            // Update state
             startTransition(() => {
               setProducts(prev => (page === 0 ? newData : mergeUniqueProducts(prev, newData)));
               
-              // Calculate if there are more items
               const loadedItemsCount = (page + 1) * ITEMS_PER_PAGE;
               
-              // If count is null or we got no data, assume no more items
-              if (count === null || newData.length === 0 || newData.length < ITEMS_PER_PAGE) {
+              if (totalCount === null || newData.length === 0 || newData.length < ITEMS_PER_PAGE) {
                 setHasMore(false);
               } else {
-                // Otherwise check if loaded items < total count
-                setHasMore(loadedItemsCount < count);
+                setHasMore(loadedItemsCount < totalCount);
               }
             });
 
-            // 4. Handle Pricing Fetching (Backgrounded)
+            // Fetch pricing for new products
             if (newData.length > 0) {
               const ids = newData.map(p => p.id).filter(Boolean);
               scheduleIdle(() => fetchBatchPricingFor(ids));
@@ -597,8 +522,7 @@ export function HomePage() {
             setError(null);
             resolve();
           } catch (err) {
-            // Check if it's an AbortError - if so, do NOTHING. 
-            // It's a intentional cancellation, not a failure.
+            // Handle abort errors
             const maybeErr = err as unknown;
             if (typeof maybeErr === 'object' && maybeErr !== null) {
               const name = (maybeErr as { name?: string }).name;
@@ -607,7 +531,6 @@ export function HomePage() {
                 return;
               }
               
-              // Also handle Supabase 416 errors
               const code = (maybeErr as { code?: string }).code;
               const status = (maybeErr as { status?: number }).status;
               if (code === 'PGRST116' || status === 416) {
@@ -624,8 +547,6 @@ export function HomePage() {
             setHasMore(false);
             reject(err);
           } finally {
-            // ONLY set loading to false if we weren't aborted.
-            // If we were aborted, a new request is likely already starting.
             if (!controller.signal.aborted) {
               setLoading(false);
               isFetchingRef.current = false;
@@ -639,18 +560,20 @@ export function HomePage() {
       pendingRequestsRef.current.set(requestKey, requestPromise);
       return requestPromise;
     },
-    [fetchBatchPricingFor, scheduleIdle, mergeUniqueProducts, enqueueRequest, getOptimizedMV, buildOptimizedQuery]
+    [fetchBatchPricingFor, scheduleIdle, mergeUniqueProducts, enqueueRequest, buildRpcParams]
   );
 
+  // NEW: Updated initial data fetching using views instead of MVs
   useEffect(() => {
     async function fetchInitialData() {
       try {
         const supabase = getSupabase();
 
-        const shopData = await fetchWithCache('distinct_shops_mv', async () => {
+        // Fetch shops from view
+        const shopData = await fetchWithCache('distinct_shops', async () => {
           const { data, error } = await supabase
-            .from('distinct_shops_mv')
-            .select('shop_id,shop_name')
+            .from('distinct_shops')
+            .select('shop_id, shop_name')
             .order('shop_name', { ascending: true });
 
           if (error) throw error;
@@ -665,9 +588,10 @@ export function HomePage() {
           );
         }
       
+        // Fetch size groups from view
         const sizeData = await fetchWithCache('size_groups', async () => {
           const { data, error } = await supabase
-            .from('distinct_size_groups_mv')
+            .from('distinct_size_groups')
             .select('size_group');
           
           if (error) throw error;
@@ -793,6 +717,7 @@ export function HomePage() {
     });
   }, [page, committedFiltersKey, sortOrder, fetchFilteredProducts, committedFilters]);
 
+  // Persist filters to localStorage
   useEffect(() => {
     localStorage.setItem('selectedShopName', JSON.stringify(selectedShopName));
   }, [selectedShopName]);
@@ -832,20 +757,19 @@ export function HomePage() {
     }
   }, [loading]);
 
+  // Infinite scroll observer
   useEffect(() => {
     const observer = new IntersectionObserver(
       (entries) => {
         const entry = entries[0];
-        // Check all conditions including the lock
         if (
           entry.isIntersecting && 
           !loading && 
           !isFetchingRef.current && 
           hasMore &&
           !observerLockRef.current &&
-          products.length > 0 // Also check we actually have products loaded
+          products.length > 0
         ) {
-          // Avoid requesting a page beyond known total
           try {
             const filtersKey = `${JSON.stringify(committedFilters)}-${sortOrder}`;
             const knownTotal = totalCountRef.current[filtersKey];
@@ -857,11 +781,10 @@ export function HomePage() {
           } catch {
             // ignore
           }
-          // Set lock immediately to prevent duplicate calls
+          
           observerLockRef.current = true;
           isFetchingRef.current = true;
           
-          // Use startTransition for better performance
           startTransition(() => {
             setPage(prev => prev + 1);
           });
@@ -878,10 +801,11 @@ export function HomePage() {
     };
   }, [loading, hasMore, products.length, committedFilters, sortOrder, page]);
 
+  // Cleanup
   useEffect(() => {
-  return () => {
-    isFetchingRef.current = false;
-    observerLockRef.current = false;
+    return () => {
+      isFetchingRef.current = false;
+      observerLockRef.current = false;
     };
   }, []);
 
@@ -954,7 +878,7 @@ export function HomePage() {
   };
 
   const handleSortChange = (value: string) => {
-    const parsed = value as 'asc' | 'desc' | 'discount_desc';
+    const parsed = value as SortOrder;
     setSortOrder(parsed);
 
     const pendingFilters: FilterOptions = {
@@ -1317,13 +1241,11 @@ export function HomePage() {
                   selected={sortOrder}
                   onChange={handleSortChange}
                   placeholder="Featured"
-                  // truncate long option labels with ellipsis instead of overflowing
                   className="truncate"
                 />
               </div>
             </div>
 
-            {/* Main Product Grid Container with Stable Layout */}
             <div 
               className="relative min-h-[400px]"
               style={{ 
@@ -1408,7 +1330,6 @@ export function HomePage() {
                       );
                     })}
                     
-                    {/* Loading Skeletons - Invisible but maintaining layout */}
                     {hasMore && (
                       <div 
                         className="absolute inset-0 pointer-events-none opacity-0"
@@ -1423,7 +1344,6 @@ export function HomePage() {
                 )}
               </div>
               
-              {/* Loading Indicator - Positioned absolutely to avoid layout shifts */}
               {loading && page > 0 && (
                 <div className="absolute bottom-0 left-0 right-0 flex justify-center py-4 z-10">
                   <div className="bg-white dark:bg-gray-800 p-3 rounded-lg shadow-lg">
@@ -1432,7 +1352,6 @@ export function HomePage() {
                 </div>
               )}
               
-              {/* Observer ref at bottom */}
               <div ref={observerRef} className="h-10" />
             </div>
           </div>
