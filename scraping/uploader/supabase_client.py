@@ -14,6 +14,8 @@ from dotenv import load_dotenv
 from core.logger import uploader_logger
 import config.settings as settings
 
+load_dotenv()
+
 class SupabaseClient:
     """Manages Supabase connections with retry patterns."""
     
@@ -31,10 +33,10 @@ class SupabaseClient:
         load_dotenv(settings.ENV_FILE)
         
         SUPABASE_URL = os.environ.get("SUPABASE_URL")
-        SUPABASE_KEY = os.environ.get("SUPABASE_SERVICE_ROLE_KEY")
+        SUPABASE_KEY = os.environ.get("SUPABASE_PUBLISHABLE_KEY")
         
         if not SUPABASE_URL or not SUPABASE_KEY:
-            raise ValueError("SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY not set")
+            raise ValueError("SUPABASE_URL or SUPABASE_PUBLISHABLE_KEY not set")
         # Validate that the host in SUPABASE_URL resolves to avoid confusing
         # downstream errors like "nodename nor servname provided, or not known".
         try:
@@ -55,10 +57,10 @@ class SupabaseClient:
         load_dotenv(settings.ENV_FILE)
         
         SUPABASE_URL = os.environ.get("SUPABASE_URL")
-        SUPABASE_KEY = os.environ.get("SUPABASE_SERVICE_ROLE_KEY")
+        SUPABASE_KEY = os.environ.get("SUPABASE_PUBLISHABLE_KEY")
         
         if not SUPABASE_URL or not SUPABASE_KEY:
-            raise ValueError("SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY not set")
+            raise ValueError("SUPABASE_URL or SUPABASE_PUBLISHABLE_KEY not set")
         # Validate host before creating client
         parsed = urlparse(SUPABASE_URL)
         host = parsed.hostname
