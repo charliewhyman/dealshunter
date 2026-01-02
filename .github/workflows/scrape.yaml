@@ -16,7 +16,7 @@ jobs:
       - name: Install uv
         uses: astral-sh/setup-uv@v3
         
-      - name: Set up Python 3.11
+      - name: Set up Python
         run: uv python install 3.11
         
       - name: Install dependencies
@@ -24,12 +24,57 @@ jobs:
           cd scraping
           uv sync --frozen
           
-      - name: Create .env file
+      - name: Create .env file in correct location
+        run: |
+          # Create .env in scraping directory (where ENV_FILE points to)
+          cd scraping
+          cat > .env << EOF
+          SUPABASE_URL=${{ secrets.SUPABASE_URL }}
+          SUPABASE_PUBLISHABLE_KEY=${{ secrets.SUPABASE_PUBLISHABLE_KEY }}
+          ENVIRONMENT=production
+          EOF
+          
+          echo "Created .env file at: $(pwd)/.env"
+          echo "File contents (values hidden):"
+          cat .env | sed 's/=.*/=***/g'
+          
+          # Verify the file is where it should be
+          echo -e "\nVerifying path resolution:"
+          python3 -c "
+          from pathlib import Path
+          BASE_DIR = Path(__file__).parent.parent
+          ENV_FILE = BASE_DIR / '.env'
+          print(f'BASE_DIR: {BASE_DIR}')
+          print(f'ENV_FILE: {ENV_FILE}')
+          print(f'ENV_FILE exists: {ENV_FILE.exists()}')
+          "
+          
+      - name: Debug SupabaseClient initialization
         run: |
           cd scraping
-          echo "SUPABASE_URL=${{ secrets.SUPABASE_URL }}" > .env
-          echo "SUPABASE_PUBLISHABLE_KEY=${{ secrets.SUPABASE_PUBLISHABLE_KEY }}" >> .env
-          echo "ENVIRONMENT=production" >> .env
+          uv run python -c "
+          import os
+          import sys
+          sys.path.insert(0, '.')
+          
+          # First load dotenv to see if it works
+          from dotenv import load_dotenv
+          load_dotenv()
+          
+          print('Environment variables after load_dotenv():')
+          print(f'SUPABASE_URL: {os.getenv(\"SUPABASE_URL\")[:20] if os.getenv(\"SUPABASE_URL\") else \"NOT SET\"}...')
+          print(f'SUPABASE_PUBLISHABLE_KEY: {os.getenv(\"SUPABASE_PUBLISHABLE_KEY\")[:10] if os.getenv(\"SUPABASE_PUBLISHABLE_KEY\") else \"NOT SET\"}...')
+          
+          # Now try to initialize SupabaseClient
+          try:
+              from uploader.supabase_client import SupabaseClient
+              client = SupabaseClient()
+              print('✅ SupabaseClient initialized successfully!')
+          except Exception as e:
+              print(f'❌ SupabaseClient failed: {e}')
+              import traceback
+              traceback.print_exc()
+          "
           
       - name: Run scraper
         run: |
