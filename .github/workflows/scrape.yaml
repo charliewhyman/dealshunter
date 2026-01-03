@@ -55,7 +55,7 @@ on:
 jobs:
   scrape:
     runs-on: ubuntu-latest
-    timeout-minutes: 180
+    timeout-minutes: ${{ github.event.schedule == '0 3 * * 0' && 240 || 180 }}
     environment: production
     
     steps:
@@ -95,6 +95,7 @@ jobs:
             echo "batch_size=3" >> $GITHUB_OUTPUT
             echo "limit_shops=0" >> $GITHUB_OUTPUT
             echo "scrape_type=weekly_full" >> $GITHUB_OUTPUT
+            echo "timeout_minutes=240" >> $GITHUB_OUTPUT  # ADDED: Specific timeout for weekly
           elif [ "${{ github.event.schedule }}" == "0 2 * * *" ]; then
             echo "Running DAILY SCRAPE (skip shop data)"
             echo "skip_shops=true" >> $GITHUB_OUTPUT
@@ -103,6 +104,7 @@ jobs:
             echo "batch_size=10" >> $GITHUB_OUTPUT
             echo "limit_shops=100" >> $GITHUB_OUTPUT
             echo "scrape_type=daily" >> $GITHUB_OUTPUT
+            echo "timeout_minutes=180" >> $GITHUB_OUTPUT  # ADDED: Specific timeout for daily
           else
             echo "Running MANUAL SCRAPE with custom parameters"
             echo "skip_shops=${{ inputs.skip_shops }}" >> $GITHUB_OUTPUT
@@ -111,6 +113,7 @@ jobs:
             echo "batch_size=${{ inputs.batch_size || 5 }}" >> $GITHUB_OUTPUT
             echo "limit_shops=${{ inputs.limit_shops || 0 }}" >> $GITHUB_OUTPUT
             echo "scrape_type=manual" >> $GITHUB_OUTPUT
+            echo "timeout_minutes=${{ inputs.timeout_minutes || 180 }}" >> $GITHUB_OUTPUT  # ADDED
           fi
       
       - name: Run scraper
@@ -149,30 +152,36 @@ jobs:
             echo "Filtering to shop(s): ${{ inputs.shop_id }}"
           fi
           
-          if [ "${{ steps.strategy.outputs.limit_shops }}" != "0" ]; then
-            echo "Note: Limit shops feature not implemented in this simplified version"
-          fi
-          
           echo "Configuration:"
           echo "  Max Concurrent: ${{ steps.strategy.outputs.max_concurrent }}"
           echo "  Batch Size: ${{ steps.strategy.outputs.batch_size }}"
           echo "  Skip Shops: ${{ steps.strategy.outputs.skip_shops }}"
           echo "  Shop Update Days: ${{ steps.strategy.outputs.shop_update_days }}"
+          echo "  Timeout Minutes: ${{ steps.strategy.outputs.timeout_minutes || 180 }}"
           echo ""
           echo "Running: $CMD"
           
-          # Run with timeout
-          TIMEOUT_SECONDS=$(( (${{ inputs.timeout_minutes || 180 }} - 5) * 60 ))
+          # FIX: Increase buffer time to 10 minutes before timeout
+          TIMEOUT_SECONDS=$(( (${{ steps.strategy.outputs.timeout_minutes || 180 }} - 10) * 60 ))
+          echo "Setting timeout to $TIMEOUT_SECONDS seconds (${{ steps.strategy.outputs.timeout_minutes || 180 }} minutes - 10 minutes buffer)"
+          
           timeout $TIMEOUT_SECONDS $CMD
           
           EXIT_CODE=$?
           echo "exit_code=$EXIT_CODE" >> $GITHUB_OUTPUT
           
           if [ $EXIT_CODE -eq 124 ]; then
-            echo "WARNING: Scraper timed out after ${{ inputs.timeout_minutes || 180 }} minutes"
+            echo "WARNING: Scraper timed out after $TIMEOUT_SECONDS seconds"
+            echo "Try increasing the timeout_minutes parameter"
+            echo "Weekly scrapes may need 240+ minutes, daily scrapes 180+ minutes"
+            
+            # FIX: Don't fail the workflow on timeout, just warn
+            echo "Continuing workflow despite timeout..."
           elif [ $EXIT_CODE -ne 0 ]; then
             echo "ERROR: Scraper failed with exit code $EXIT_CODE"
             exit $EXIT_CODE
+          else
+            echo "SUCCESS: Scraper completed within timeout"
           fi
           
       - name: Run database refresh (core only)
