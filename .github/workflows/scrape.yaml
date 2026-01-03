@@ -91,8 +91,8 @@ jobs:
             echo "Running WEEKLY FULL SCRAPE (including shop data)"
             echo "skip_shops=false" >> $GITHUB_OUTPUT
             echo "shop_update_days=7" >> $GITHUB_OUTPUT
-            echo "max_concurrent=2" >> $GITHUB_OUTPUT
-            echo "batch_size=3" >> $GITHUB_OUTPUT
+            echo "max_concurrent=" >> $GITHUB_OUTPUT
+            echo "batch_size=8" >> $GITHUB_OUTPUT
             echo "limit_shops=0" >> $GITHUB_OUTPUT
             echo "scrape_type=weekly_full" >> $GITHUB_OUTPUT
             echo "timeout_minutes=240" >> $GITHUB_OUTPUT  # ADDED: Specific timeout for weekly
