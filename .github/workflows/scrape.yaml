@@ -83,29 +83,28 @@ jobs:
           cd scraping
           uv sync --frozen
       
-      - name: Determine scraping strategy
-        id: strategy
-        run: |
-          # Determine if this is the weekly full scrape (Sunday 3am)
-          if [ "${{ github.event.schedule }}" == "0 3 * * 0" ]; then
-            echo "Running WEEKLY FULL SCRAPE (including shop data)"
-            echo "skip_shops=false" >> $GITHUB_OUTPUT
-            echo "shop_update_days=7" >> $GITHUB_OUTPUT
-            echo "max_concurrent=" >> $GITHUB_OUTPUT
-            echo "batch_size=8" >> $GITHUB_OUTPUT
-            echo "limit_shops=0" >> $GITHUB_OUTPUT
-            echo "scrape_type=weekly_full" >> $GITHUB_OUTPUT
-            echo "timeout_minutes=240" >> $GITHUB_OUTPUT  # ADDED: Specific timeout for weekly
-          elif [ "${{ github.event.schedule }}" == "0 2 * * *" ]; then
-            echo "Running DAILY SCRAPE (skip shop data)"
-            echo "skip_shops=true" >> $GITHUB_OUTPUT
-            echo "shop_update_days=30" >> $GITHUB_OUTPUT
-            echo "max_concurrent=4" >> $GITHUB_OUTPUT
-            echo "batch_size=10" >> $GITHUB_OUTPUT
-            echo "limit_shops=100" >> $GITHUB_OUTPUT
-            echo "scrape_type=daily" >> $GITHUB_OUTPUT
-            echo "timeout_minutes=180" >> $GITHUB_OUTPUT  # ADDED: Specific timeout for daily
-          else
+          - name: Determine scraping strategy
+          id: strategy
+          run: |
+            if [ "${{ github.event.schedule }}" == "0 3 * * 0" ]; then
+              echo "Running WEEKLY FULL SCRAPE (including shop data)"
+              echo "skip_shops=false" >> $GITHUB_OUTPUT
+              echo "shop_update_days=14" >> $GITHUB_OUTPUT  # Scrape less frequently
+              echo "max_concurrent=4" >> $GITHUB_OUTPUT     # Increase from 2
+              echo "batch_size=8" >> $GITHUB_OUTPUT         # Increase from 3
+              echo "limit_shops=0" >> $GITHUB_OUTPUT
+              echo "scrape_type=weekly_full" >> $GITHUB_OUTPUT
+              echo "timeout_minutes=300" >> $GITHUB_OUTPUT  # 5 hours for weekly
+            elif [ "${{ github.event.schedule }}" == "0 2 * * *" ]; then
+              echo "Running DAILY SCRAPE (skip shop data)"
+              echo "skip_shops=true" >> $GITHUB_OUTPUT
+              echo "shop_update_days=30" >> $GITHUB_OUTPUT
+              echo "max_concurrent=6" >> $GITHUB_OUTPUT     # Increase from 4
+              echo "batch_size=12" >> $GITHUB_OUTPUT        # Increase from 10
+              echo "limit_shops=100" >> $GITHUB_OUTPUT
+              echo "scrape_type=daily" >> $GITHUB_OUTPUT
+              echo "timeout_minutes=180" >> $GITHUB_OUTPUT  # 3 hours for daily
+            else
             echo "Running MANUAL SCRAPE with custom parameters"
             echo "skip_shops=${{ inputs.skip_shops }}" >> $GITHUB_OUTPUT
             echo "shop_update_days=${{ inputs.shop_update_days }}" >> $GITHUB_OUTPUT
