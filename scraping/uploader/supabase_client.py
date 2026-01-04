@@ -32,10 +32,10 @@ class SupabaseClient:
     def _initialize(self):
         """Initialize Supabase client from environment."""
         SUPABASE_URL = os.environ.get("SUPABASE_URL")
-        SUPABASE_KEY = os.environ.get("SUPABASE_PUBLISHABLE_KEY")
+        SUPABASE_KEY = os.environ.get("SUPABASE_SECRET_KEY")
         
         if not SUPABASE_URL or not SUPABASE_KEY:
-            raise ValueError("SUPABASE_URL or SUPABASE_PUBLISHABLE_KEY not set")
+            raise ValueError("SUPABASE_URL or SUPABASE_SECRET_KEY not set")
         
         # Validate that the host in SUPABASE_URL resolves to avoid confusing
         # downstream errors like "nodename nor servname provided, or not known".
@@ -55,10 +55,10 @@ class SupabaseClient:
     def get_fresh_client(self) -> Client:
         """Create a fresh Supabase client."""
         SUPABASE_URL = os.environ.get("SUPABASE_URL")
-        SUPABASE_KEY = os.environ.get("SUPABASE_PUBLISHABLE_KEY")
+        SUPABASE_KEY = os.environ.get("SUPABASE_SECRET_KEY")
         
         if not SUPABASE_URL or not SUPABASE_KEY:
-            raise ValueError("SUPABASE_URL or SUPABASE_PUBLISHABLE_KEY not set")
+            raise ValueError("SUPABASE_URL or SUPABASE_SECRET_KEY not set")
         
         # Validate host before creating client
         parsed = urlparse(SUPABASE_URL)
