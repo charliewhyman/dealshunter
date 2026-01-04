@@ -55,7 +55,7 @@ on:
 jobs:
   scrape:
     runs-on: ubuntu-latest
-    timeout-minutes: ${{ github.event.schedule == '0 3 * * 0' && 240 || 180 }}
+    timeout-minutes: ${{ github.event.schedule == '0 3 * * 0' && 300 || 180 }}
     environment: production
     
     steps:
