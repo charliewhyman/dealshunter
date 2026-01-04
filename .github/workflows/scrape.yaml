@@ -83,36 +83,36 @@ jobs:
           cd scraping
           uv sync --frozen
       
-          - name: Determine scraping strategy
-          id: strategy
-          run: |
-            if [ "${{ github.event.schedule }}" == "0 3 * * 0" ]; then
-              echo "Running WEEKLY FULL SCRAPE (including shop data)"
-              echo "skip_shops=false" >> $GITHUB_OUTPUT
-              echo "shop_update_days=14" >> $GITHUB_OUTPUT  # Scrape less frequently
-              echo "max_concurrent=4" >> $GITHUB_OUTPUT     # Increase from 2
-              echo "batch_size=8" >> $GITHUB_OUTPUT         # Increase from 3
-              echo "limit_shops=0" >> $GITHUB_OUTPUT
-              echo "scrape_type=weekly_full" >> $GITHUB_OUTPUT
-              echo "timeout_minutes=300" >> $GITHUB_OUTPUT  # 5 hours for weekly
-            elif [ "${{ github.event.schedule }}" == "0 2 * * *" ]; then
-              echo "Running DAILY SCRAPE (skip shop data)"
-              echo "skip_shops=true" >> $GITHUB_OUTPUT
-              echo "shop_update_days=30" >> $GITHUB_OUTPUT
-              echo "max_concurrent=6" >> $GITHUB_OUTPUT     # Increase from 4
-              echo "batch_size=12" >> $GITHUB_OUTPUT        # Increase from 10
-              echo "limit_shops=100" >> $GITHUB_OUTPUT
-              echo "scrape_type=daily" >> $GITHUB_OUTPUT
-              echo "timeout_minutes=180" >> $GITHUB_OUTPUT  # 3 hours for daily
-            else
-            echo "Running MANUAL SCRAPE with custom parameters"
-            echo "skip_shops=${{ inputs.skip_shops }}" >> $GITHUB_OUTPUT
-            echo "shop_update_days=${{ inputs.shop_update_days }}" >> $GITHUB_OUTPUT
-            echo "max_concurrent=${{ inputs.max_concurrent || 3 }}" >> $GITHUB_OUTPUT
-            echo "batch_size=${{ inputs.batch_size || 5 }}" >> $GITHUB_OUTPUT
-            echo "limit_shops=${{ inputs.limit_shops || 0 }}" >> $GITHUB_OUTPUT
-            echo "scrape_type=manual" >> $GITHUB_OUTPUT
-            echo "timeout_minutes=${{ inputs.timeout_minutes || 180 }}" >> $GITHUB_OUTPUT  # ADDED
+      - name: Determine scraping strategy
+        id: strategy
+        run: |
+          if [ "${{ github.event.schedule }}" == "0 3 * * 0" ]; then
+            echo "Running WEEKLY FULL SCRAPE (including shop data)"
+            echo "skip_shops=false" >> $GITHUB_OUTPUT
+            echo "shop_update_days=14" >> $GITHUB_OUTPUT
+            echo "max_concurrent=4" >> $GITHUB_OUTPUT
+            echo "batch_size=8" >> $GITHUB_OUTPUT
+            echo "limit_shops=0" >> $GITHUB_OUTPUT
+            echo "scrape_type=weekly_full" >> $GITHUB_OUTPUT
+            echo "timeout_minutes=300" >> $GITHUB_OUTPUT
+          elif [ "${{ github.event.schedule }}" == "0 2 * * *" ]; then
+            echo "Running DAILY SCRAPE (skip shop data)"
+            echo "skip_shops=true" >> $GITHUB_OUTPUT
+            echo "shop_update_days=30" >> $GITHUB_OUTPUT
+            echo "max_concurrent=6" >> $GITHUB_OUTPUT
+            echo "batch_size=12" >> $GITHUB_OUTPUT
+            echo "limit_shops=100" >> $GITHUB_OUTPUT
+            echo "scrape_type=daily" >> $GITHUB_OUTPUT
+            echo "timeout_minutes=180" >> $GITHUB_OUTPUT
+          else
+          echo "Running MANUAL SCRAPE with custom parameters"
+          echo "skip_shops=${{ inputs.skip_shops }}" >> $GITHUB_OUTPUT
+          echo "shop_update_days=${{ inputs.shop_update_days }}" >> $GITHUB_OUTPUT
+          echo "max_concurrent=${{ inputs.max_concurrent || 3 }}" >> $GITHUB_OUTPUT
+          echo "batch_size=${{ inputs.batch_size || 5 }}" >> $GITHUB_OUTPUT
+          echo "limit_shops=${{ inputs.limit_shops || 0 }}" >> $GITHUB_OUTPUT
+          echo "scrape_type=manual" >> $GITHUB_OUTPUT
+          echo "timeout_minutes=${{ inputs.timeout_minutes || 180 }}" >> $GITHUB_OUTPUT
           fi
       
       - name: Run scraper
