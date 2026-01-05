@@ -24,17 +24,22 @@ ENV_FILE = BASE_DIR / ".env"
 
 # Scraper settings
 SCRAPER_CONFIG = {
-    'max_workers': 3,
-    'request_timeout': 15,
+    'max_pages': {
+        'products': 3,
+        'collections': 2,
+    },
+    'concurrent_pages': 2,
+    'batch_size': 50,
+    'request_timeout': 20,
     'base_delay': 2.0,
     'max_delay': 30.0,
-    'retry_attempts': 3,
-    'batch_size': 250,
-    'concurrent_variants': 5,
-    'max_pages': {
+    'max_workers': 3,
+
+    'skip_shop_hours': 6,  # Skip shops scraped in last 6 hours
+    'min_shop_delay': 30,  # Minimum delay between shops
+    'max_requests_per_shop': {
+        'products': 30,
         'collections': 10,
-        'products': 50,
-        'collection_products': 20
     }
 }
 
