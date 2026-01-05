@@ -212,3 +212,33 @@ class FileManager:
                     scraper_logger.info(f"Deleted old file: {filepath.name}")
                 except Exception as e:
                     scraper_logger.error(f"Failed to delete {filepath}: {e}")
+                    
+    def read_json(self, filepath: str) -> Optional[Dict[str, Any]]:
+        """Read and parse a JSON file."""
+        try:
+            path = Path(filepath)
+            if not path.exists():
+                return None
+            
+            with open(path, 'r', encoding='utf-8') as f:
+                return json.load(f)
+                
+        except Exception as e:
+            scraper_logger.error(f"Failed to read JSON from {filepath}: {e}")
+            return None
+        
+    def write_json(self, filepath: str, data: Dict[str, Any]) -> bool:
+        """Write data to a JSON file."""
+        try:
+            path = Path(filepath)
+            path.parent.mkdir(parents=True, exist_ok=True)
+            
+            with open(path, 'w', encoding='utf-8') as f:
+                json.dump(data, f, indent=2, ensure_ascii=False)
+            
+            scraper_logger.info(f"Wrote JSON to {filepath}")
+            return True
+            
+        except Exception as e:
+            scraper_logger.error(f"Failed to write JSON to {filepath}: {e}")
+            return False
