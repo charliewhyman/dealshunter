@@ -50,3 +50,11 @@
   content-visibility: auto;
   contain-intrinsic-size: 320px; /* Approximate card height */
 }
+
+/* This ensures scrollbar space is reserved, eliminating the bounce */
+.scrollbar-gutter-stable {
+  scrollbar-gutter: stable;
+}
+.scrollbar-gutter-stable::-webkit-scrollbar {
+  width: 10px; /* Fixed width prevents shifts */
+}

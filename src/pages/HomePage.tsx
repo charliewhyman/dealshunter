@@ -27,9 +27,6 @@ const ITEMS_PER_PAGE = 10;
 const INITIAL_RENDER_COUNT = 4;
 const LCP_PRELOAD_COUNT = INITIAL_RENDER_COUNT;
 
-// Remove MV constants - we'll use RPC functions instead
-// const MVS = {...} // DELETE THIS
-
 type SortOrder = 'asc' | 'desc' | 'discount_desc';
 
 export function HomePage() {
@@ -347,7 +344,6 @@ export function HomePage() {
       .map(s => s.trim())
       .filter(s => s.length > 0);
     
-    // IMPORTANT: Supabase requires exact parameter names
     return {
       p_shop_ids: shopIds.length > 0 ? shopIds : null,
       p_size_groups: sizeGroups.length > 0 ? sizeGroups : null,
@@ -406,8 +402,7 @@ export function HomePage() {
               const { data: nextData, error: nextError } = await supabase.rpc('get_products_filtered', params);
               
               if (!nextError && Array.isArray(nextData)) {
-                // Extract total count from first row if available
-                const count = nextData[0]?.total_estimated_count || null;
+                const count = nextData[0]?.total_count || null;
                 prefetchCacheRef.current[nextKey] = { 
                   key: nextKey, 
                   data: nextData as ProductWithDetails[], 
@@ -451,7 +446,7 @@ export function HomePage() {
               const errCode = (error as { code?: string }).code;
               const errStatus = (error as { status?: number }).status;
               if (errCode === 'PGRST116' || errStatus === 416) {
-                console.log('No more items available (416 error)');
+                // No more items available
                 startTransition(() => {
                   setHasMore(false);
                 });
@@ -460,6 +455,19 @@ export function HomePage() {
                 resolve();
                 return;
               }
+              
+              // Handle 500 errors (like the one at offset 90)
+              if (errStatus === 500) {
+                console.warn('Server error at offset', page * ITEMS_PER_PAGE, '- may be hitting a limit');
+                startTransition(() => {
+                  setHasMore(false);
+                });
+                setInitialLoad(false);
+                setError('Unable to load more products at this time.');
+                resolve();
+                return;
+              }
+              
               throw error;
             }
 
@@ -482,7 +490,7 @@ export function HomePage() {
                   const nextParams = buildRpcParams(filters, page + 1, sortOrder);
                   const { data: nextData, error: nextError } = await supabase.rpc('get_products_filtered', nextParams);
                   if (!nextError && Array.isArray(nextData)) {
-                    const nextCount = nextData[0]?.total_estimated_count || null;
+                    const nextCount = nextData[0]?.total_count || null;
                     prefetchCacheRef.current[nextKey] = { 
                       key: nextKey, 
                       data: nextData as ProductWithDetails[], 
@@ -505,10 +513,12 @@ export function HomePage() {
               
               const loadedItemsCount = (page + 1) * ITEMS_PER_PAGE;
               
-              if (totalCount === null || newData.length === 0 || newData.length < ITEMS_PER_PAGE) {
+              if (newData.length === 0 || newData.length < ITEMS_PER_PAGE) {
                 setHasMore(false);
-              } else {
+              } else if (totalCount > 0) {
                 setHasMore(loadedItemsCount < totalCount);
+              } else {
+                setHasMore(newData.length === ITEMS_PER_PAGE);
               }
             });
 
@@ -534,7 +544,6 @@ export function HomePage() {
               const code = (maybeErr as { code?: string }).code;
               const status = (maybeErr as { status?: number }).status;
               if (code === 'PGRST116' || status === 416) {
-                console.log('No more items available');
                 setHasMore(false);
                 setInitialLoad(false);
                 setError(null);
@@ -571,13 +580,17 @@ export function HomePage() {
 
         // Fetch shops from view
         const shopData = await fetchWithCache('distinct_shops', async () => {
-          const { data, error } = await supabase
-            .from('distinct_shops')
-            .select('shop_id, shop_name')
-            .order('shop_name', { ascending: true });
-
-          if (error) throw error;
-          return data as Array<{ shop_id?: number; shop_name?: string }>;
+          try {
+            const { data, error } = await supabase
+              .from('distinct_shops')
+              .select('shop_id, shop_name')
+              .order('shop_name', { ascending: true });
+            if (error) throw error;
+            return data;
+          } catch (error) {
+            console.warn('Shop list load timed out, using empty array.', error);
+            return []; // Return empty, allow page to render products
+          }
         });
 
         if (shopData) {
@@ -770,18 +783,6 @@ export function HomePage() {
           !observerLockRef.current &&
           products.length > 0
         ) {
-          try {
-            const filtersKey = `${JSON.stringify(committedFilters)}-${sortOrder}`;
-            const knownTotal = totalCountRef.current[filtersKey];
-            const nextPage = page + 1;
-            if (typeof knownTotal === 'number' && nextPage * ITEMS_PER_PAGE >= knownTotal) {
-              setHasMore(false);
-              return;
-            }
-          } catch {
-            // ignore
-          }
-          
           observerLockRef.current = true;
           isFetchingRef.current = true;
           
@@ -790,7 +791,7 @@ export function HomePage() {
           });
         }
       },
-      { rootMargin: '400px', threshold: 0.1 }
+      { rootMargin: '800px', threshold: 0.1 } // Increased from 400px to trigger earlier
     );
 
     const currentRef = observerRef.current;
@@ -1044,7 +1045,7 @@ export function HomePage() {
             </div>
   
             <div className={`${showFilters ? 'block' : 'hidden'} lg:block lg:sticky lg:top-24 lg:self-start`}>
-              <div className="bg-white dark:bg-gray-800 rounded-lg shadow-sm p-3 space-y-4 sm:p-4 sm:space-y-6 max-h-[calc(100vh-6rem)] overflow-auto pr-2 lg:mr-4">
+            <div className="bg-white dark:bg-gray-800 rounded-lg shadow-sm p-3 space-y-4 sm:p-4 sm:space-y-6 lg:max-h-[calc(100vh-7rem)] lg:overflow-y-auto scrollbar-gutter-stable both-edges lg:pr-2 lg:mr-4">
                 <div>
                   <h3 className="text-xs font-medium text-gray-700 dark:text-gray-300 mb-2 sm:text-sm sm:mb-3">
                     Shops {selectedShopName.length > 0 && (
@@ -1061,7 +1062,7 @@ export function HomePage() {
                     isLoading={shopOptions.length === 0 && selectedShopName.length > 0}
                   />
                 </div>
-  
+
                 <div>
                   <h3 className="text-xs font-medium text-gray-700 dark:text-gray-300 mb-2 sm:text-sm sm:mb-3">
                     Price Range
@@ -1132,7 +1133,7 @@ export function HomePage() {
                     </div>
                   </div>
                 </div>
-  
+
                 {(selectedShopName.length > 0 || 
                   inStockOnly !== false || 
                   onSaleOnly !== false || 
@@ -1246,6 +1247,23 @@ export function HomePage() {
               </div>
             </div>
 
+            {error && (
+              <div className="mb-4 p-3 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg">
+                <p className="text-red-700 dark:text-red-300 text-sm">{error}</p>
+                <button
+                  onClick={() => {
+                    setError(null);
+                    setPage(0);
+                    setProducts([]);
+                    setInitialLoad(true);
+                  }}
+                  className="mt-2 text-red-600 dark:text-red-400 hover:underline text-xs"
+                >
+                  Try again
+                </button>
+              </div>
+            )}
+
             <div 
               className="relative min-h-[400px]"
               style={{ 
@@ -1260,21 +1278,7 @@ export function HomePage() {
                   gridAutoRows: 'minmax(260px, auto)'
                 }}
               >
-                {error ? (
-                  <div className="col-span-full text-center py-6">
-                    <p className="text-red-500 dark:text-red-400 mb-2 text-sm sm:text-base">{error}</p>
-                    <button
-                      onClick={() => {
-                        setPage(0);
-                        setProducts([]);
-                        setInitialLoad(true);
-                      }}
-                      className="text-blue-600 dark:text-blue-400 hover:underline text-xs sm:text-sm"
-                    >
-                      Retry
-                    </button>
-                  </div>
-                ) : initialLoad ? (
+                {initialLoad ? (
                   <ProductGridSkeleton count={8} />
                 ) : isFetchingEmpty ? (
                   <div className="col-span-full flex flex-col items-center justify-center min-h-[150px] sm:min-h-[200px]">
