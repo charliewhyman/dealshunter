@@ -31,6 +31,7 @@ SCRAPER_CONFIG = {
     'concurrent_pages': 2,
     'batch_size': 50,
     'request_timeout': 20,
+    'retry_attempts': 3,
     'base_delay': 2.0,
     'max_delay': 30.0,
     'max_workers': 3,
