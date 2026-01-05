@@ -46,8 +46,8 @@ class ProductData(BaseEntity):
     product_type: Optional[str] = None
     vendor: Optional[str] = None
     tags: Optional[List[str]] = None
-    price: Optional[str] = None
-    compare_at_price: Optional[str] = None
+    price: Optional[float] = None
+    compare_at_price: Optional[float] = None
     available: Optional[bool] = None
     image_url: Optional[str] = None
     published_at: Optional[str] = None

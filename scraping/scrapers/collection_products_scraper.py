@@ -1,36 +1,46 @@
 """
-Scraper for collection-to-product mapping.
+Collection-Products Scraper - Minimal polling with state tracking.
+Collection-product mappings change even less often than products.
 """
 
 from datetime import datetime
 from typing import List, Dict, Any, Optional
-from concurrent.futures import ThreadPoolExecutor, as_completed, ThreadPoolExecutor
 import time
-import asyncio
+import hashlib
+import json
 
 from scrapers.base_scraper import BaseScraper
 from config.schemas import CollectionProductMapping
-import config.settings as settings
 from core.session_manager import SessionManager
+from core.state_manager import StateManager
+
 
 class CollectionProductsScraper(BaseScraper):
     """Scraper for collection-to-product relationships."""
     
     def __init__(self, collections_data: Optional[Dict[str, List[Dict]]] = None):
         super().__init__('collection_products')
-        # normalize keys to strings to avoid int/str mismatch when looking up by shop id
+        # Normalize keys to strings
         self.collections_data = {str(k): v for k, v in (collections_data or {}).items()}
-        self.max_pages = settings.SCRAPER_CONFIG['max_pages']['collection_products']
-        self.concurrent_collections = settings.SCRAPER_CONFIG.get('concurrent_collections', 3)
-        self.batch_size = settings.SCRAPER_CONFIG.get('batch_size', 250)
+        
+        # State tracking
+        self.state_manager = StateManager()
+        
+        # Rate limiting - be very conservative
+        self.min_shop_delay = 15  # 15 seconds between shops
+        self.max_requests_per_shop = 20
+        self.concurrent_collections = 2
+        
+        # Skip thresholds - mappings change rarely
+        self.skip_shop_days = 14  # Skip shops scraped in last 14 days
+        self.min_collection_size = 5  # Only scrape collections with at least 5 products
     
     def set_collections_data(self, collections_data: Dict[str, List[Dict]]):
         """Set collections data to map against."""
-        # Normalize keys to strings so lookups are consistent regardless of id type
         self.collections_data = {str(k): v for k, v in (collections_data or {}).items()}
     
     def scrape_single(self, shop_data: Dict[str, Any]) -> List[Dict[str, Any]]:
-        """Scrape collection-product relationships for a single shop with concurrency."""
+        """Scrape collection-product relationships only if needed."""
         shop_id = shop_data.get('id')
         base_url = shop_data.get('url')
         
@@ -39,139 +49,199 @@ class CollectionProductsScraper(BaseScraper):
             return []
         
         sid = str(shop_id)
-        if sid not in self.collections_data or not self.collections_data[sid]:
-            self.logger.warning(f"No collections data available for {shop_id}")
+        
+        # Check if we should skip this shop
+        if self.state_manager.should_skip_data_type(sid, 'collection_products', self.skip_shop_days * 24):
+            self.logger.info(f"Skipping collection-products for {sid} - scraped recently")
             return []
         
-        self.logger.info(f"Starting collection-products scrape for {shop_id}")
+        # Check if we have collections data
+        if sid not in self.collections_data or not self.collections_data[sid]:
+            self.logger.warning(f"No collections data available for {sid}")
+            return []
         
-        # Fetch mappings concurrently across collections
-        mappings = self._fetch_collection_products_concurrent(
-            base_url, sid, self.collections_data[sid]
-        )
+        self.logger.info(f"Starting collection-products scrape for {sid}")
         
-        self.logger.info(f"Completed collection-products for {shop_id}: {len(mappings)} mappings")
-        return mappings
+        try:
+            # Filter collections to only scrape meaningful ones
+            collections_to_scrape = self._filter_collections(sid, self.collections_data[sid])
+            
+            if not collections_to_scrape:
+                self.logger.info(f"No collections to scrape for {sid}")
+                # Update state to avoid checking again soon
+                self.state_manager.update_shop_state(sid, 'collection_products', 0)
+                return []
+            
+            # Fetch mappings with conservative pacing
+            mappings = self._fetch_mappings_conservative(
+                base_url, sid, collections_to_scrape
+            )
+            
+            # Update state
+            if mappings:
+                self.state_manager.update_shop_state(sid, 'collection_products', len(mappings), mappings)
+            
+            self.logger.info(f"Completed: {len(mappings)} mappings for {sid}")
+            return mappings
+            
+        except Exception as e:
+            self.logger.error(f"Error scraping collection-products for {sid}: {e}")
+            return []
     
-    def _fetch_collection_products_concurrent(self, base_url: str, shop_id: str, 
-                                            collections: List[Dict]) -> List[Dict[str, Any]]:
-        """Fetch collection-product mappings concurrently across multiple collections."""
+    def _filter_collections(self, shop_id: str, collections: List[Dict]) -> List[Dict]:
+        """Filter collections to only scrape meaningful ones."""
+        filtered = []
+        
+        # Get existing collection-product mappings from state
+        state = self.state_manager.get_shop_state(shop_id)
+        cp_state = state.get('collection_products', {})
+        existing_hashes = cp_state.get('collection_hashes', {})
+        
+        for collection in collections:
+            handle = collection.get('handle')
+            collection_id = str(collection.get('id', ''))
+            products_count = collection.get('products_count')
+            
+            if not handle or not collection_id:
+                continue
+            
+            # Skip collections with very few products (often system collections)
+            if products_count is not None and products_count < self.min_collection_size:
+                self.logger.debug(f"Skipping small collection {handle} ({products_count} products)")
+                continue
+            
+            # Create a hash of collection metadata for change detection
+            collection_hash = self._create_collection_hash(collection)
+            
+            # Check if we've scraped this collection recently and it hasn't changed
+            last_hash = existing_hashes.get(collection_id)
+            if last_hash and last_hash == collection_hash:
+                self.logger.debug(f"Skipping unchanged collection {handle}")
+                continue
+            
+            filtered.append({
+                'collection': collection,
+                'hash': collection_hash
+            })
+        
+        self.logger.info(f"Filtered to {len(filtered)}/{len(collections)} collections for {shop_id}")
+        return filtered
+    
+    def _create_collection_hash(self, collection: Dict) -> str:
+        """Create a hash of collection metadata for change detection."""
+        key_fields = {
+            'id': str(collection.get('id', '')),
+            'handle': collection.get('handle', ''),
+            'title': collection.get('title', ''),
+            'products_count': collection.get('products_count'),
+            'updated_at': collection.get('updated_at', ''),
+        }
+        return hashlib.md5(
+            json.dumps(key_fields, sort_keys=True).encode()
+        ).hexdigest()[:8]
+    
+    def _fetch_mappings_conservative(self, base_url: str, shop_id: str,
+                                     collections_info: List[Dict]) -> List[Dict[str, Any]]:
+        """Fetch collection-product mappings with very conservative pacing."""
         all_mappings = []
         session = SessionManager.get_session(shop_id)
+        request_count = 0
         
-        def fetch_collection(collection: Dict) -> List[Dict[str, Any]]:
-            """Fetch products for a single collection."""
-            collection_id = collection.get('id')
+        self.logger.info(f"Fetching mappings for {len(collections_info)} collections for {shop_id}")
+        
+        for i, info in enumerate(collections_info):
+            collection = info['collection']
+            collection_hash = info['hash']
             handle = collection.get('handle')
+            collection_id = str(collection.get('id', ''))
             
-            if not handle or collection_id is None:
-                self.logger.debug(f"Skipping collection with missing id/handle: {collection}")
-                return []
-            
-            collection_id_str = str(collection_id)
+            if request_count >= self.max_requests_per_shop:
+                self.logger.warning(f"Hit max requests ({self.max_requests_per_shop}) for {shop_id}")
+                break
             
             try:
-                mappings = self._fetch_collection_pages_concurrent(
-                    base_url, shop_id, collection_id_str, handle, session
+                # Fetch products for this collection
+                collection_mappings = self._fetch_collection_products(
+                    base_url, shop_id, collection_id, handle, session
                 )
+                request_count += 1
                 
-                self.logger.debug(
-                    f"Collection {handle}: {len(mappings)} product mappings"
-                )
+                if collection_mappings:
+                    all_mappings.extend(collection_mappings)
+                    
+                    # Store collection hash for future reference
+                    state = self.state_manager.get_shop_state(shop_id)
+                    cp_state = state.get('collection_products', {})
+                    collection_hashes = cp_state.get('collection_hashes', {})
+                    collection_hashes[collection_id] = collection_hash
+                    cp_state['collection_hashes'] = collection_hashes
+                    state['collection_products'] = cp_state
+                    
+                    # Save state periodically
+                    if (i + 1) % 5 == 0:
+                        self.state_manager.update_shop_state(shop_id, 'collection_products', len(all_mappings))
                 
-                return mappings
+                # Progress logging
+                if (i + 1) % 5 == 0 or (i + 1) == len(collections_info):
+                    self.logger.info(
+                        f"{shop_id}: {i+1}/{len(collections_info)} collections, "
+                        f"{len(all_mappings)} mappings"
+                    )
                 
+                # Conservative delay between collections
+                if i < len(collections_info) - 1:
+                    time.sleep(2)  # 2 seconds between collections
+                    
             except Exception as e:
                 self.logger.error(f"Error fetching collection {handle}: {e}")
-                return []
-        
-        # Use concurrent collection fetching
-        max_workers = min(self.concurrent_collections, len(collections))
-        
-        self.logger.info(
-            f"Fetching {len(collections)} collections for {shop_id} "
-            f"with {max_workers} concurrent workers"
-        )
-        
-        start_time = time.time()
-        
-        with ThreadPoolExecutor(max_workers=max_workers) as executor:
-            # Submit all collection fetching tasks
-            future_to_collection = {
-                executor.submit(fetch_collection, collection): collection 
-                for collection in collections
-            }
-            
-            completed = 0
-            for future in as_completed(future_to_collection):
-                try:
-                    collection_mappings = future.result()
-                    if collection_mappings:
-                        all_mappings.extend(collection_mappings)
-                    
-                    completed += 1
-                    
-                    # Log progress every 5 collections or at the end
-                    if completed % 5 == 0 or completed == len(collections):
-                        elapsed = time.time() - start_time
-                        collections_per_sec = completed / elapsed if elapsed > 0 else 0
-                        remaining = len(collections) - completed
-                        eta = remaining / collections_per_sec if collections_per_sec > 0 else 0
-                        
-                        self.logger.info(
-                            f"Progress: {completed}/{len(collections)} collections, "
-                            f"{len(all_mappings)} mappings, "
-                            f"ETA: {eta/60:.1f} min"
-                        )
-                        
-                except Exception as e:
-                    self.logger.error(f"Error in collection future: {e}")
-                    completed += 1
-        
-        elapsed = time.time() - start_time
-        self.logger.info(
-            f"Completed {len(collections)} collections in {elapsed:.1f}s: "
-            f"{len(all_mappings)} total mappings"
-        )
+                # Continue with next collection
         
         return all_mappings
     
-    def _fetch_collection_pages_concurrent(self, base_url: str, shop_id: str, 
-                                          collection_id: str, handle: str, 
-                                          session) -> List[Dict[str, Any]]:
-        """Fetch collection product pages concurrently."""
+    def _fetch_collection_products(self, base_url: str, shop_id: str,
+                                   collection_id: str, handle: str, 
+                                   session) -> List[Dict[str, Any]]:
+        """Fetch products for a single collection."""
         mappings = []
+        page = 1
+        empty_pages = 0
+        max_empty_pages = 2
         
-        def fetch_page(page_num: int) -> List[Dict[str, Any]]:
-            """Fetch a single page of collection products."""
-            page_mappings = []
+        while True:
+            if page > 3:  # Max 3 pages per collection (150 products)
+                break
+            
             try:
-                url = f"{base_url}/collections/{handle}/products.json?limit={self.batch_size}&page={page_num}"
+                url = f"{base_url}/collections/{handle}/products.json?limit=50&page={page}"
                 
-                start_time = time.time()
-                response = session.get(url, timeout=settings.SCRAPER_CONFIG['request_timeout'])
-                wait_time = self.rate_limiter.wait(shop_id, response)
-                fetch_time = time.time() - start_time
-                
-                if response.status_code == 429:
-                    self.logger.warning(f"Rate limited for collection {handle}, page {page_num}")
-                    return []
+                response = session.get(url, timeout=20)
+                self.rate_limiter.wait(shop_id, response)
                 
                 if response.status_code == 404:
-                    # Collection might not exist or have products
-                    return []
+                    # Collection doesn't exist or has no products
+                    break
                 
-                response.raise_for_status()
+                if response.status_code != 200:
+                    self.logger.warning(f"Failed to fetch collection {handle} page {page}: {response.status_code}")
+                    break
+                
                 data = self._safe_parse_json(response)
-                if data is None:
-                    self.logger.error(f"Failed to parse JSON for collection {handle}, page {page_num}")
-                    return []
+                if not data or "products" not in data:
+                    break
                 
-                if "products" not in data or not data["products"]:
-                    return []
+                products = data["products"]
+                if not products:
+                    empty_pages += 1
+                    if empty_pages >= max_empty_pages:
+                        break
+                    page += 1
+                    continue
+                
+                # Reset empty counter
+                empty_pages = 0
                 
                 # Process products in this page
-                for idx, product in enumerate(data["products"]):
+                for idx, product in enumerate(products):
                     if product_id := product.get("id"):
                         mapping = CollectionProductMapping(
                             shop_id=shop_id,
@@ -181,115 +251,76 @@ class CollectionProductsScraper(BaseScraper):
                             position=idx + 1,
                             added_at=product.get("created_at")
                         )
-                        page_mappings.append(mapping.to_dict())
+                        mappings.append(mapping.to_dict())
                 
-                self.logger.debug(
-                    f"Collection {handle}: page {page_num} - {len(data['products'])} products "
-                    f"(fetch: {fetch_time:.2f}s, wait: {wait_time:.2f}s)"
-                )
+                self.logger.debug(f"Collection {handle}: page {page} - {len(products)} products")
+                
+                # If we got fewer than limit, we're done
+                if len(products) < 50:
+                    break
+                
+                page += 1
+                
+                # Add delay between pages
+                time.sleep(0.5)
                 
             except Exception as e:
-                self.logger.error(f"Error fetching collection {handle}, page {page_num}: {e}")
-            
-            return page_mappings
-        
-        # Fetch pages with limited concurrency
-        max_page_workers = 2  # Lower concurrency for collection pages to avoid rate limits
-        page = 1
-        empty_pages = 0
-        max_empty_pages = 2
-        
-        with ThreadPoolExecutor(max_workers=max_page_workers) as executor:
-            while True:
-                if self.max_pages and page > self.max_pages:
-                    break
-                
-                # Submit a small batch of pages
-                futures = []
-                for _ in range(max_page_workers):
-                    futures.append(executor.submit(fetch_page, page))
-                    page += 1
-                
-                # Process results from this batch
-                batch_mappings = 0
-                for future in as_completed(futures):
-                    try:
-                        page_mappings = future.result()
-                        if page_mappings:
-                            mappings.extend(page_mappings)
-                            batch_mappings += len(page_mappings)
-                            empty_pages = 0
-                        else:
-                            empty_pages += 1
-                    except Exception as e:
-                        self.logger.error(f"Error in page future for collection {handle}: {e}")
-                        empty_pages += 1
-                
-                # Check stopping conditions
-                if empty_pages >= max_empty_pages:
-                    self.logger.debug(f"Collection {handle}: Stopping - {empty_pages} empty pages")
-                    break
-                
-                if batch_mappings == 0 and empty_pages >= max_empty_pages:
-                    break
+                self.logger.error(f"Error fetching collection {handle} page {page}: {e}")
+                break
         
         return mappings
     
-    def scrape_multiple(self, shops: List[Dict[str, Any]]) -> Dict[str, List[Dict[str, Any]]]:
-        """Scrape collection-product mappings from multiple shops."""
+    def scrape_multiple(self, shops: List[Dict[str, Any]], max_workers: Optional[int] = 5) -> Dict[str, List[Dict[str, Any]]]:
+        """Scrape collection-product mappings with very conservative pacing."""
         results = {}
         
         if not shops:
             return results
         
         self.logger.info(f"Starting collection-product mapping scrape for {len(shops)} shops")
-        start_time = time.time()
+        total_start = time.time()
         
-        # Process shops sequentially (collections within shops are concurrent)
+        # Process shops with generous delays
         for i, shop in enumerate(shops):
+            shop_id = shop.get('id') or f"shop_{i}"
+            sid = str(shop_id)
+            
             try:
-                shop_id = shop.get('id') or shop.get('url', f'shop_{i}')
-                self.logger.info(f"Processing shop {i+1}/{len(shops)}: {shop_id}")
-                
-                # Check if this shop has collections data
-                sid = str(shop_id)
-                if sid not in self.collections_data or not self.collections_data[sid]:
-                    self.logger.warning(f"No collections data for {shop_id}, skipping")
-                    results[shop_id] = []
-                    continue
-                
-                # Add a small delay between shops to avoid rate limits
+                # Add generous delay between shops
                 if i > 0:
-                    delay = 8  # 8 seconds between shops for collection-products
+                    delay = self.min_shop_delay
                     self.logger.debug(f"Waiting {delay}s before next shop...")
                     time.sleep(delay)
                 
+                # Scrape this shop
                 mappings = self.scrape_single(shop)
-                results[shop_id] = mappings
+                results[sid] = mappings
                 
-                # Log progress
-                elapsed = time.time() - start_time
-                avg_time = elapsed / (i + 1)
-                remaining = len(shops) - (i + 1)
+                # Progress logging
+                elapsed = time.time() - total_start
+                shops_done = i + 1
+                avg_time = elapsed / shops_done if shops_done > 0 else 0
+                remaining = len(shops) - shops_done
                 eta = avg_time * remaining if remaining > 0 else 0
                 
+                total_mappings = sum(len(m) for m in results.values())
+                
                 self.logger.info(
-                    f"Progress: {i+1}/{len(shops)} shops, "
-                    f"{len(mappings)} mappings, "
+                    f"Progress: {shops_done}/{len(shops)} shops, "
+                    f"{total_mappings} mappings, "
                     f"ETA: {eta/60:.1f} min"
                 )
                 
             except Exception as e:
-                self.logger.error(f"Error scraping collection-products for shop {shop.get('url')}: {e}")
-                shop_id = shop.get('id') or shop.get('url', f'shop_{i}')
-                results[shop_id] = []
+                self.logger.error(f"Error scraping {shop.get('url', 'unknown')}: {e}")
+                results[sid] = []
         
         total_mappings = sum(len(m) for m in results.values())
-        total_time = time.time() - start_time
+        total_time = time.time() - total_start
         
         self.logger.info(
-            f"Collection-product mapping completed: {len(results)}/{len(shops)} shops, "
-            f"{total_mappings} total mappings, "
+            f"Collection-product mapping completed: {len(results)} shops, "
+            f"{total_mappings} mappings, "
             f"time: {total_time/60:.1f} minutes"
         )
         

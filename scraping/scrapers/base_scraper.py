@@ -36,18 +36,18 @@ class BaseScraper(ABC):
         """Scrape data for a single shop. Must be implemented by subclasses."""
         pass
     
-    def scrape_multiple(self, shops_data: List[Dict[str, Any]], 
+    def scrape_multiple(self, shops: List[Dict[str, Any]], 
                        max_workers: Optional[int] = None) -> Dict[str, List[Dict[str, Any]]]:
         """Scrape data for multiple shops concurrently."""
         max_workers = max_workers or settings.SCRAPER_CONFIG['max_workers']
         results = {}
         
-        self.logger.info(f"Scraping {len(shops_data)} shops with {max_workers} workers")
+        self.logger.info(f"Scraping {len(shops)} shops with {max_workers} workers")
         
         with ThreadPoolExecutor(max_workers=max_workers) as executor:
             future_to_shop = {
                 executor.submit(self.scrape_single, shop): shop 
-                for shop in shops_data
+                for shop in shops
             }
             
             for future in as_completed(future_to_shop):
