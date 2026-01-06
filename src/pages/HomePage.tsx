@@ -33,6 +33,7 @@ export function HomePage() {
   const [products, setProducts] = useState<ProductWithDetails[]>([]);
   const [loading, setLoading] = useState(true);
   const [initialLoad, setInitialLoad] = useState(true);
+  const [initialDataLoaded, setInitialDataLoaded] = useState(false);
   const [hasMore, setHasMore] = useState(true);
   const [page, setPage] = useState(0);
   const [shopList, setShopList] = useState<Array<{id: number; shop_name: string}>>([]);
@@ -581,6 +582,7 @@ export function HomePage() {
         // Fetch shops from view
         const shopData = await fetchWithCache('distinct_shops', async () => {
           try {
+            setInitialDataLoaded(true);
             const { data, error } = await supabase
               .from('distinct_shops')
               .select('shop_id, shop_name')
@@ -621,6 +623,7 @@ export function HomePage() {
           );
         }
       } catch (error) {
+        setInitialDataLoaded(true);
         console.error('Error fetching initial data:', error);
       }
     }
@@ -710,14 +713,14 @@ export function HomePage() {
 
   // Initial load effect
   useEffect(() => {
-    if (initialLoad) {
+    if (initialLoad && initialDataLoaded) {
       fetchFilteredProducts(committedFilters, 0, sortOrder).catch(err => {
         if ((err as Error)?.name !== 'AbortError') {
           console.error('Initial load error:', err);
         }
       });
     }
-  }, [initialLoad, committedFilters, sortOrder, fetchFilteredProducts]);
+  }, [initialLoad, committedFilters, sortOrder, fetchFilteredProducts, initialDataLoaded]);
 
   // Fetch when page changes (for infinite scroll)
   useEffect(() => {
