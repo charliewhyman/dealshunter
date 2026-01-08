@@ -1,24 +1,138 @@
 <!doctype html>
 <html lang="en">
-  <head>
-    <meta charset="UTF-8" />
-  <script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-8877627669117030"
-     crossorigin="anonymous"></script>
+<head>
+  <meta charset="UTF-8">
+  <meta name="description" content="Discover the best deals and curated products in Canada. Find discounts, compare prices, and shop smart with our comprehensive product listings across major Canadian retailers.">
+  <meta name="keywords" content="Canada shopping, deals, discounts, price comparison, Canadian products, online shopping Canada, best deals">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=5.0, user-scalable=yes">
+  <meta name="theme-color" content="#3b82f6">
+  <meta name="msapplication-TileColor" content="#3b82f6">
+  
+  <link rel="icon" type="image/svg+xml" href="/tag.svg">
+  <link rel="icon" type="image/png" sizes="32x32" href="/favicon-32x32.png">
+  <link rel="icon" type="image/png" sizes="16x16" href="/favicon-16x16.png">
+  <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png">
+  <link rel="manifest" href="/site.webmanifest">
+  
+  <meta property="og:title" content="Curated Canada - Best Deals & Product Discovery">
+  <meta property="og:description" content="Find the best products and deals across Canadian retailers. Compare prices, discover discounts, and shop smarter.">
+  <meta property="og:image" content="https://curatedcanada.ca/tag.svg">
+  <meta property="og:image:width" content="1200">
+  <meta property="og:image:height" content="630">
+  <meta property="og:type" content="website">
+  <meta property="og:url" content="https://curatedcanada.ca">
+  <meta property="og:site_name" content="Curated Canada">
+  
+  <link rel="canonical" href="https://curatedcanada.ca">
+  
   <link rel="preconnect" href="https://cdn.shopify.com" crossorigin>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link rel="dns-prefetch" href="https://cdn.shopify.com">
-    <link rel="icon" type="image/svg+xml" href="/tag.svg" />
-    <link rel="icon" type="image/svg+xml" href="/tag.svg" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <!-- Preconnect to common image CDN to reduce DNS/TCP/TLS overhead for product images -->
-    <link rel="preconnect" href="https://cdn.shopify.com" crossorigin />
-    <link rel="dns-prefetch" href="https://cdn.shopify.com" />
-    <!-- Placeholder meta for server to inject the LCP image URL. If populated,
-         the inline script below will preload the exact LCP image early. -->
-    <meta name="lcp-image" content="" />
-    <script>
-      // Immediately-run inline script to preload a server-inserted LCP image URL
-      // if present in the `meta[name="lcp-image"]` tag. This allows the HTML
-      // document to make the LCP request discoverable before React mounts.
+  <link rel="dns-prefetch" href="https://fonts.googleapis.com">
+  
+  <link rel="preload" href="/src/main.tsx" as="script" fetchpriority="high">
+  
+  <script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-8877627669117030" crossorigin="anonymous"></script>
+  
+  <style>
+    body { 
+      margin: 0; 
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen',
+        'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue',
+        sans-serif;
+      -webkit-font-smoothing: antialiased;
+      -moz-osx-font-smoothing: grayscale;
+      background-color: #ffffff;
+      color: #1f2937;
+    }
+    
+    #root {
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+    }
+    
+    .app-loading {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      min-height: 100vh;
+      padding: 2rem;
+      text-align: center;
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      color: white;
+    }
+    
+    .loading-spinner {
+      width: 50px;
+      height: 50px;
+      border: 3px solid rgba(255,255,255,.3);
+      border-radius: 50%;
+      border-top-color: white;
+      animation: spin 1s ease-in-out infinite;
+      margin-bottom: 1rem;
+    }
+    
+    @keyframes spin {
+      to { transform: rotate(360deg); }
+    }
+    
+    .no-js-content {
+      max-width: 800px;
+      margin: 0 auto;
+      padding: 2rem;
+    }
+    
+    .no-js-content h1 {
+      font-size: 2.5rem;
+      margin-bottom: 1rem;
+      color: #1e40af;
+    }
+    
+    .no-js-content p {
+      font-size: 1.125rem;
+      line-height: 1.6;
+      margin-bottom: 1.5rem;
+      color: #374151;
+    }
+    
+    @media (max-width: 768px) {
+      .no-js-content h1 {
+        font-size: 2rem;
+      }
+    }
+  </style>
+  
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "WebSite",
+    "name": "Curated Canada",
+    "url": "https://curatedcanada.ca",
+    "description": "Curated product discovery and price comparison platform for Canadian shoppers",
+    "potentialAction": {
+      "@type": "SearchAction",
+      "target": "https://curatedcanada.ca/?search={search_term_string}",
+      "query-input": "required name=search_term_string"
+    },
+    "publisher": {
+      "@type": "Organization",
+      "name": "Curated Canada",
+      "logo": {
+        "@type": "ImageObject",
+        "url": "https://curatedcanada.ca/tag.svg"
+      }
+    }
+  }
+  </script>
+  
+  <meta name="lcp-image" content="">
+  <script>
+    (function() {
       try {
         var meta = document.querySelector('meta[name="lcp-image"]');
         if (meta && meta.content) {
@@ -29,17 +143,60 @@
             link.rel = 'preload';
             link.as = 'image';
             link.href = url;
-            // Attempt to hint high priority for modern browsers
             try { link.setAttribute('fetchpriority', 'high'); } catch (e) { }
             document.head.appendChild(link);
           }
         }
       } catch (e) { }
-    </script>
-    <title>Curated Canada</title>
-  </head>
-  <body>
-    <div id="root"></div>
-    <script type="module" src="/src/main.tsx"></script>
-  </body>
+    })();
+  </script>
+  
+  <title>Curated Canada | Discover Best Deals & Products Across Canadian Retailers</title>
+</head>
+
+<body>
+  <noscript>
+    <div class="no-js-content">
+      <h1>Curated Canada</h1>
+      <p>Welcome to Curated Canada, your premier destination for discovering the best products and deals across Canadian retailers.</p>
+      <p>Our platform helps you compare prices, find discounts, and make informed shopping decisions.</p>
+      
+      <h2>Popular Categories:</h2>
+      <ul>
+        <li>Electronics & Gadgets</li>
+        <li>Home & Kitchen</li>
+        <li>Fashion & Apparel</li>
+        <li>Health & Beauty</li>
+        <li>Sports & Outdoors</li>
+      </ul>
+      
+      <h2>Why Shop With Us?</h2>
+      <ul>
+        <li>Price comparison across multiple retailers</li>
+        <li>Real-time stock availability</li>
+        <li>Exclusive deals and discounts</li>
+        <li>Curated quality products</li>
+      </ul>
+      
+      <p><strong>Note:</strong> JavaScript is required for the full interactive experience. Please enable JavaScript in your browser.</p>
+      
+      <div style="margin-top: 2rem; padding-top: 1rem; border-top: 1px solid #e5e7eb;">
+        <a href="/about" style="margin-right: 1rem;">About Us</a>
+        <a href="/contact" style="margin-right: 1rem;">Contact</a>
+        <a href="/privacy" style="margin-right: 1rem;">Privacy Policy</a>
+        <a href="/terms">Terms of Service</a>
+      </div>
+    </div>
+  </noscript>
+  
+  <div id="root">
+    <div class="app-loading">
+      <div class="loading-spinner"></div>
+      <h1 style="font-size: 1.5rem; margin-bottom: 0.5rem;">Curated Canada</h1>
+      <p style="opacity: 0.8;">Loading the best deals for you...</p>
+    </div>
+  </div>
+  
+  <script type="module" src="/src/main.tsx"></script>
+</body>
 </html>
