@@ -1017,7 +1017,7 @@ export function HomePage() {
         handleSearchSubmit={handleSearchSubmit}
       />
       
-      <div className="mx-auto px-4 py-4 mt-4 sm:px-6 sm:py-6 lg:px-8 max-w-screen-2xl">
+      <div className="mx-auto px-4 py-4 mt-16 sm:px-6 sm:py-6 lg:px-8 max-w-screen-2xl">
         <div className="flex flex-col lg:flex-row gap-4 sm:gap-6">
           <div className="w-full lg:w-80 xl:w-96">
             <div className="lg:hidden mb-3">
