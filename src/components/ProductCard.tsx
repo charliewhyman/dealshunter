@@ -1,8 +1,9 @@
-import { useMemo, useState, memo, useLayoutEffect, useRef } from 'react';
+import { useMemo, useState, memo, useLayoutEffect, useRef, useEffect } from 'react';
 import AsyncLucideIcon from './AsyncLucideIcon';
 import { ProductWithDetails } from '../types';
 import { useNavigate } from 'react-router-dom';
 import { useProductPricing } from '../hooks/useProductPricing';
+import { getSupabase } from '../lib/supabase';
 import '../index.css';
 
 interface ProductCardProps {
@@ -16,7 +17,6 @@ interface ProductCardProps {
 }
 
 function ProductCardComponent({ product, pricing, isLcp }: ProductCardProps) {
-  const [showAllVariants, setShowAllVariants] = useState(false);
   const navigate = useNavigate();
   
   // Use pricing passed from parent to avoid per-card network requests
@@ -25,89 +25,139 @@ function ProductCardComponent({ product, pricing, isLcp }: ProductCardProps) {
   const compareAtPrice = pricing?.compareAtPrice ?? pricingFromHook.compareAtPrice;
   const offerPrice = pricing?.offerPrice ?? pricingFromHook.offerPrice;
 
-  // Get the first image as the product image
-  const [productImage] = useState(() => 
-    product.images?.[0]?.src || null
-  );
+  // Get the first image data
+  const firstImageRecord = product.images?.[0] as Record<string, unknown> | undefined;
+  const imageSrc = firstImageRecord?.src as string | undefined;
+  const baseUrlId = firstImageRecord?.base_url_id as number | undefined;
+  const filePath = firstImageRecord?.file_path as string | undefined;
+  const dbWidth = firstImageRecord?.width as number | undefined;
+  const dbHeight = firstImageRecord?.height as number | undefined;
+  const dbAlt = firstImageRecord?.alt as string | undefined;
 
-  // Track when the main image has loaded to hide the placeholder
+  const [baseUrl, setBaseUrl] = useState<string | null>(null);
   const [imgLoaded, setImgLoaded] = useState(false);
 
-  // Prefer responsive fields produced by the scraping pipeline if available
-  const firstImageRecord = product.images?.[0] as Record<string, unknown> | undefined;
-  const dbFallback = firstImageRecord ? (firstImageRecord['responsive_fallback'] as string | undefined) : undefined;
-  const dbSrcSet = firstImageRecord ? (firstImageRecord['srcset'] as string | undefined) : undefined;
-  const dbWebpSrcSet = firstImageRecord ? (firstImageRecord['webp_srcset'] as string | undefined) : undefined;
-  const dbPlaceholder = firstImageRecord ? (firstImageRecord['placeholder'] as string | undefined) : undefined;
-  const dbWidth = firstImageRecord ? (firstImageRecord['width'] as number | undefined) : undefined;
-  const dbHeight = firstImageRecord ? (firstImageRecord['height'] as number | undefined) : undefined;
-
-  // Choose the best source candidate
-  const sourceCandidate = dbFallback || (productImage ?? undefined);
-
-  // Helper: build srcset strings for an image URL using common widths
-  const buildSrcSets = useMemo(() => {
-    return (url?: string) => {
-      if (!url) return { src: undefined as string | undefined, srcSet: undefined as string | undefined, webpSrcSet: undefined as string | undefined };
+  // Fetch base URL if needed
+  useEffect(() => {
+    if (!baseUrlId) return;
+    
+    const fetchBaseUrl = async () => {
       try {
-        // CRITICAL: Use sizes optimized for mobile-first card rendering
-        // Target rendered widths around ~220px on mobile and provide DPR multiples
-        const sizes = [220, 440, 880];
-        const parsed = new URL(url);
-        const base = parsed.origin + parsed.pathname;
-        const originalParams = parsed.searchParams;
-
-        const srcSet = sizes
-          .map((w) => {
-            const p = new URLSearchParams(originalParams.toString());
-            p.set('width', String(w));
-            return `${base}?${p.toString()} ${w}w`;
-          })
-          .join(', ');
-
-        const webpSrcSet = sizes
-          .map((w) => {
-            const p = new URLSearchParams(originalParams.toString());
-            p.set('width', String(w));
-            p.set('format', 'webp');
-            return `${base}?${p.toString()} ${w}w`;
-          })
-          .join(', ');
-
-        // CRITICAL: Use compact card width (220px) as fallback for mobile
-        const fallbackParams = new URLSearchParams(originalParams.toString());
-        fallbackParams.set('width', String(220));
-        const src = `${base}?${fallbackParams.toString()}`;
-
-        return { src, srcSet, webpSrcSet };
-      } catch {
-        return { src: url, srcSet: undefined, webpSrcSet: undefined };
+        const supabase = await getSupabase();
+        const { data } = await supabase
+          .from('image_base_urls')
+          .select('base_url')
+          .eq('id', baseUrlId)
+          .single();
+        
+        if (data) {
+          setBaseUrl(data.base_url);
+        }
+      } catch (error) {
+        console.error('Error fetching base URL:', error);
       }
     };
-  }, []);
 
-  // Build responsive srcsets from the source candidate
-  const { src: computedSrc, srcSet: computedSrcSet, webpSrcSet: computedWebpSrcSet } = useMemo(
-    () => buildSrcSets(sourceCandidate || undefined),
-    [buildSrcSets, sourceCandidate]
-  );
+    fetchBaseUrl();
+  }, [baseUrlId]);
 
-  // Final sources to use in <picture>
-  const finalFallback = computedSrc || sourceCandidate || productImage || undefined;
-  const finalSrcSet = dbSrcSet || computedSrcSet;
-  const finalWebpSrcSet = dbWebpSrcSet || computedWebpSrcSet;
+  // Build image URL and srcsets
+  const { finalSrc, finalSrcSet, finalWebpSrcSet } = useMemo(() => {
+    // If we have a complete src URL, use it directly
+    if (imageSrc && imageSrc.startsWith('http')) {
+      const buildSrcSets = (url: string) => {
+        try {
+          const sizes = [220, 440, 880];
+          const parsed = new URL(url);
+          const base = parsed.origin + parsed.pathname;
+          const originalParams = parsed.searchParams;
 
-  // CRITICAL: Accurate sizes attribute for proper image selection
+          const srcSet = sizes
+            .map((w) => {
+              const p = new URLSearchParams(originalParams.toString());
+              p.set('width', String(w));
+              return `${base}?${p.toString()} ${w}w`;
+            })
+            .join(', ');
+
+          const webpSrcSet = sizes
+            .map((w) => {
+              const p = new URLSearchParams(originalParams.toString());
+              p.set('width', String(w));
+              p.set('format', 'webp');
+              return `${base}?${p.toString()} ${w}w`;
+            })
+            .join(', ');
+
+          const fallbackParams = new URLSearchParams(originalParams.toString());
+          fallbackParams.set('width', '220');
+          const src = `${base}?${fallbackParams.toString()}`;
+
+          return { src, srcSet, webpSrcSet };
+        } catch {
+          return { src: url, srcSet: undefined, webpSrcSet: undefined };
+        }
+      };
+
+      const { src, srcSet, webpSrcSet } = buildSrcSets(imageSrc);
+      return { finalSrc: src, finalSrcSet: srcSet, finalWebpSrcSet: webpSrcSet };
+    }
+
+    // If we have base_url and file_path, construct the URL
+    if (baseUrl && filePath) {
+      const fullUrl = `${baseUrl}${filePath}`;
+      
+      const buildSrcSets = (url: string) => {
+        try {
+          const sizes = [220, 440, 880];
+          const parsed = new URL(url);
+          const base = parsed.origin + parsed.pathname;
+          const originalParams = parsed.searchParams;
+
+          const srcSet = sizes
+            .map((w) => {
+              const p = new URLSearchParams(originalParams.toString());
+              p.set('width', String(w));
+              return `${base}?${p.toString()} ${w}w`;
+            })
+            .join(', ');
+
+          const webpSrcSet = sizes
+            .map((w) => {
+              const p = new URLSearchParams(originalParams.toString());
+              p.set('width', String(w));
+              p.set('format', 'webp');
+              return `${base}?${p.toString()} ${w}w`;
+            })
+            .join(', ');
+
+          const fallbackParams = new URLSearchParams(originalParams.toString());
+          fallbackParams.set('width', '220');
+          const src = `${base}?${fallbackParams.toString()}`;
+
+          return { src, srcSet, webpSrcSet };
+        } catch {
+          return { src: url, srcSet: undefined, webpSrcSet: undefined };
+        }
+      };
+
+      const { src, srcSet, webpSrcSet } = buildSrcSets(fullUrl);
+      return { finalSrc: src, finalSrcSet: srcSet, finalWebpSrcSet: webpSrcSet };
+    }
+
+    return { finalSrc: undefined, finalSrcSet: undefined, finalWebpSrcSet: undefined };
+  }, [imageSrc, baseUrl, filePath]);
+
   const sizesAttr = '(max-width: 640px) 50vw, (max-width: 1024px) 33vw, 316px';
 
   const imgRef = useRef<HTMLImageElement | null>(null);
 
-  // CRITICAL: Preload LCP candidate image synchronously before paint
+  // Preload LCP candidate image synchronously before paint
   useLayoutEffect(() => {
-    if (!isLcp || typeof document === 'undefined' || !finalFallback) return;
+    if (!isLcp || typeof document === 'undefined' || !finalSrc) return;
 
     try {
-      const url = finalFallback;
+      const url = finalSrc;
       const selector = `link[rel="preload"][href="${url}"]`;
       const existing = document.head.querySelector(selector);
       
@@ -117,17 +167,13 @@ function ProductCardComponent({ product, pricing, isLcp }: ProductCardProps) {
         link.as = 'image';
         link.href = url;
         
-        // CRITICAL: Include srcset for responsive preloading
         if (finalWebpSrcSet || finalSrcSet) {
-          // Prefer WebP srcset if available (better compression)
           link.setAttribute('imagesrcset', finalWebpSrcSet || finalSrcSet || '');
           link.setAttribute('imagesizes', sizesAttr);
         }
         
-        // CRITICAL: High priority for LCP image
         link.setAttribute('fetchpriority', 'high');
         
-        // Insert at beginning of head for earliest discovery
         if (document.head.firstChild) {
           document.head.insertBefore(link, document.head.firstChild);
         } else {
@@ -135,22 +181,16 @@ function ProductCardComponent({ product, pricing, isLcp }: ProductCardProps) {
         }
       }
 
-      // CRITICAL: Set fetchpriority directly on img element
       if (imgRef.current) {
         imgRef.current.setAttribute('fetchpriority', 'high');
       }
     } catch (err) {
       console.error('Preload error:', err);
     }
+  }, [isLcp, finalSrc, finalWebpSrcSet, finalSrcSet, sizesAttr]);
 
-    // Cleanup not needed - preload hints can persist
-  }, [isLcp, finalFallback, finalWebpSrcSet, finalSrcSet, sizesAttr]);
-
-  // Process variants from the product data. If `product.variants` is
-  // missing/empty (materialized view may omit full variants), fall back
-  // to `product.size_groups` so we still render size chips on the card.
+  // Process variants from the product data
   const processedVariants = useMemo(() => {
-    // Narrow `variant` from unknown to an object with a string title and optional available
     const fromVariants = (product.variants || [])
       .filter((variant: unknown): variant is { title: string; available?: unknown } =>
         typeof variant === 'object' &&
@@ -166,7 +206,6 @@ function ProductCardComponent({ product, pricing, isLcp }: ProductCardProps) {
 
     if (fromVariants.length > 0) return fromVariants;
 
-    // Fallback: use `size_groups` (array of strings) if available
     const sizes = (product.size_groups || []) as string[];
     if (Array.isArray(sizes) && sizes.length > 0) {
       return sizes.filter(Boolean).map(s => ({ title: String(s), available: true }));
@@ -175,13 +214,11 @@ function ProductCardComponent({ product, pricing, isLcp }: ProductCardProps) {
     return [] as { title: string; available: boolean }[];
   }, [product.variants, product.size_groups]);
 
-  // Determine if all variants (or fallback sizes) are unavailable
   const allVariantsUnavailable = useMemo(
     () => processedVariants.length > 0 && processedVariants.every(v => !v.available),
     [processedVariants]
   );
 
-  // Determine product availability
   const isAvailable = product.in_stock && !allVariantsUnavailable;
 
   const handleCardClick = () => {
@@ -189,14 +226,12 @@ function ProductCardComponent({ product, pricing, isLcp }: ProductCardProps) {
   };
 
   const discountPercentage = useMemo(() => {
-    // Ensure compareAtPrice and price are non-null and non-zero to avoid null/zero division
     if (typeof compareAtPrice === 'number' && compareAtPrice > 0) {
       const price = (offerPrice ?? variantPrice) ?? 0;
       if (price > 0) {
         return Math.round(((compareAtPrice - price) / compareAtPrice) * 100);
       }
     }
-    // Fallback to product-level max_discount_percentage when compareAtPrice is not available
     if (typeof product.max_discount_percentage === 'number' && product.max_discount_percentage > 0) {
       return Math.round(product.max_discount_percentage);
     }
@@ -204,36 +239,19 @@ function ProductCardComponent({ product, pricing, isLcp }: ProductCardProps) {
   }, [compareAtPrice, variantPrice, offerPrice, product.max_discount_percentage]);
 
   const hasDiscount = useMemo(() => {
-    // Primary: require compareAtPrice to be greater than price to show precise badge
     if (compareAtPrice && (compareAtPrice > ((offerPrice ?? variantPrice) ?? 0))) return true;
-    // Fallback: if we don't have compareAtPrice but the product metadata reports a discount, show badge
     return typeof product.max_discount_percentage === 'number' && product.max_discount_percentage > 0;
   }, [compareAtPrice, variantPrice, offerPrice, product.max_discount_percentage]);
 
-  // FIXED: Always show same number of variants initially for consistent layout
-  // Use showAllVariants to control display, not viewport width
-  const displayedVariants = useMemo(
-    () => (showAllVariants ? processedVariants : processedVariants.slice(0, 3)),
-    [processedVariants, showAllVariants]
-  );
-
-  const hasHiddenVariants = useMemo(
-    () => processedVariants.length > 3 && !showAllVariants,
-    [processedVariants, showAllVariants]
+  const availableVariantsCount = useMemo(() => 
+    processedVariants.filter(v => v.available).length,
+    [processedVariants]
   );
 
   return (
     <div
-      className={`relative flex flex-col h-full bg-white dark:bg-gray-800 rounded-md shadow-sm hover:shadow-md transition-all cursor-pointer overflow-hidden product-card ${
-        !isAvailable ? 'opacity-80' : ''
-      }`}
+      className="relative flex flex-col bg-white dark:bg-gray-800 rounded-md shadow-sm hover:shadow-md transition-all cursor-pointer overflow-hidden product-card group"
       onClick={handleCardClick}
-      style={{
-        // Ensure card takes full height of grid cell
-        height: '100%',
-        display: 'flex',
-        flexDirection: 'column',
-      }}
     >
       {/* Discount Badge */}
       {hasDiscount && (
@@ -250,10 +268,9 @@ function ProductCardComponent({ product, pricing, isLcp }: ProductCardProps) {
       )}
 
       {/* Image Container - Fixed aspect ratio */}
-      <div className="relative w-full pt-[56%] sm:pt-[70%] overflow-hidden bg-gray-100 dark:bg-gray-700">
-        {productImage ? (
+      <div className="relative w-full pt-[56%] sm:pt-[70%] overflow-hidden bg-gray-100 dark:bg-gray-700 flex-shrink-0 rounded-t-md">
+        {finalSrc ? (
           <picture>
-            {/* CRITICAL: WebP first for best compression */}
             {finalWebpSrcSet && (
               <source type="image/webp" srcSet={finalWebpSrcSet} sizes={sizesAttr} />
             )}
@@ -262,26 +279,13 @@ function ProductCardComponent({ product, pricing, isLcp }: ProductCardProps) {
               <source srcSet={finalSrcSet} sizes={sizesAttr} />
             )}
 
-            {/* CRITICAL: Placeholder LQIP for perceived performance */}
-            {dbPlaceholder && (
-              <img
-                src={dbPlaceholder}
-                alt=""
-                aria-hidden="true"
-                className={`absolute top-0 left-0 w-full h-full object-cover filter blur-sm scale-105 transition-opacity duration-300 ${
-                  imgLoaded ? 'opacity-0' : 'opacity-100'
-                }`}
-              />
-            )}
-
-            {/* CRITICAL: Main image with optimized attributes */}
             <img
-              src={finalFallback}
+              src={finalSrc}
               srcSet={finalSrcSet}
               sizes={sizesAttr}
               loading={isLcp ? 'eager' : 'lazy'}
               decoding={isLcp ? 'sync' : 'async'}
-              alt={product.title || 'Product image'}
+              alt={dbAlt || product.title || 'Product image'}
               width={dbWidth}
               height={dbHeight}
               ref={imgRef}
@@ -299,15 +303,15 @@ function ProductCardComponent({ product, pricing, isLcp }: ProductCardProps) {
         )}
       </div>
 
-      {/* Product Info - Fixed height container */}
-      <div className="p-1.5 sm:p-3 flex flex-col flex-grow min-h-0">
-        {/* Shop Name */}
-        <p className="text-xs text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-1 truncate">
+      {/* Product Info - Fixed structure for alignment */}
+      <div className="flex flex-col p-1.5 sm:p-3 pb-3 sm:pb-4">
+        {/* Shop Name - Fixed height */}
+        <p className="text-xs text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-1 truncate h-4">
           {product.shop_name}
         </p>
 
-        {/* Title and External Link */}
-          <div className="flex items-start justify-between mb-1 sm:mb-2 min-h-[40px]">
+        {/* Title and External Link - Fixed height */}
+        <div className="flex items-start justify-between mb-1 sm:mb-2 h-10 sm:h-11">
           <h3
             className={`text-sm font-medium text-gray-900 dark:text-gray-100 text-left line-clamp-2 flex-grow mr-2 ${
               !isAvailable ? 'line-through' : ''
@@ -327,71 +331,48 @@ function ProductCardComponent({ product, pricing, isLcp }: ProductCardProps) {
           </a>
         </div>
 
-        {/* Price Information */}
-        <div className="mt-auto">
-          <div className="flex items-baseline gap-1 mb-2 sm:mb-3"> {/* Increased from mb-1 sm:mb-2 */}
-            <span className="text-base sm:text-lg font-bold text-gray-900 dark:text-gray-100 whitespace-nowrap overflow-hidden">
+        {/* Variants - Fixed height section, always present */}
+        <div className="mb-2 h-6 flex items-center">
+          {availableVariantsCount > 0 && !allVariantsUnavailable ? (
+            <div className="flex items-center gap-1">
+              {processedVariants
+                .filter(v => v.available)
+                .slice(0, 2)
+                .map((variant, index) => (
+                  <span
+                    key={index}
+                    className="inline-flex items-center text-xs px-2 py-1 rounded-full border border-gray-300 dark:border-gray-600 bg-gray-100 dark:bg-gray-700 text-gray-900 dark:text-gray-100"
+                    title={variant.title}
+                  >
+                    <span className="truncate max-w-[50px]">{variant.title}</span>
+                  </span>
+                ))}
+              
+              {availableVariantsCount > 2 && (
+                <span className="text-xs text-gray-600 dark:text-gray-400 whitespace-nowrap">
+                  +{availableVariantsCount - 2}
+                </span>
+              )}
+            </div>
+          ) : (
+            <span className="text-xs text-gray-400 dark:text-gray-500 invisible">
+              placeholder
+            </span>
+          )}
+        </div>
+
+        {/* Price Information - Fixed height, always aligned */}
+        <div className="h-6 flex items-center">
+          <div className="flex items-baseline gap-1">
+            <span className="text-base sm:text-lg font-bold text-gray-900 dark:text-gray-100 whitespace-nowrap">
               ${offerPrice?.toFixed(2) ?? variantPrice?.toFixed(2) ?? product.min_price?.toFixed(2) ?? '0.00'}
             </span>
             {compareAtPrice && compareAtPrice > ((offerPrice ?? variantPrice) ?? 0) && (
-              <span className="text-xs text-gray-500 dark:text-gray-400 line-through flex-shrink-0">
+              <span className="text-xs text-gray-500 dark:text-gray-400 line-through whitespace-nowrap">
                 ${compareAtPrice.toFixed(2)}
               </span>
             )}
           </div>
-
-          {/* Variants - Fixed height container with consistent behavior */}
-          {processedVariants.length > 0 && (
-            <div className="mb-2 sm:mb-3"> {/* Added bottom margin for more spacing */}
-              <div 
-                className="flex flex-wrap gap-1"
-              >
-                {displayedVariants.map((variant, index) => (
-                  <span
-                    key={index}
-                    className={`inline-flex items-center text-xs px-1.5 py-0.5 sm:px-2 sm:py-1 rounded-full border flex-shrink-0 variant-chip ${
-                      variant.available
-                        ? 'border-gray-300 dark:border-gray-600 bg-gray-100 dark:bg-gray-700 text-gray-900 dark:text-gray-100'
-                        : 'border-gray-200 dark:border-gray-600 bg-gray-100 dark:bg-gray-700 text-gray-500 dark:text-gray-400'
-                    }`}
-                    style={{
-                      maxWidth: 'calc(50% - 4px)', // Prevent overflow
-                    }}
-                    title={variant.title}
-                  >
-                    <span className="truncate max-w-[80px]">{variant.title}</span>
-                  </span>
-                ))}
-                {hasHiddenVariants && (
-                  <button
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      setShowAllVariants(true);
-                    }}
-                    className="inline-flex items-center text-xs px-1.5 py-0.5 sm:px-2 sm:py-1 rounded-full border border-gray-300 dark:border-gray-600 bg-gray-100 dark:bg-gray-700 text-gray-900 dark:text-gray-100 hover:bg-gray-200 dark:hover:bg-gray-600 flex-shrink-0"
-                  >
-                    +{processedVariants.length - 3} more
-                  </button>
-                )}
-                {showAllVariants && processedVariants.length > 3 && (
-                  <button
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      setShowAllVariants(false);
-                    }}
-                    className="inline-flex items-center text-xs px-1.5 py-0.5 sm:px-2 sm:py-1 rounded-full border border-gray-300 dark:border-gray-600 bg-gray-100 dark:bg-gray-700 text-gray-900 dark:text-gray-100 hover:bg-gray-200 dark:hover:bg-gray-600 flex-shrink-0"
-                  >
-                    Show less
-                  </button>
-                )}
-              </div>
-            </div>
-          )}
-          
-          {/* Add extra bottom padding if no variants */}
-          {processedVariants.length === 0 && (
-            <div className="h-2 sm:h-3"></div>
-          )}
         </div>
       </div>
     </div>
