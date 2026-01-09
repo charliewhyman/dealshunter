@@ -93,3 +93,129 @@ button:focus-visible {
     --text-color: #f8fafc;
   }
 }
+
+.category-section {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+  gap: 2rem;
+  margin: 2rem 0;
+}
+
+.category-card {
+  background: white;
+  padding: 1.5rem;
+  border-radius: 8px;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+  border-top: 4px solid #dc2626;
+}
+
+.category-card h3 {
+  color: #1e40af;
+  margin-top: 0;
+  margin-bottom: 1rem;
+}
+
+.benefits-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+  gap: 1.5rem;
+  margin: 2rem 0;
+}
+
+.benefit {
+  background: #f8fafc;
+  padding: 1.5rem;
+  border-radius: 8px;
+  text-align: center;
+}
+
+.benefit h4 {
+  color: #059669;
+  margin-bottom: 0.5rem;
+}
+
+.brand-list {
+  columns: 2;
+  column-gap: 2rem;
+  margin: 1rem 0;
+}
+
+.brand-list li {
+  margin-bottom: 0.5rem;
+  break-inside: avoid;
+}
+
+.region-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 1.5rem;
+  margin: 1rem 0;
+}
+
+.region {
+  background: #f1f5f9;
+  padding: 1rem;
+  border-radius: 6px;
+}
+
+.region h4 {
+  color: #7c3aed;
+  margin-top: 0;
+}
+
+.how-it-works ol {
+  padding-left: 1.5rem;
+  margin: 1rem 0;
+}
+
+.how-it-works li {
+  margin-bottom: 1rem;
+  line-height: 1.6;
+}
+
+.canadian-values {
+  background: #dbeafe;
+  padding: 1.5rem;
+  border-radius: 8px;
+  margin: 2rem 0;
+}
+
+.cta-section {
+  background: #f0fdf4;
+  padding: 1.5rem;
+  border-radius: 8px;
+  margin: 2rem 0;
+  border-left: 4px solid #10b981;
+}
+
+.site-links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1rem;
+  margin: 2rem 0;
+  padding-top: 2rem;
+  border-top: 1px solid #e5e7eb;
+}
+
+.site-links a {
+  color: #3b82f6;
+  text-decoration: none;
+}
+
+.site-links a:hover {
+  text-decoration: underline;
+}
+
+.canadian-footer {
+  text-align: center;
+  padding-top: 2rem;
+  border-top: 1px solid #e5e7eb;
+  color: #6b7280;
+  font-size: 0.875rem;
+}
+
+.proud {
+  color: #dc2626;
+  font-weight: bold;
+  margin-top: 0.5rem;
+}
