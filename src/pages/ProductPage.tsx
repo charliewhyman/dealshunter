@@ -1,4 +1,4 @@
-import { ChangeEvent, FormEvent, useEffect, useState } from 'react';
+import { ChangeEvent, FormEvent, useEffect, useMemo, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { getSupabase } from '../lib/supabase';
 import { Product } from '../types';
@@ -9,23 +9,21 @@ import { format } from 'date-fns/format';
 import { Header } from '../components/Header';
 
 function ProductPage() {
-  const { ProductId } = useParams<{ ProductId: string }>();
+  const { productId } = useParams<{ productId: string }>();
   const [product, setProduct] = useState<Product | null>(null);
   const [loading, setLoading] = useState(true);
-  const [productImage, setProductImage] = useState<string | undefined>(undefined);
-  type ImageRecord = {
+  const [imageData, setImageData] = useState<{
     src?: string;
-    responsive_fallback?: string;
-    srcset?: string;
-    webp_srcset?: string;
-    placeholder?: string;
     width?: number;
     height?: number;
-  };
-  const [imageRecord, setImageRecord] = useState<ImageRecord | null>(null);
+    alt?: string;
+    base_url_id?: number;
+    file_path?: string;
+  } | null>(null);
+  const [baseUrls, setBaseUrls] = useState<Map<number, string>>(new Map());
   const [imgLoaded, setImgLoaded] = useState(false);
   const [variants, setVariants] = useState<Array<{ title: string; available: boolean }>>([]);
-  const { variantPrice, compareAtPrice, offerPrice } = useProductPricing(ProductId!);
+  const { variantPrice, compareAtPrice, offerPrice } = useProductPricing(productId || '');
   const navigate = useNavigate();
   const [searchQuery, setSearchQuery] = useState('');
 
@@ -39,7 +37,7 @@ function ProductPage() {
         const { data: productData, error: productError } = await supabase
           .from('products')
           .select('*')
-          .eq('id', ProductId)
+          .eq('id', productId)
           .single();
   
         if (productError) throw productError;
@@ -50,22 +48,35 @@ function ProductPage() {
         
         setProduct(productData);
   
-        // Fetch image (include responsive fields if available)
-        const { data: imageData } = await supabase
+        // Fetch image
+        const { data: imageResult } = await supabase
           .from('images')
-          .select('src, responsive_fallback, srcset, webp_srcset, placeholder, width, height')
-          .eq('product_id', ProductId)
+          .select('src, width, height, alt, base_url_id, file_path')
+          .eq('product_id', productId)
+          .order('position', { ascending: true })
           .limit(1)
           .single();
 
-        setImageRecord(imageData || null);
-        setProductImage((imageData && ((imageData.responsive_fallback as string) || (imageData.src as string))) ?? undefined);
+        setImageData(imageResult || null);
+
+        // Fetch base URLs if needed
+        if (imageResult?.base_url_id) {
+          const { data: baseUrlData } = await supabase
+            .from('image_base_urls')
+            .select('id, base_url')
+            .eq('id', imageResult.base_url_id)
+            .single();
+          
+          if (baseUrlData) {
+            setBaseUrls(new Map([[baseUrlData.id, baseUrlData.base_url]]));
+          }
+        }
   
         // Fetch variants
         const { data: variantsData } = await supabase
           .from('variants')
           .select('title, available')
-          .eq('product_id', ProductId);
+          .eq('product_id', productId);
   
         setVariants(variantsData || []);
       } catch (error) {
@@ -76,8 +87,102 @@ function ProductPage() {
       }
     };
   
-    if (ProductId) fetchProductData();
-  }, [ProductId]);
+    if (productId) fetchProductData();
+  }, [productId]);
+
+  // Build image URL and srcsets
+  const { finalSrc, finalSrcSet, finalWebpSrcSet } = useMemo(() => {
+    if (!imageData) {
+      return { finalSrc: undefined, finalSrcSet: undefined, finalWebpSrcSet: undefined };
+    }
+
+    // If we have a complete src URL, use it directly
+    if (imageData.src && imageData.src.startsWith('http')) {
+      const buildSrcSets = (url: string) => {
+        try {
+          // For product page, use larger sizes for high-quality display
+          const sizes = [640, 960, 1280];
+          const parsed = new URL(url);
+          const base = parsed.origin + parsed.pathname;
+          const originalParams = parsed.searchParams;
+
+          const srcSet = sizes
+            .map((w) => {
+              const p = new URLSearchParams(originalParams.toString());
+              p.set('width', String(w));
+              return `${base}?${p.toString()} ${w}w`;
+            })
+            .join(', ');
+
+          const webpSrcSet = sizes
+            .map((w) => {
+              const p = new URLSearchParams(originalParams.toString());
+              p.set('width', String(w));
+              p.set('format', 'webp');
+              return `${base}?${p.toString()} ${w}w`;
+            })
+            .join(', ');
+
+          // Use medium size as fallback
+          const fallbackParams = new URLSearchParams(originalParams.toString());
+          fallbackParams.set('width', '960');
+          const src = `${base}?${fallbackParams.toString()}`;
+
+          return { src, srcSet, webpSrcSet };
+        } catch {
+          return { src: url, srcSet: undefined, webpSrcSet: undefined };
+        }
+      };
+
+      const { src, srcSet, webpSrcSet } = buildSrcSets(imageData.src);
+      return { finalSrc: src, finalSrcSet: srcSet, finalWebpSrcSet: webpSrcSet };
+    }
+
+    // If we have base_url_id and file_path, construct the URL
+    if (imageData.base_url_id && imageData.file_path && baseUrls.has(imageData.base_url_id)) {
+      const baseUrl = baseUrls.get(imageData.base_url_id)!;
+      const fullUrl = `${baseUrl}${imageData.file_path}`;
+      
+      const buildSrcSets = (url: string) => {
+        try {
+          const sizes = [640, 960, 1280];
+          const parsed = new URL(url);
+          const base = parsed.origin + parsed.pathname;
+          const originalParams = parsed.searchParams;
+
+          const srcSet = sizes
+            .map((w) => {
+              const p = new URLSearchParams(originalParams.toString());
+              p.set('width', String(w));
+              return `${base}?${p.toString()} ${w}w`;
+            })
+            .join(', ');
+
+          const webpSrcSet = sizes
+            .map((w) => {
+              const p = new URLSearchParams(originalParams.toString());
+              p.set('width', String(w));
+              p.set('format', 'webp');
+              return `${base}?${p.toString()} ${w}w`;
+            })
+            .join(', ');
+
+          const fallbackParams = new URLSearchParams(originalParams.toString());
+          fallbackParams.set('width', '960');
+          const src = `${base}?${fallbackParams.toString()}`;
+
+          return { src, srcSet, webpSrcSet };
+        } catch {
+          return { src: url, srcSet: undefined, webpSrcSet: undefined };
+        }
+      };
+
+      const { src, srcSet, webpSrcSet } = buildSrcSets(fullUrl);
+      return { finalSrc: src, finalSrcSet: srcSet, finalWebpSrcSet: webpSrcSet };
+    }
+
+    return { finalSrc: undefined, finalSrcSet: undefined, finalWebpSrcSet: undefined };
+  }, [imageData, baseUrls]);
 
   const handleSearchChange = (e: ChangeEvent<HTMLInputElement>) => {
     setSearchQuery(e.target.value);
@@ -98,7 +203,7 @@ function ProductPage() {
     <div className="min-h-screen flex flex-col items-center justify-center px-4 py-8 text-center">
       <p className="text-gray-900 dark:text-gray-100 text-xl">Product not found.</p>
       <p className="text-gray-600 dark:text-gray-400 mt-2">
-        The product with ID {ProductId} could not be loaded.
+        The product with ID {productId} could not be loaded.
       </p>
     </div>
   );
@@ -110,38 +215,46 @@ function ProductPage() {
         handleSearchChange={handleSearchChange}
         handleSearchSubmit={handleSearchSubmit}
       />
-      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4 sm:py-8">
+      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-20 pb-8">
         <div className="text-gray-900 dark:text-gray-100">
           <div className="flex flex-col lg:flex-row gap-6 sm:gap-8">
             {/* Photo Section - Responsive sizing */}
             <div className="w-full lg:w-1/2 xl:w-2/5">
               <div className="sticky top-4">
                 <div className="w-full h-auto max-h-[70vh] relative">
-                  {/* placeholder */}
-                  {imageRecord?.placeholder && (
-                    <img
-                      src={imageRecord.placeholder as string}
-                      alt={product?.title ? `${product.title} placeholder` : 'placeholder'}
-                      aria-hidden
-                      className={`absolute inset-0 w-full h-full object-contain filter blur-sm scale-105 transition-opacity duration-500 ${imgLoaded ? 'opacity-0' : 'opacity-100'}`}
-                    />
-                  )}
+                  {finalSrc ? (
+                    <picture>
+                      {/* WebP first for best compression */}
+                      {finalWebpSrcSet && (
+                        <source type="image/webp" srcSet={finalWebpSrcSet} sizes="(max-width: 768px) 100vw, 50vw" />
+                      )}
 
-                  <picture>
-                    {imageRecord?.webp_srcset && (
-                      <source type="image/webp" srcSet={imageRecord.webp_srcset as string} />
-                    )}
-                    <img
-                      src={productImage ?? '/default-image.png'}
-                      srcSet={imageRecord?.srcset as string | undefined}
-                      sizes="(max-width: 768px) 100vw, 50vw"
-                      decoding="async"
-                      fetchPriority="high"
-                      alt={product?.title ?? 'Product image'}
-                      className={`relative w-full h-auto max-h-[70vh] object-contain rounded-lg shadow-md transition-opacity duration-500 ${imgLoaded ? 'opacity-100' : 'opacity-0'}`}
-                      onLoad={() => setImgLoaded(true)}
-                    />
-                  </picture>
+                      {finalSrcSet && (
+                        <source srcSet={finalSrcSet} sizes="(max-width: 768px) 100vw, 50vw" />
+                      )}
+
+                      {/* Main image with optimized attributes */}
+                      <img
+                        src={finalSrc}
+                        srcSet={finalSrcSet}
+                        sizes="(max-width: 768px) 100vw, 50vw"
+                        decoding="async"
+                        fetchPriority="high"
+                        width={imageData?.width}
+                        height={imageData?.height}
+                        alt={imageData?.alt || product?.title || 'Product image'}
+                        className={`relative w-full h-auto max-h-[70vh] object-contain rounded-lg shadow-md transition-opacity duration-500 ${
+                          imgLoaded ? 'opacity-100' : 'opacity-0'
+                        }`}
+                        onLoad={() => setImgLoaded(true)}
+                        onError={() => setImgLoaded(true)}
+                      />
+                    </picture>
+                  ) : (
+                    <div className="w-full h-[400px] bg-gray-100 dark:bg-gray-800 rounded-lg flex items-center justify-center">
+                      <span className="text-gray-400">No Image Available</span>
+                    </div>
+                  )}
                 </div>
               </div>
             </div>
