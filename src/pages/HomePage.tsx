@@ -974,17 +974,13 @@ export function HomePage() {
   function ProductCardSkeleton() {
     return (
       <div 
-        className="w-full bg-gray-100 dark:bg-gray-800 rounded-lg p-3 animate-pulse sm:p-4"
-        style={{ 
-          minHeight: '260px',
-          contain: 'layout size style'
-        }}
+        className="w-full h-full min-h-[320px] bg-gray-100 dark:bg-gray-800 rounded-lg p-3 animate-pulse sm:p-4 flex flex-col"
       >
         <div className="h-5 sm:h-6 bg-gray-300 dark:bg-gray-700 rounded w-3/4 mb-2"></div>
         <div className="h-3 sm:h-4 bg-gray-300 dark:bg-gray-700 rounded w-1/2 mb-3 sm:mb-4"></div>
         <div className="h-3 sm:h-4 bg-gray-300 dark:bg-gray-700 rounded w-full mb-1"></div>
         <div className="h-3 sm:h-4 bg-gray-300 dark:bg-gray-700 rounded w-5/6 mb-1"></div>
-        <div className="h-3 sm:h-4 bg-gray-300 dark:bg-gray-700 rounded w-2/3"></div>
+        <div className="h-3 sm:h-4 bg-gray-300 dark:bg-gray-700 rounded w-2/3 mt-auto"></div>
       </div>
     );
   }
@@ -1267,100 +1263,96 @@ export function HomePage() {
               </div>
             )}
 
-            <div 
-              className="relative min-h-[400px]"
-              style={{ 
-                contain: 'layout',
-                contentVisibility: 'auto',
-                containIntrinsicSize: '400px 1000px'
-              }}
-            >
-              <div 
-                className="grid gap-x-3 gap-y-4 grid-cols-[repeat(auto-fit,minmax(220px,1fr))] sm:gap-x-4 sm:gap-y-6 xl:grid-cols-4 xl:gap-x-6"
-                style={{
-                  gridAutoRows: 'minmax(260px, auto)'
-                }}
-              >
-                {initialLoad ? (
-                  <ProductGridSkeleton count={8} />
-                ) : isFetchingEmpty ? (
-                  <div className="col-span-full flex flex-col items-center justify-center min-h-[150px] sm:min-h-[200px]">
-                    <AsyncLucideIcon name="Loader2" className="animate-spin h-8 w-8 text-gray-600 dark:text-gray-300 mb-3" />
-                    <p className="text-gray-900 dark:text-gray-100 text-sm sm:text-base">Loading products…</p>
-                  </div>
-                ) : products.length === 0 ? (
-                  <div className="col-span-full flex flex-col items-center justify-center min-h-[150px] space-y-1 sm:min-h-[200px] sm:space-y-2">
-                    <p className="text-gray-900 dark:text-gray-100 text-sm sm:text-base">
-                      {searchQuery || selectedShopName.length > 0
-                        ? "No products match your filters."
-                        : "No products available at the moment."}
-                    </p>
-                    <button
-                      onClick={() => {
-                        setPage(0);
-                        setProducts([]);
-                        setInitialLoad(true);
-                      }}
-                      className="text-blue-600 dark:text-blue-400 hover:underline text-xs sm:text-sm"
-                    >
-                      Retry
-                    </button>
-                  </div>
-                ) : (
-                  <>
-                    {products.map((product, index) => {
-                      const pid = String(product.id);
-                      return (
-                        <div
-                          key={`${product.id}-${product.shop_id}`}
-                          className="h-full"
-                          data-prod-id={pid}
-                          style={{ 
-                            contain: 'layout size style',
-                            contentVisibility: 'auto',
-                            containIntrinsicSize: '320px'
-                          }}
-                          ref={(el) => {
-                            if (el) {
-                              cardRefs.current.set(pid, el);
-                            } else {
-                              cardRefs.current.delete(pid);
-                            }
-                          }}
-                        >
-                          <ProductCard
-                            product={product}
-                            pricing={productPricings[pid]}
-                            isLcp={page === 0 && index < LCP_PRELOAD_COUNT}
-                          />
-                        </div>
-                      );
-                    })}
-                    
-                    {hasMore && (
-                      <div 
-                        className="absolute inset-0 pointer-events-none opacity-0"
-                        style={{ zIndex: -1 }}
-                      >
-                        <div className="grid gap-x-3 gap-y-4 grid-cols-[repeat(auto-fit,minmax(220px,1fr))] sm:gap-x-4 sm:gap-y-6 xl:grid-cols-4 xl:gap-x-6">
-                          <ProductGridSkeleton count={ITEMS_PER_PAGE} />
-                        </div>
-                      </div>
-                    )}
-                  </>
-                )}
+        <div 
+          className="relative min-h-[400px]"
+          style={{ 
+            contain: 'layout',
+            contentVisibility: 'auto',
+            containIntrinsicSize: '400px 1000px'
+          }}
+        >
+          <div 
+            className="grid gap-x-3 gap-y-4 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 sm:gap-x-4 sm:gap-y-6 xl:gap-x-6"
+          >
+            {initialLoad ? (
+              <ProductGridSkeleton count={8} />
+            ) : isFetchingEmpty ? (
+              <div className="col-span-full flex flex-col items-center justify-center min-h-[150px] sm:min-h-[200px]">
+                <AsyncLucideIcon name="Loader2" className="animate-spin h-8 w-8 text-gray-600 dark:text-gray-300 mb-3" />
+                <p className="text-gray-900 dark:text-gray-100 text-sm sm:text-base">Loading products…</p>
               </div>
-              
-              {loading && page > 0 && (
-                <div className="absolute bottom-0 left-0 right-0 flex justify-center py-4 z-10">
-                  <div className="bg-white dark:bg-gray-800 p-3 rounded-lg shadow-lg">
-                    <AsyncLucideIcon name="Loader2" className="animate-spin h-6 w-6 text-gray-600 dark:text-gray-300" />
+            ) : products.length === 0 ? (
+              <div className="col-span-full flex flex-col items-center justify-center min-h-[150px] space-y-1 sm:min-h-[200px] sm:space-y-2">
+                <p className="text-gray-900 dark:text-gray-100 text-sm sm:text-base">
+                  {searchQuery || selectedShopName.length > 0
+                    ? "No products match your filters."
+                    : "No products available at the moment."}
+                </p>
+                <button
+                  onClick={() => {
+                    setPage(0);
+                    setProducts([]);
+                    setInitialLoad(true);
+                  }}
+                  className="text-blue-600 dark:text-blue-400 hover:underline text-xs sm:text-sm"
+                >
+                  Retry
+                </button>
+              </div>
+            ) : (
+              <>
+                {products.map((product, index) => {
+                  const pid = String(product.id);
+                  return (
+                    <div
+                      key={`${product.id}-${product.shop_id}`}
+                      className="h-full min-h-[320px]" // Add min-height here
+                      data-prod-id={pid}
+                      style={{ 
+                        contain: 'layout size style',
+                        contentVisibility: 'auto',
+                      }}
+                      ref={(el) => {
+                        if (el) {
+                          cardRefs.current.set(pid, el);
+                        } else {
+                          cardRefs.current.delete(pid);
+                        }
+                      }}
+                    >
+                      <ProductCard
+                        product={product}
+                        pricing={productPricings[pid]}
+                        isLcp={page === 0 && index < LCP_PRELOAD_COUNT}
+                      />
+                    </div>
+                  );
+                })}
+                
+                {hasMore && (
+                  <div 
+                    className="absolute inset-0 pointer-events-none opacity-0"
+                    style={{ zIndex: -1 }}
+                  >
+                    <div className="grid gap-x-3 gap-y-4 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 sm:gap-x-4 sm:gap-y-6 xl:gap-x-6">
+                      <ProductGridSkeleton count={ITEMS_PER_PAGE} />
+                    </div>
                   </div>
-                </div>
-              )}
-              
-              <div ref={observerRef} className="h-10" />
+                )}
+              </>
+            )}
+          </div>
+          
+          {loading && page > 0 && (
+            <div className="absolute bottom-0 left-0 right-0 flex justify-center py-4 z-10">
+              <div className="bg-white dark:bg-gray-800 p-3 rounded-lg shadow-lg">
+                <AsyncLucideIcon name="Loader2" className="animate-spin h-6 w-6 text-gray-600 dark:text-gray-300" />
+              </div>
             </div>
+          )}
+          
+          <div ref={observerRef} className="h-10" />
+        </div>
           </div>
         </div>
       </div>

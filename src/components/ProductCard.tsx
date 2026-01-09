@@ -210,28 +210,30 @@ function ProductCardComponent({ product, pricing, isLcp }: ProductCardProps) {
     return typeof product.max_discount_percentage === 'number' && product.max_discount_percentage > 0;
   }, [compareAtPrice, variantPrice, offerPrice, product.max_discount_percentage]);
 
-  // CRITICAL: Read viewport width once to avoid layout thrashing
-  const initialViewportWidth = useMemo(() => 
-    (typeof window !== 'undefined' ? window.innerWidth : 1024), 
-  []);
-
-  // Limit displayed variants (or fallback size groups)
+  // FIXED: Always show same number of variants initially for consistent layout
+  // Use showAllVariants to control display, not viewport width
   const displayedVariants = useMemo(
-    () => (showAllVariants ? processedVariants : processedVariants.slice(0, initialViewportWidth < 768 ? 2 : 3)),
-    [processedVariants, showAllVariants, initialViewportWidth]
+    () => (showAllVariants ? processedVariants : processedVariants.slice(0, 3)),
+    [processedVariants, showAllVariants]
   );
 
   const hasHiddenVariants = useMemo(
-    () => processedVariants.length > (initialViewportWidth < 768 ? 2 : 3) && !showAllVariants,
-    [processedVariants, showAllVariants, initialViewportWidth]
+    () => processedVariants.length > 3 && !showAllVariants,
+    [processedVariants, showAllVariants]
   );
 
   return (
     <div
-      className={`relative flex flex-col h-full bg-white dark:bg-gray-800 rounded-md shadow-sm hover:shadow-md transition-all cursor-pointer overflow-hidden ${
+      className={`relative flex flex-col h-full bg-white dark:bg-gray-800 rounded-md shadow-sm hover:shadow-md transition-all cursor-pointer overflow-hidden product-card ${
         !isAvailable ? 'opacity-80' : ''
       }`}
       onClick={handleCardClick}
+      style={{
+        // Ensure card takes full height of grid cell
+        height: '100%',
+        display: 'flex',
+        flexDirection: 'column',
+      }}
     >
       {/* Discount Badge */}
       {hasDiscount && (
@@ -247,8 +249,8 @@ function ProductCardComponent({ product, pricing, isLcp }: ProductCardProps) {
         </div>
       )}
 
-      {/* Image Container */}
-      <div className="relative w-full pt-[56%] sm:pt-[70%] overflow-hidden">
+      {/* Image Container - Fixed aspect ratio */}
+      <div className="relative w-full pt-[56%] sm:pt-[70%] overflow-hidden bg-gray-100 dark:bg-gray-700">
         {productImage ? (
           <picture>
             {/* CRITICAL: WebP first for best compression */}
@@ -291,23 +293,23 @@ function ProductCardComponent({ product, pricing, isLcp }: ProductCardProps) {
             />
           </picture>
         ) : (
-          <div className="absolute top-0 left-0 w-full h-full bg-gray-200 dark:bg-gray-700 flex items-center justify-center">
-            <span className="text-gray-400">No Image</span>
+          <div className="absolute top-0 left-0 w-full h-full flex items-center justify-center">
+            <span className="text-gray-400 text-sm">No Image</span>
           </div>
         )}
       </div>
 
-      {/* Product Info */}
+      {/* Product Info - Fixed height container */}
       <div className="p-1.5 sm:p-3 flex flex-col flex-grow min-h-0">
         {/* Shop Name */}
-        <p className="text-xs text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-1">
+        <p className="text-xs text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-1 truncate">
           {product.shop_name}
         </p>
 
         {/* Title and External Link */}
-          <div className="flex items-start justify-between mb-1 sm:mb-2">
+          <div className="flex items-start justify-between mb-1 sm:mb-2 min-h-[40px]">
           <h3
-            className={`text-sm font-medium text-gray-900 dark:text-gray-100 text-left line-clamp-2 ${
+            className={`text-sm font-medium text-gray-900 dark:text-gray-100 text-left line-clamp-2 flex-grow mr-2 ${
               !isAvailable ? 'line-through' : ''
             }`}
           >
@@ -317,7 +319,7 @@ function ProductCardComponent({ product, pricing, isLcp }: ProductCardProps) {
             href={product.url || '#'}
             target="_blank"
             rel="noopener noreferrer"
-            className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 ml-2 flex-shrink-0"
+            className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 flex-shrink-0 mt-0.5"
             onClick={(e) => e.stopPropagation()}
             title="View on original site"
           >
@@ -327,31 +329,37 @@ function ProductCardComponent({ product, pricing, isLcp }: ProductCardProps) {
 
         {/* Price Information */}
         <div className="mt-auto">
-          <div className="flex items-baseline gap-1">
+          <div className="flex items-baseline gap-1 mb-2 sm:mb-3"> {/* Increased from mb-1 sm:mb-2 */}
             <span className="text-base sm:text-lg font-bold text-gray-900 dark:text-gray-100 whitespace-nowrap overflow-hidden">
               ${offerPrice?.toFixed(2) ?? variantPrice?.toFixed(2) ?? product.min_price?.toFixed(2) ?? '0.00'}
             </span>
             {compareAtPrice && compareAtPrice > ((offerPrice ?? variantPrice) ?? 0) && (
-              <span className="text-xs text-gray-500 dark:text-gray-400 line-through">
+              <span className="text-xs text-gray-500 dark:text-gray-400 line-through flex-shrink-0">
                 ${compareAtPrice.toFixed(2)}
               </span>
             )}
           </div>
 
-          {/* Variants */}
+          {/* Variants - Fixed height container with consistent behavior */}
           {processedVariants.length > 0 && (
-            <div className="mt-1 sm:mt-2">
-              <div className="flex flex-wrap gap-1">
+            <div className="mb-2 sm:mb-3"> {/* Added bottom margin for more spacing */}
+              <div 
+                className="flex flex-wrap gap-1"
+              >
                 {displayedVariants.map((variant, index) => (
                   <span
                     key={index}
-                    className={`text-xs px-1.5 py-0.5 sm:px-2 sm:py-1 rounded-full border ${
+                    className={`inline-flex items-center text-xs px-1.5 py-0.5 sm:px-2 sm:py-1 rounded-full border flex-shrink-0 variant-chip ${
                       variant.available
                         ? 'border-gray-300 dark:border-gray-600 bg-gray-100 dark:bg-gray-700 text-gray-900 dark:text-gray-100'
                         : 'border-gray-200 dark:border-gray-600 bg-gray-100 dark:bg-gray-700 text-gray-500 dark:text-gray-400'
                     }`}
+                    style={{
+                      maxWidth: 'calc(50% - 4px)', // Prevent overflow
+                    }}
+                    title={variant.title}
                   >
-                    {variant.title}
+                    <span className="truncate max-w-[80px]">{variant.title}</span>
                   </span>
                 ))}
                 {hasHiddenVariants && (
@@ -360,24 +368,29 @@ function ProductCardComponent({ product, pricing, isLcp }: ProductCardProps) {
                       e.stopPropagation();
                       setShowAllVariants(true);
                     }}
-                    className="text-xs px-1.5 py-0.5 sm:px-2 sm:py-1 rounded-full border border-gray-300 dark:border-gray-600 bg-gray-100 dark:bg-gray-700 text-gray-900 dark:text-gray-100 hover:bg-gray-200 dark:hover:bg-gray-600"
+                    className="inline-flex items-center text-xs px-1.5 py-0.5 sm:px-2 sm:py-1 rounded-full border border-gray-300 dark:border-gray-600 bg-gray-100 dark:bg-gray-700 text-gray-900 dark:text-gray-100 hover:bg-gray-200 dark:hover:bg-gray-600 flex-shrink-0"
                   >
-                    +{processedVariants.length - (initialViewportWidth < 768 ? 2 : 3)} more
+                    +{processedVariants.length - 3} more
                   </button>
                 )}
-                {showAllVariants && (
+                {showAllVariants && processedVariants.length > 3 && (
                   <button
                     onClick={(e) => {
                       e.stopPropagation();
                       setShowAllVariants(false);
                     }}
-                    className="text-xs px-1.5 py-0.5 sm:px-2 sm:py-1 rounded-full border border-gray-300 dark:border-gray-600 bg-gray-100 dark:bg-gray-700 text-gray-900 dark:text-gray-100 hover:bg-gray-200 dark:hover:bg-gray-600"
+                    className="inline-flex items-center text-xs px-1.5 py-0.5 sm:px-2 sm:py-1 rounded-full border border-gray-300 dark:border-gray-600 bg-gray-100 dark:bg-gray-700 text-gray-900 dark:text-gray-100 hover:bg-gray-200 dark:hover:bg-gray-600 flex-shrink-0"
                   >
                     Show less
                   </button>
                 )}
               </div>
             </div>
+          )}
+          
+          {/* Add extra bottom padding if no variants */}
+          {processedVariants.length === 0 && (
+            <div className="h-2 sm:h-3"></div>
           )}
         </div>
       </div>
