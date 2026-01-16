@@ -12,7 +12,7 @@ export function AboutPage() {
   return (
     <div className="max-w-4xl mx-auto px-4 py-8">
       <h1 className="text-3xl font-bold mb-4">About Curated Canada</h1>
-      <p className="text-gray-600 dark:text-gray-400 mb-8">Celebrating Canadian fashion and design since 2024</p>
+      <p className="text-gray-600 dark:text-gray-400 mb-8">Celebrating Canadian fashion and design since 2025</p>
       
       <div className="space-y-8">
         <section className="bg-white dark:bg-gray-800 rounded-lg p-6 shadow-sm">
