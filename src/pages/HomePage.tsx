@@ -585,8 +585,8 @@ export function HomePage() {
             setInitialDataLoaded(true);
             const { data, error } = await supabase
               .from('distinct_shops')
-              .select('shop_id, shop_name')
-              .order('shop_name', { ascending: true });
+              .select('id, name')
+              .order('name', { ascending: true });
             if (error) throw error;
             return data;
           } catch (error) {
@@ -598,7 +598,7 @@ export function HomePage() {
         if (shopData) {
           setShopList(
             shopData
-              .map(item => ({ id: Number(item.shop_id || 0), shop_name: item.shop_name || '' }))
+              .map(item => ({ id: Number(item.id || 0), shop_name: item.name || '' }))
               .filter(item => item.shop_name !== '')
           );
         }

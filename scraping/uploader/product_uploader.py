@@ -1,5 +1,5 @@
 """
-Product uploader with normalized image structure.
+Product uploader with normalized image structure and product categorization.
 """
 
 import json
@@ -12,6 +12,7 @@ from uploader.base_uploader import BaseUploader
 from uploader.data_processor import DataProcessor
 from uploader.supabase_client import SupabaseClient
 from core.logger import uploader_logger
+from product_categorizer import ProductCategorizer  # NEW IMPORT
 
 class ProductProcessor:
     """Helper class to process product data."""
@@ -19,6 +20,7 @@ class ProductProcessor:
     def __init__(self):
         self.supabase = SupabaseClient()
         self.processor = DataProcessor()
+        self.categorizer = ProductCategorizer()  # NEW: Initialize categorizer
         self.collections = {
             'products': [],
             'options': [],
@@ -107,7 +109,11 @@ class ProductProcessor:
             if not product_id:
                 return None
             
-            # Process main product
+            # Extract category information using the categorizer
+            product_type = product.get("product_type", "")
+            category_info = self.categorizer.get_category_info(product_type)
+            
+            # Process main product with new columns
             product_data = {
                 "id": product_id,
                 "title": product.get("title", ""),
@@ -116,12 +122,24 @@ class ProductProcessor:
                 "description": self.processor.strip_html_tags(product.get("body_html", "")),
                 "updated_at_external": product.get("updated_at"),
                 "published_at_external": product.get("published_at"),
-                "product_type": product.get("product_type", ""),
+                "product_type": product_type,  # Original product type
+                "grouped_product_type": category_info['grouped_product_type'],  # NEW
+                "top_level_category": category_info['top_level_category'],  # NEW
+                "subcategory": category_info['subcategory'],  # NEW
+                "gender_age": category_info['gender_age'],  # NEW
                 "tags": product.get("tags", []),
                 "url": product.get("product_url", ""),
                 "shop_id": product.get("shop_id", ""),
             }
             self.collections['products'].append(product_data)
+            
+            # Log categorization for debugging (first few products only)
+            if len(self.collections['products']) <= 5:
+                uploader_logger.debug(
+                    f"Categorized '{product_type[:50]}...' -> "
+                    f"grouped: {category_info['grouped_product_type']}, "
+                    f"gender: {category_info['gender_age']}"
+                )
             
             # Process options
             options = product.get("options", [])
@@ -232,9 +250,14 @@ class ProductProcessor:
     def get_stats(self) -> Dict[str, int]:
         """Get statistics about processed products."""
         return {name: len(items) for name, items in self.collections.items()}
+    
+    def reload_categorization_config(self):
+        """Reload the categorization configuration."""
+        self.categorizer.reload_config()
+        uploader_logger.info("🔄 Product categorization config reloaded")
 
 class ProductUploader(BaseUploader):
-    """Uploader for product data."""
+    """Uploader for product data with categorization."""
     
     def __init__(self):
         super().__init__('products')
@@ -312,25 +335,25 @@ class ProductUploader(BaseUploader):
                     product_ids.append(product_id)
             
             if self.processor.collections.get("products"):
-                # Debug: log count and a small sample before attempting upsert
-                try:
-                    sample_count = min(3, len(self.processor.collections.get("products", [])))
-                    self.logger.info(
-                        f"Preparing to upsert {len(self.processor.collections['products'])} products. Sample ids: {[p.get('id') for p in self.processor.collections['products'][:sample_count]]}"
-                    )
-                except Exception:
-                    # don't fail processing for logging issues
-                    pass
-
+                # Log categorization summary
+                grouped_types = {}
+                for p in self.processor.collections["products"]:
+                    gpt = p.get("grouped_product_type", "Uncategorized")
+                    grouped_types[gpt] = grouped_types.get(gpt, 0) + 1
+                
+                self.logger.info(f"📊 Categorization summary for {filepath.name}:")
+                for gpt, count in sorted(grouped_types.items(), key=lambda x: x[1], reverse=True)[:10]:
+                    self.logger.info(f"  - {gpt}: {count} products")
+                
                 # Upsert into the core products table
                 if self.supabase.bulk_upsert(
                     "products_with_details_core",
                     self.processor.collections["products"],
                     on_conflict="id"
                 ):
-                    self.logger.info(f"Uploaded {len(self.processor.collections['products'])} products from {filepath.name}")
+                    self.logger.info(f"✅ Uploaded {len(self.processor.collections['products'])} products from {filepath.name}")
                 else:
-                    self.logger.error(f"Failed to upload products from {filepath.name}")
+                    self.logger.error(f"❌ Failed to upload products from {filepath.name}")
                     return False
             else:
                 self.logger.warning(f"No products to upload from {filepath.name}")
@@ -378,11 +401,11 @@ class ProductUploader(BaseUploader):
                 self.cleanup_stale_records(product_ids, shop_id)
 
             self.file_manager.move_to_processed(filepath)
-            self.logger.info(f"Successfully processed {filepath.name}")
+            self.logger.info(f"✅ Successfully processed {filepath.name}")
             return True
             
         except Exception as e:
-            self.logger.error(f"Error processing {filepath.name}: {e}")
+            self.logger.error(f"❌ Error processing {filepath.name}: {e}")
             return False
     
     def process_all(self) -> Dict[str, Any]:
@@ -416,4 +439,13 @@ class ProductUploader(BaseUploader):
                 results['failed'] += 1
         
         results['shop_ids'] = list(results['shop_ids'])
+        
+        # Log final categorization stats
+        if results['total_products'] > 0:
+            self.logger.info(f"🎉 Processed {results['total_products']} products total")
+        
         return results
+    
+    def reload_categorization_config(self):
+        """Reload the categorization configuration."""
+        self.processor.reload_categorization_config()
