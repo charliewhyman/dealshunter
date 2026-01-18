@@ -29,16 +29,42 @@ class ShopUploader(BaseUploader):
                 'shop_name': shop.get('shop_name') or shop.get('name') or 'Unknown',
                 'url': shop.get('url', ''),
             }
-            if shop.get('category') is not None:
-                safe_shop['category'] = shop.get('category')
+            
+            # Handle category - can be string or array in JSON
+            category = shop.get('category')
+            if category is not None:
+                if isinstance(category, list):
+                    # Take first category as primary, or join them
+                    safe_shop['category'] = category[0] if category else None
+                else:
+                    safe_shop['category'] = str(category)
+            
+            # Handle location
+            location = shop.get('location')
+            if location is not None and location:
+                safe_shop['location'] = str(location).strip()
+            
+            # Handle tags - ensure it's always a list
             tags = shop.get('tags')
             if tags is not None:
-                safe_shop['tags'] = tags if isinstance(tags, list) else [t.strip() for t in str(tags).split(',') if t.strip()]
+                if isinstance(tags, list):
+                    safe_shop['tags'] = [str(t).strip() for t in tags if t]
+                else:
+                    safe_shop['tags'] = [t.strip() for t in str(tags).split(',') if t.strip()]
+            
+            # Handle is_shopify flag
             if 'is_shopify' in shop:
                 safe_shop['is_shopify'] = None if shop.get('is_shopify') is None else bool(shop.get('is_shopify'))
+            else:
+                # Default to True for new shops
+                safe_shop['is_shopify'] = True
+            
+            # Handle updated_at timestamp
             if shop.get('updated_at'):
                 safe_shop['updated_at'] = shop.get('updated_at')
+            
             transformed.append(safe_shop)
+        
         return transformed
     
     def process_all(self) -> Dict[str, Any]:
@@ -47,12 +73,14 @@ class ShopUploader(BaseUploader):
             'processed': 0,
             'failed': 0,
             'total_shops': 0,
-            'shop_ids': []
+            'shop_ids': [],
+            'warnings': []
         }
 
         shop_file = settings.SHOP_URLS_FILE
         if not shop_file or not shop_file.exists():
             self.logger.warning(f"Shop file not found: {shop_file}")
+            results['warnings'].append(f"Shop file not found: {shop_file}")
             return results
 
         try:
@@ -61,14 +89,22 @@ class ShopUploader(BaseUploader):
 
             if not isinstance(shop_list, list) or not shop_list:
                 self.logger.warning(f"No shops found in {shop_file}")
+                results['warnings'].append("No shops found in file")
                 return results
 
             results['total_shops'] = len(shop_list)
+            self.logger.info(f"Processing {len(shop_list)} shops from {shop_file}")
 
             transformed = self.transform_data(shop_list)
             if not transformed:
                 self.logger.warning("No shop records to upload after transformation")
+                results['warnings'].append("No shops after transformation")
                 return results
+
+            # Log sample of what we're uploading
+            if transformed:
+                sample = transformed[0]
+                self.logger.info(f"Sample shop data: {sample}")
 
             success = self.supabase.bulk_upsert(
                 table_name=self.get_table_name(),
@@ -78,6 +114,8 @@ class ShopUploader(BaseUploader):
 
             if success:
                 results['processed'] = len(transformed)
+                self.logger.info(f"Successfully uploaded {len(transformed)} shops")
+                
                 # Collect IDs (or urls) for reporting
                 for s in shop_list:
                     sid = s.get('id') or s.get('url')
@@ -85,9 +123,15 @@ class ShopUploader(BaseUploader):
                         results['shop_ids'].append(str(sid))
             else:
                 results['failed'] = len(transformed)
+                self.logger.error(f"Failed to upload {len(transformed)} shops")
 
             return results
 
+        except json.JSONDecodeError as e:
+            self.logger.error(f"Invalid JSON in {shop_file}: {e}")
+            results['warnings'].append(f"Invalid JSON: {e}")
+            return results
         except Exception as e:
             self.logger.error(f"Failed to process shops from {shop_file}: {e}")
+            results['warnings'].append(f"Processing error: {e}")
             return results
