@@ -1,0 +1,218 @@
+{
+    "category_mapping": {
+        "Clothing - Tops": {
+            "keywords": ["tee", "t-shirt", "tank", "top", "sweater", "hoodie", "sweatshirt", 
+                         "pullover", "crewneck", "henley", "blouse", "shirt", "cardigan",
+                         "tunic", "crop", "jersey", "polo", "rugby"],
+            "exclude": ["shorts", "pants", "skirt", "dress", "jacket", "coat", "vest"]
+        },
+        "Clothing - Bottoms": {
+            "keywords": ["pants", "pant", "jeans", "shorts", "short", "skirt", "leggings", 
+                         "joggers", "sweatpant", "trousers", "chino", "capri"],
+            "exclude": []
+        },
+        "Clothing - Dresses & Jumpsuits": {
+            "keywords": ["dress", "jumpsuit", "romper", "overall"],
+            "exclude": []
+        },
+        "Clothing - Outerwear": {
+            "keywords": ["jacket", "coat", "bomber", "vest", "poncho", "windguard"],
+            "exclude": ["cardigan", "sweater"]
+        },
+        "Clothing - Activewear & Loungewear": {
+            "keywords": ["lounge", "active", "yoga", "athletic", "performance"],
+            "exclude": []
+        },
+        "Clothing - Sleepwear & Intimates": {
+            "keywords": ["sleepwear", "pajama", "pyjama", "nightie", "sleeper", "robe", 
+                         "underwear", "boxer", "brief", "bra", "lingerie", "intimates"],
+            "exclude": []
+        },
+        "Clothing - Swimwear": {
+            "keywords": ["swim", "bathing suit", "bikini", "trunks"],
+            "exclude": []
+        },
+        "Accessories - Headwear": {
+            "keywords": ["hat", "toque", "beanie", "cap", "headband", "headwear", 
+                         "balaclava", "bonnet", "baseball"],
+            "exclude": []
+        },
+        "Accessories - Bags": {
+            "keywords": ["bag", "backpack", "tote", "wallet", "handbag", "messenger", 
+                         "luggage", "hip pack"],
+            "exclude": []
+        },
+        "Accessories - Jewelry": {
+            "keywords": ["jewelry", "necklace", "earring", "bracelet", "ring", 
+                         "anklet", "charm", "pendant"],
+            "exclude": []
+        },
+        "Accessories - Scarves & Gloves": {
+            "keywords": ["scarf", "scarves", "glove", "mitten", "dickie"],
+            "exclude": []
+        },
+        "Accessories - Socks": {
+            "keywords": ["sock", "socks"],
+            "exclude": []
+        },
+        "Accessories - Belts": {
+            "keywords": ["belt", "belts"],
+            "exclude": []
+        },
+        "Accessories - Eyewear": {
+            "keywords": ["glasses", "sunglasses", "eyewear"],
+            "exclude": []
+        },
+        "Accessories - Hair": {
+            "keywords": ["hair accessory", "hair accessories", "scrunchie", "headwrap"],
+            "exclude": ["headband", "headwear"]
+        },
+        "Accessories - Other": {
+            "keywords": ["accessory", "accessories", "accoutrements"],
+            "exclude": []
+        },
+        "Footwear - Sneakers": {
+            "keywords": ["sneaker", "sneakers"],
+            "exclude": []
+        },
+        "Footwear - Boots": {
+            "keywords": ["boot", "boots", "bottes"],
+            "exclude": []
+        },
+        "Footwear - Sandals & Summer": {
+            "keywords": ["sandal", "sandals", "summer"],
+            "exclude": ["boot"]
+        },
+        "Footwear - Slippers": {
+            "keywords": ["slipper", "slippers", "pantoufles"],
+            "exclude": []
+        },
+        "Footwear - Dress Shoes": {
+            "keywords": ["mocassin", "dress"],
+            "exclude": []
+        },
+        "Footwear - Other": {
+            "keywords": ["footwear", "shoes", "chaussures"],
+            "exclude": []
+        },
+        "Home & Living - Decor": {
+            "keywords": ["decor", "cushion", "pillow", "vase", "clock", "ornament"],
+            "exclude": []
+        },
+        "Home & Living - Candles & Fragrance": {
+            "keywords": ["candle", "fragrance", "incense", "diffuser", "room spray", 
+                         "linen spray", "scent"],
+            "exclude": []
+        },
+        "Home & Living - Kitchen & Bar": {
+            "keywords": ["kitchen", "bar", "mug", "cup", "glass", "kettle", "dish", 
+                         "utensil", "tabletop"],
+            "exclude": []
+        },
+        "Home & Living - Blankets & Textiles": {
+            "keywords": ["blanket", "towel", "textile", "napkin", "tea towel", 
+                         "washcloth", "swaddle"],
+            "exclude": []
+        },
+        "Beauty & Personal Care - Bath & Body": {
+            "keywords": ["body lotion", "body oil", "body wash", "bath salt", 
+                         "bath", "soap", "bar soap"],
+            "exclude": ["hair", "face", "oral"]
+        },
+        "Beauty & Personal Care - Skincare": {
+            "keywords": ["face", "skin", "serum", "face mask", "face mist", "face pad"],
+            "exclude": []
+        },
+        "Beauty & Personal Care - Haircare": {
+            "keywords": ["shampoo", "conditioner", "hair oil", "hair serum", "hair"],
+            "exclude": ["accessory"]
+        },
+        "Beauty & Personal Care - Grooming": {
+            "keywords": ["grooming", "beard oil", "shave"],
+            "exclude": []
+        },
+        "Beauty & Personal Care - Oral Care": {
+            "keywords": ["oral care", "toothbrush", "mouth", "dental", "floss"],
+            "exclude": []
+        },
+        "Beauty & Personal Care - Deodorant": {
+            "keywords": ["deodorant"],
+            "exclude": []
+        },
+        "Kids & Baby - Clothing": {
+            "keywords": ["kid", "baby", "youth", "toddler", "child", "infant"],
+            "exclude": ["toy", "game", "book", "stationery", "bag"]
+        },
+        "Kids & Baby - Accessories": {
+            "keywords": ["kids accessories", "baby accessories"],
+            "exclude": []
+        },
+        "Kids & Baby - Toys & Activities": {
+            "keywords": ["toy", "plush", "puzzle", "game", "doll", "activities"],
+            "exclude": []
+        },
+        "Kids & Baby - Nursery": {
+            "keywords": ["nursery", "bib", "changing mat", "baby gift"],
+            "exclude": []
+        },
+        "Gifts & Stationery - Cards": {
+            "keywords": ["card", "cards", "greeting", "postcard"],
+            "exclude": ["gift card"]
+        },
+        "Gifts & Stationery - Gift Cards": {
+            "keywords": ["gift card", "cartes-cadeaux"],
+            "exclude": []
+        },
+        "Gifts & Stationery - Books": {
+            "keywords": ["book", "books"],
+            "exclude": []
+        },
+        "Gifts & Stationery - Stationery": {
+            "keywords": ["stationery", "notebook", "notepad", "pen", "planner", 
+                         "calendar", "patch", "sticker", "pin"],
+            "exclude": []
+        },
+        "Gifts & Stationery - Gift Wrap": {
+            "keywords": ["gift wrap", "wrapping paper", "gift bag"],
+            "exclude": []
+        },
+        "Food & Beverages - Coffee & Tea": {
+            "keywords": ["coffee", "tea"],
+            "exclude": []
+        },
+        "Food & Beverages - Snacks": {
+            "keywords": ["snack", "candy", "chocolate"],
+            "exclude": []
+        },
+        "Food & Beverages - Other": {
+            "keywords": ["food", "preserve", "grain"],
+            "exclude": []
+        },
+        "Pet Accessories": {
+            "keywords": ["pet", "dog"],
+            "exclude": []
+        },
+        "Lifestyle - Cleaning": {
+            "keywords": ["cleaning", "laundry", "detergent", "stain remover", 
+                         "dish soap", "dryer balls"],
+            "exclude": []
+        },
+        "Lifestyle - Reusables": {
+            "keywords": ["reusable", "multi-use"],
+            "exclude": []
+        },
+        "Lifestyle - Other": {
+            "keywords": ["lifestyle", "electronic", "tools", "gadget", "craft"],
+            "exclude": []
+        }
+    },
+    "gender_age_patterns": {
+      "Mens": ["mens", "men's", "men ", "male"],
+      "Womens": ["womens", "women's", "ladies", "women ", "female"],
+      "Kids": ["kids", "kid ", "kid's", "children", "youth"],
+      "Baby": ["baby", "infant", "toddler", "babies"],
+      "Unisex": ["unisex"]
+    },
+    "uncategorized_fallback": "Uncategorized",
+    "default_gender_age": "Unisex"
+  }
