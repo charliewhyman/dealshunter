@@ -12,7 +12,7 @@ from uploader.base_uploader import BaseUploader
 from uploader.data_processor import DataProcessor
 from uploader.supabase_client import SupabaseClient
 from core.logger import uploader_logger
-from product_categorizer import ProductCategorizer  # NEW IMPORT
+from uploader.product_categorizer import ProductCategorizer
 
 class ProductProcessor:
     """Helper class to process product data."""
@@ -20,7 +20,7 @@ class ProductProcessor:
     def __init__(self):
         self.supabase = SupabaseClient()
         self.processor = DataProcessor()
-        self.categorizer = ProductCategorizer()  # NEW: Initialize categorizer
+        self.categorizer = ProductCategorizer()
         self.collections = {
             'products': [],
             'options': [],
@@ -59,7 +59,7 @@ class ProductProcessor:
             if result and result.data:
                 base_url_id = result.data[0]['id']
             else:
-                # Insert new base URL
+                # Insert base URL
                 def do_insert(client):
                     return client.table('image_base_urls').insert({'base_url': base_url}).execute()
                 
@@ -113,7 +113,7 @@ class ProductProcessor:
             product_type = product.get("product_type", "")
             category_info = self.categorizer.get_category_info(product_type)
             
-            # Process main product with new columns
+            # Process main product
             product_data = {
                 "id": product_id,
                 "title": product.get("title", ""),
@@ -123,10 +123,10 @@ class ProductProcessor:
                 "updated_at_external": product.get("updated_at"),
                 "published_at_external": product.get("published_at"),
                 "product_type": product_type,  # Original product type
-                "grouped_product_type": category_info['grouped_product_type'],  # NEW
-                "top_level_category": category_info['top_level_category'],  # NEW
-                "subcategory": category_info['subcategory'],  # NEW
-                "gender_age": category_info['gender_age'],  # NEW
+                "grouped_product_type": category_info['grouped_product_type'],
+                "top_level_category": category_info['top_level_category'],
+                "subcategory": category_info['subcategory'],
+                "gender_age": category_info['gender_age'],
                 "tags": product.get("tags", []),
                 "url": product.get("product_url", ""),
                 "shop_id": product.get("shop_id", ""),
@@ -178,7 +178,7 @@ class ProductProcessor:
                 }
                 self.collections['variants'].append(variant_data)
             
-            # Process images with new normalized structure
+            # Process images with normalized structure
             images = product.get("images", [])
             for img in images:
                 src = img.get('src')

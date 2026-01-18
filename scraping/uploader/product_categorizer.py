@@ -1,4 +1,3 @@
-import re
 from typing import Dict, Optional, Tuple
 from config.product_type_loader import ConfigLoader
 from core.logger import uploader_logger

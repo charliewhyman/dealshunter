@@ -15,9 +15,9 @@ class ConfigLoader:
         """
         # Try multiple possible locations
         possible_paths = [
-            Path(__file__).parent / "product_type_mapping.json",  # Same directory as this file
-            Path.cwd() / "config" / "product_type_mapping.json",  # config folder in root
-            Path.cwd() / "product_type_mapping.json",  # Root directory
+            Path(__file__).parent / "product_types.json",  # Same directory as this file
+            Path.cwd() / "config" / "product_types.json",  # config folder in root
+            Path.cwd() / "product_types.json",  # Root directory
         ]
         
         for config_path in possible_paths:
