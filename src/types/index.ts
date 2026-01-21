@@ -60,7 +60,6 @@ export interface Product {
 }
 
 // Supabase
-
 export type Json =
   | string
   | number
@@ -146,6 +145,13 @@ export type Database = {
           updated_at_external?: string | null
         }
         Relationships: [
+          {
+            foreignKeyName: "collections_shop_id_fkey"
+            columns: ["shop_id"]
+            isOneToOne: false
+            referencedRelation: "distinct_shops"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "collections_shop_id_fkey"
             columns: ["shop_id"]
@@ -241,14 +247,7 @@ export type Database = {
             foreignKeyName: "images_product_id_fkey"
             columns: ["product_id"]
             isOneToOne: false
-            referencedRelation: "product_min_prices"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "images_product_id_fkey"
-            columns: ["product_id"]
-            isOneToOne: false
-            referencedRelation: "products"
+            referencedRelation: "products_with_details_core"
             referencedColumns: ["id"]
           },
         ]
@@ -310,14 +309,7 @@ export type Database = {
             foreignKeyName: "offers_product_id_fkey"
             columns: ["product_id"]
             isOneToOne: false
-            referencedRelation: "product_min_prices"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "offers_product_id_fkey"
-            columns: ["product_id"]
-            isOneToOne: false
-            referencedRelation: "products"
+            referencedRelation: "products_with_details_core"
             referencedColumns: ["id"]
           },
         ]
@@ -353,14 +345,7 @@ export type Database = {
             foreignKeyName: "product_collections_product_id_fkey"
             columns: ["product_id"]
             isOneToOne: false
-            referencedRelation: "product_min_prices"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "product_collections_product_id_fkey"
-            columns: ["product_id"]
-            isOneToOne: false
-            referencedRelation: "products"
+            referencedRelation: "products_with_details_core"
             referencedColumns: ["id"]
           },
         ]
@@ -428,6 +413,13 @@ export type Database = {
             foreignKeyName: "products_shop_id_fkey"
             columns: ["shop_id"]
             isOneToOne: false
+            referencedRelation: "distinct_shops"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "products_shop_id_fkey"
+            columns: ["shop_id"]
+            isOneToOne: false
             referencedRelation: "shops"
             referencedColumns: ["id"]
           },
@@ -467,6 +459,8 @@ export type Database = {
           created_at: string | null
           description: string | null
           fts: unknown
+          gender_age: string | null
+          grouped_product_type: string | null
           handle: string | null
           id: number
           images: Json | null
@@ -480,8 +474,10 @@ export type Database = {
           published_at_external: string | null
           shop_id: number | null
           shop_name: string | null
+          subcategory: string | null
           tags: string[] | null
           title: string | null
+          top_level_category: string | null
           updated_at: string | null
           updated_at_external: string | null
           url: string | null
@@ -492,6 +488,8 @@ export type Database = {
           created_at?: string | null
           description?: string | null
           fts?: unknown
+          gender_age?: string | null
+          grouped_product_type?: string | null
           handle?: string | null
           id: number
           images?: Json | null
@@ -505,8 +503,10 @@ export type Database = {
           published_at_external?: string | null
           shop_id?: number | null
           shop_name?: string | null
+          subcategory?: string | null
           tags?: string[] | null
           title?: string | null
+          top_level_category?: string | null
           updated_at?: string | null
           updated_at_external?: string | null
           url?: string | null
@@ -517,6 +517,8 @@ export type Database = {
           created_at?: string | null
           description?: string | null
           fts?: unknown
+          gender_age?: string | null
+          grouped_product_type?: string | null
           handle?: string | null
           id?: number
           images?: Json | null
@@ -530,8 +532,10 @@ export type Database = {
           published_at_external?: string | null
           shop_id?: number | null
           shop_name?: string | null
+          subcategory?: string | null
           tags?: string[] | null
           title?: string | null
+          top_level_category?: string | null
           updated_at?: string | null
           updated_at_external?: string | null
           url?: string | null
@@ -573,6 +577,7 @@ export type Database = {
           created_at: string
           id: number
           is_shopify: boolean | null
+          location: string | null
           shop_name: string | null
           tags: string[] | null
           updated_at: string | null
@@ -583,6 +588,7 @@ export type Database = {
           created_at?: string
           id?: number
           is_shopify?: boolean | null
+          location?: string | null
           shop_name?: string | null
           tags?: string[] | null
           updated_at?: string | null
@@ -593,6 +599,7 @@ export type Database = {
           created_at?: string
           id?: number
           is_shopify?: boolean | null
+          location?: string | null
           shop_name?: string | null
           tags?: string[] | null
           updated_at?: string | null
@@ -636,24 +643,29 @@ export type Database = {
             foreignKeyName: "variants_optimized_product_id_fkey"
             columns: ["product_id"]
             isOneToOne: false
-            referencedRelation: "product_min_prices"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "variants_optimized_product_id_fkey"
-            columns: ["product_id"]
-            isOneToOne: false
-            referencedRelation: "products"
+            referencedRelation: "products_with_details_core"
             referencedColumns: ["id"]
           },
         ]
       }
     }
     Views: {
+      distinct_gender_ages: {
+        Row: {
+          gender_age: string | null
+        }
+        Relationships: []
+      }
+      distinct_grouped_types: {
+        Row: {
+          grouped_product_type: string | null
+        }
+        Relationships: []
+      }
       distinct_shops: {
         Row: {
-          shop_id: number | null
-          shop_name: string | null
+          id: number | null
+          name: string | null
         }
         Relationships: []
       }
@@ -662,6 +674,12 @@ export type Database = {
           size_group: string | null
           sort_order_1: number | null
           sort_order_2: number | null
+        }
+        Relationships: []
+      }
+      distinct_top_level_categories: {
+        Row: {
+          top_level_category: string | null
         }
         Relationships: []
       }
@@ -684,6 +702,12 @@ export type Database = {
         }
         Relationships: []
       }
+      size_groups_list: {
+        Row: {
+          size: string | null
+        }
+        Relationships: []
+      }
     }
     Functions: {
       batch_update_product_enriched_data: {
@@ -697,62 +721,6 @@ export type Database = {
       generate_fts: {
         Args: { description: string; tags: string[]; title: string }
         Returns: unknown
-      }
-      get_filtered_categories: {
-        Args: {
-          in_stock_only?: boolean
-          max_price?: number
-          min_price?: number
-          on_sale_only?: boolean
-          shop_names?: string[]
-          size_groups?: string[]
-        }
-        Returns: {
-          level1: string
-          level2: string
-        }[]
-      }
-      get_filtered_products: {
-        Args: {
-          p_estimate_total?: boolean
-          p_in_stock_only?: boolean
-          p_limit?: number
-          p_max_price?: number
-          p_min_price?: number
-          p_offset?: number
-          p_on_sale_only?: boolean
-          p_search_query?: string
-          p_shop_ids?: string[]
-          p_size_groups?: string[]
-          p_sort_order?: string
-        }
-        Returns: {
-          categories: string[]
-          created_at: string
-          current_row_number: number
-          description: string
-          fts: unknown
-          handle: string
-          id: number
-          images: Json
-          in_stock: boolean
-          last_modified: string
-          last_updated: string
-          max_discount_percentage: number
-          min_price: number
-          on_sale: boolean
-          product_type: string
-          published_at_external: string
-          shop_id: number
-          shop_name: string
-          size_groups: string[]
-          tags: string[]
-          title: string
-          total_estimated_count: number
-          updated_at: string
-          url: string
-          vendor: string
-        }[]
       }
       get_image_srcset: {
         Args: {
@@ -849,11 +817,10 @@ export type Database = {
         }[]
       }
       get_products_default: {
-        Args: { p_limit?: number; p_offset?: number; p_sort_order?: string }
+        Args: { p_limit?: number; p_offset?: number }
         Returns: {
           categories: string[]
           created_at: string
-          current_row_number: number
           description: string
           fts: unknown
           handle: string
@@ -872,9 +839,56 @@ export type Database = {
           size_groups: string[]
           tags: string[]
           title: string
-          total_estimated_count: number
+          total_count: number
           updated_at: string
+          updated_at_external: string
           url: string
+          variants: Json
+          vendor: string
+        }[]
+      }
+      get_products_filtered: {
+        Args: {
+          p_gender_ages?: string[]
+          p_grouped_types?: string[]
+          p_in_stock_only?: boolean
+          p_limit?: number
+          p_max_price?: number
+          p_min_price?: number
+          p_offset?: number
+          p_on_sale_only?: boolean
+          p_search_query?: string
+          p_shop_ids?: string[]
+          p_size_groups?: string[]
+          p_sort_order?: string
+          p_top_level_categories?: string[]
+        }
+        Returns: {
+          categories: string[]
+          created_at: string
+          description: string
+          fts: unknown
+          handle: string
+          id: string
+          images: Json
+          in_stock: boolean
+          last_modified: string
+          last_updated: string
+          max_discount_percentage: number
+          min_price: number
+          on_sale: boolean
+          product_type: string
+          published_at_external: string
+          shop_id: number
+          shop_name: string
+          size_groups: string[]
+          tags: string[]
+          title: string
+          total_count: number
+          updated_at: string
+          updated_at_external: string
+          url: string
+          variants: Json
           vendor: string
         }[]
       }
@@ -947,7 +961,6 @@ export type Database = {
           variants_processed: number
         }[]
       }
-      refresh_products_core: { Args: never; Returns: undefined }
       refresh_products_enriched: { Args: never; Returns: undefined }
       refresh_products_full: { Args: never; Returns: undefined }
       refresh_products_with_details: { Args: never; Returns: undefined }
