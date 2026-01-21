@@ -95,6 +95,11 @@ def run_scraping_only(args):
         batch_size=args.batch_size
     )
     
+    # Set full product scrape mode if requested
+    if getattr(args, 'full_product_scrape', False):
+        orchestrator.set_full_product_scrape(True)
+        print("🔄 FULL product scrape mode enabled")
+    
     # Load shops
     shops = orchestrator.load_shops()
     if not shops:
@@ -121,7 +126,8 @@ def run_scraping_only(args):
         return orchestrator.run_scraping_pipeline(
             shops=shops,
             skip_shops=skip_shops,
-            shop_update_days=getattr(args, 'shop_update_days', None)
+            shop_update_days=getattr(args, 'shop_update_days', None),
+            full_product_scrape=getattr(args, 'full_product_scrape', False)
         )
     
     # Handle individual scraper modes
@@ -245,41 +251,41 @@ def run_upload_only(args):
     # Create orchestrator
     orchestrator = PipelineOrchestrator()
     
-    # If no per-entity upload flags provided, run full upload pipeline
+    # Check if per-entity upload flags are provided
     flags = [getattr(args, 'upload_shops', False), 
              getattr(args, 'upload_collections', False),
              getattr(args, 'upload_products', False), 
              getattr(args, 'upload_collection_products', False)]
     
+    # If no specific flags, run full upload pipeline
     if not any(flags):
-        # Handle shop filtering for upload
-        shop_ids = None
-        if getattr(args, 'shop_id', None):
-            shop_ids = [v.strip() for v in args.shop_id.split(',') if v.strip()]
-        
         return orchestrator.run_upload_pipeline()
     
+    # Handle individual upload modes
     results = {
-        'timestamp': orchestrator.timestamp,
+        'timestamp': datetime.now().strftime('%Y%m%d_%H%M%S'),
         'steps': {}
     }
     
-    # For now, just run process_all for each entity
+    # Shops uploader
     if getattr(args, 'upload_shops', False):
         print("\nStep: Uploading shops...")
         shop_results = orchestrator.shop_uploader.process_all()
         results['steps']['shops'] = shop_results
     
+    # Collections uploader
     if getattr(args, 'upload_collections', False):
         print("\nStep: Uploading collections...")
         collection_results = orchestrator.collection_uploader.process_all()
         results['steps']['collections'] = collection_results
     
+    # Products uploader
     if getattr(args, 'upload_products', False):
         print("\nStep: Uploading products...")
         product_results = orchestrator.product_uploader.process_all()
         results['steps']['products'] = product_results
     
+    # Collection-products uploader
     if getattr(args, 'upload_collection_products', False):
         print("\nStep: Uploading collection->product mappings...")
         mapping_results = orchestrator.collection_product_uploader.process_all()
@@ -301,6 +307,11 @@ def run_complete_pipeline(args):
         batch_size=batch_size
     )
     
+    # Set full product scrape mode if requested
+    if getattr(args, 'full_product_scrape', False):
+        orchestrator.set_full_product_scrape(True)
+        print("🔄 FULL product scrape mode enabled")
+    
     # Load and filter shops if needed
     shops = orchestrator.load_shops()
     if not shops:
@@ -320,7 +331,8 @@ def run_complete_pipeline(args):
     results = orchestrator.run_complete_pipeline(
         shops=shops,
         skip_shops=skip_shops,
-        shop_update_days=shop_update_days
+        shop_update_days=shop_update_days,
+        full_product_scrape=getattr(args, 'full_product_scrape', False)
     )
     
     print("\nComplete pipeline finished")
@@ -354,46 +366,10 @@ def setup_database_structure(args):
         return False
 
 def run_database_refresh(args):
-    """Run database refresh RPC."""
-    print(f"\nRefreshing `products_with_details` via RPC...")
-    try:
-        sup = SupabaseClient()
-
-        # Choose which RPC to call based on arguments
-        if getattr(args, 'refresh_full', False):
-            rpc_name = 'refresh_products_full'
-            print("Running FULL refresh (includes enriched data)")
-        elif getattr(args, 'refresh_core', False):
-            rpc_name = 'refresh_products_core'
-            print("Running CORE refresh only (preserves enriched data)")
-        else:
-            # Default to core refresh (preserves enriched data)
-            rpc_name = 'refresh_products_core'
-            print("Running CORE refresh (preserves enriched data)")
-
-        def do_refresh(client):
-            return client.rpc(rpc_name).execute()
-
-        rpc_result = sup.safe_execute(do_refresh, f'Refresh {rpc_name}', max_retries=3)
-        
-        if rpc_result and hasattr(rpc_result, 'data'):
-            print(f"RPC `{rpc_name}` completed successfully.")
-            # Save a simple result file for visibility in DATA_DIR
-            try:
-                out = settings.DATA_DIR / f"rpc_{rpc_name}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json"
-                with open(out, 'w', encoding='utf-8') as fh:
-                    json.dump({'status': 'success', 'data': rpc_result.data}, fh, indent=2, ensure_ascii=False)
-                print(f"Result saved to: {out}")
-            except Exception as e:
-                print(f"Note: Could not save result file: {e}")
-            return True
-        else:
-            print(f"RPC `{rpc_name}` failed or returned unexpected result.")
-            return False
-            
-    except Exception as e:
-        print(f"Error calling RPC: {e}")
-        return False
+    """Run database refresh RPC (Kept for backward compatibility but will not be called)."""
+    print(f"\n⚠️  Database refresh via RPC is deprecated. Products are uploaded directly to products_with_details_core.")
+    print("  No refresh needed. Continuing...")
+    return True
 
 def main():
     """Main entry point."""
@@ -402,8 +378,8 @@ def main():
     )
     
     # Mode selection
-    parser.add_argument("--mode", choices=["all", "scrape", "upload", "process", "db", "size-groups"], 
-                       default="all", help="Operation mode (default: all)")
+    parser.add_argument("--mode", choices=["all", "scrape", "upload", "process", "db"], 
+                       default="all", help="Operation mode (default: all). Use with --full-product-scrape for initial data collection")
     
     # Scraping options
     parser.add_argument("--shops-file", type=str, 
@@ -415,6 +391,10 @@ def main():
                        help="Skip scraping shop data (only scrape products/collections)")
     parser.add_argument("--shop-update-days", type=int, default=None,
                        help="Only re-scrape shops older than N days (e.g., 7 for weekly shop updates)")
+    
+    # Full product scrape option - ADD THIS NEW ARGUMENT
+    parser.add_argument("--full-product-scrape", action="store_true",
+                       help="Force full product scrape (get ALL products, not just changed ones). Use for initial data collection.")
     
     # Per-scraper flags (used when --mode scrape)
     parser.add_argument("--scrape-shops", action="store_true",
@@ -440,13 +420,13 @@ def main():
     parser.add_argument("--upload-collection-products", action="store_true",
                        help="Upload only collection->product mappings to the target")
 
-    # Database operations
+    # Database operations (kept for backward compatibility but won't be used)
     parser.add_argument("--setup-db", action="store_true",
                        help="Set up new database structure (run once after migration)")
     parser.add_argument("--refresh-core", action="store_true",
-                       help="Refresh core product data (preserves enriched data)")
+                       help="Refresh core product data (deprecated - products uploaded directly)")
     parser.add_argument("--refresh-full", action="store_true",
-                       help="Refresh full product data (includes enriched data)")
+                       help="Refresh full product data (deprecated - products uploaded directly)")
     
     # Concurrency options
     parser.add_argument("--max-concurrent", type=int, default=3,
@@ -479,10 +459,12 @@ def main():
         success = setup_database_structure(args)
         sys.exit(0 if success else 1)
     
-    # Database refresh mode
+    # Database refresh mode (deprecated - show warning but don't run)
     if getattr(args, 'refresh_core', False) or getattr(args, 'refresh_full', False):
-        success = run_database_refresh(args)
-        sys.exit(0 if success else 1)
+        print("\n⚠️  WARNING: --refresh-core and --refresh-full are deprecated.")
+        print("  Products are now uploaded directly to products_with_details_core.")
+        print("  No RPC refresh is needed or recommended.")
+        sys.exit(0)
     
     # Run based on mode
     try:
@@ -491,11 +473,10 @@ def main():
         elif args.mode == "upload":
             results = run_upload_only(args)
         elif args.mode == "db":
-            print("Database operations require specific flags:")
-            print("  --setup-db      : Set up new database structure")
-            print("  --refresh-core  : Refresh core product data")
-            print("  --refresh-full  : Refresh full product data")
-            print("  --mode size-groups : Update size groups via RPC")
+            print("Database operations:")
+            print("  --setup-db      : Set up new database structure (run once)")
+            print("\n⚠️  Note: --refresh-core and --refresh-full are deprecated")
+            print("  Products are uploaded directly to products_with_details_core")
             sys.exit(0)
         else:  # all
             results = run_complete_pipeline(args)

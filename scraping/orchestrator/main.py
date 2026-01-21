@@ -61,6 +61,22 @@ class PipelineOrchestrator:
         # Statistics
         self.total_api_calls_saved = 0
         self.total_shops_skipped = 0
+        
+        # Full scrape flag
+        self.full_product_scrape = False
+    
+    def set_full_product_scrape(self, enabled: bool = True):
+        """Enable or disable full product scraping mode."""
+        self.full_product_scrape = enabled
+        if enabled:
+            self.logger.info("🔄 FULL product scrape mode enabled")
+            # Set the product scraper to full mode
+            if hasattr(self.product_scraper, 'set_full_scrape_mode'):
+                self.product_scraper.set_full_scrape_mode(True)
+        else:
+            self.logger.info("📊 INCREMENTAL product scrape mode enabled")
+            if hasattr(self.product_scraper, 'set_full_scrape_mode'):
+                self.product_scraper.set_full_scrape_mode(False)
     
     def load_shops(self) -> List[Dict[str, Any]]:
         """Load shops from configuration."""
@@ -108,9 +124,15 @@ class PipelineOrchestrator:
             return []
     
     def _get_shops_needing_scrape(self, shops: List[Dict[str, Any]], 
-                                  data_type: str, hours_threshold: int) -> List[Dict[str, Any]]:
+                                  data_type: str, hours_threshold: int,
+                                  force_scrape: bool = False) -> List[Dict[str, Any]]:
         """Filter shops that need scraping for a specific data type."""
         shops_needed = []
+        
+        # If force_scrape is True (for full product scrape), return all shops
+        if force_scrape and data_type == 'products':
+            self.logger.info(f"Forcing scrape for ALL shops (full product scrape mode)")
+            return shops
         
         for shop in shops:
             shop_id = shop.get('id')
@@ -131,13 +153,16 @@ class PipelineOrchestrator:
         return shops_needed
     
     def _scrape_with_optimization(self, scraper, shops: List[Dict[str, Any]], 
-                                  scraper_name: str, hours_threshold: int) -> Dict[str, Any]:
+                              scraper_name: str, hours_threshold: int,
+                              force_scrape: bool = False) -> Dict[str, Any]:
         """Scrape with optimization based on state."""
         if not shops:
             return {}
         
         # Filter shops that actually need scraping
-        shops_to_scrape = self._get_shops_needing_scrape(shops, scraper_name.lower(), hours_threshold)
+        shops_to_scrape = self._get_shops_needing_scrape(
+            shops, scraper_name.lower(), hours_threshold, force_scrape
+        )
         
         if not shops_to_scrape:
             self.logger.info(f"No shops need {scraper_name} scraping (all scraped recently)")
@@ -146,8 +171,22 @@ class PipelineOrchestrator:
         self.logger.info(f"Starting {scraper_name} scrape for {len(shops_to_scrape)} shops")
         start_time = time.time()
         
-        # Use the scraper's own scrape_multiple method
-        results = scraper.scrape_multiple(shops_to_scrape)
+        # Special handling for product scraper in full mode
+        original_skip_hours = None  # Initialize before the if block
+        if scraper_name.lower() == 'products' and self.full_product_scrape:
+            self.logger.info("🔄 Using FULL product scrape mode")
+            # Temporarily disable state checking for product scraper
+            if hasattr(scraper, 'skip_shop_hours'):
+                original_skip_hours = scraper.skip_shop_hours
+                scraper.skip_shop_hours = 0  # Don't skip any shops
+        
+        try:
+            # Use the scraper's own scrape_multiple method
+            results = scraper.scrape_multiple(shops_to_scrape)
+        finally:
+            # Restore original settings
+            if scraper_name.lower() == 'products' and self.full_product_scrape and original_skip_hours is not None:
+                scraper.skip_shop_hours = original_skip_hours
         
         elapsed = time.time() - start_time
         shops_scraped = len(results)
@@ -166,10 +205,19 @@ class PipelineOrchestrator:
     
     def run_scraping_pipeline(self, shops: Optional[List[Dict[str, Any]]] = None,
                              skip_shops: bool = False,
-                             shop_update_days: Optional[int] = None) -> Dict[str, Any]:
+                             shop_update_days: Optional[int] = None,
+                             full_product_scrape: bool = False) -> Dict[str, Any]:
         """Run the scraping pipeline."""
         self.logger.info("\n" + "="*60)
         self.logger.info("STARTING SCRAPING PIPELINE")
+        
+        if full_product_scrape:
+            self.logger.info("🔄 FULL PRODUCT SCRAPE MODE ENABLED")
+            self.set_full_product_scrape(True)
+        else:
+            self.logger.info("📊 INCREMENTAL SCRAPE MODE")
+            self.set_full_product_scrape(False)
+            
         self.logger.info(f"Max concurrent shops: {self.max_concurrent_shops}")
         self.logger.info(f"Batch size: {self.batch_size}")
         self.logger.info("="*60)
@@ -192,6 +240,7 @@ class PipelineOrchestrator:
             'batch_size': self.batch_size,
             'skip_shops': skip_shops,
             'shop_update_days': shop_update_days,
+            'full_product_scrape': full_product_scrape,
             'steps': {}
         }
         
@@ -231,9 +280,15 @@ class PipelineOrchestrator:
                     self.collection_scraper.save_results(shop_id, data, self.timestamp)
             
             # Step 3: Scrape products
-            self.logger.info("Scraping products")
+            self.logger.info("Scraping products...")
+            
+            # Use force_scrape for full product scrape mode
+            force_scrape = self.full_product_scrape
+            
             product_results = self._scrape_with_optimization(
-                self.product_scraper, batch, "Products", hours_threshold=6  # 6 hours
+                self.product_scraper, batch, "Products", 
+                hours_threshold=6,  # 6 hours
+                force_scrape=force_scrape
             )
             all_product_results.update(product_results)
             
@@ -290,11 +345,17 @@ class PipelineOrchestrator:
             'optimization': 'skip if scraped in last 7 days'
         }
         
+        # Special handling for product stats based on mode
+        if self.full_product_scrape:
+            product_optimization = 'FULL scrape (all products fetched)'
+        else:
+            product_optimization = 'skip if scraped in last 6 hours, only fetch changed products'
+        
         self.results['scraping']['steps']['products'] = {
             'shops_scraped': len(all_product_results),
             'total_records': sum(len(data) for data in all_product_results.values()),
             'shops_skipped': len(shops) - len(all_product_results),
-            'optimization': 'skip if scraped in last 6 hours, only fetch changed products'
+            'optimization': product_optimization
         }
         
         self.results['scraping']['steps']['collection_products'] = {
@@ -308,14 +369,18 @@ class PipelineOrchestrator:
         self.results['scraping']['optimization_summary'] = {
             'total_api_calls_saved': self.total_api_calls_saved,
             'total_shops_skipped': self.total_shops_skipped,
-            'estimated_time_saved_percent': int((self.total_api_calls_saved / len(shops)) * 100) if shops else 0
+            'estimated_time_saved_percent': int((self.total_api_calls_saved / len(shops)) * 100) if shops else 0,
+            'full_product_scrape_mode': self.full_product_scrape
         }
         
         self.logger.info("\n" + "="*60)
         self.logger.info("OPTIMIZATION SUMMARY")
         self.logger.info(f"Total API calls saved: {self.total_api_calls_saved}")
         self.logger.info(f"Total shops skipped: {self.total_shops_skipped}")
-        self.logger.info(f"Estimated time saved: {self.results['scraping']['optimization_summary']['estimated_time_saved_percent']}%")
+        if self.full_product_scrape:
+            self.logger.info("🔄 FULL PRODUCT SCRAPE MODE: Fetched ALL products")
+        else:
+            self.logger.info(f"Estimated time saved: {self.results['scraping']['optimization_summary']['estimated_time_saved_percent']}%")
         self.logger.info("="*60)
         self.logger.info("SCRAPING PIPELINE COMPLETE")
         self.logger.info("="*60)
@@ -323,7 +388,7 @@ class PipelineOrchestrator:
         return self.results['scraping']
     
     def run_upload_pipeline(self) -> Dict[str, Any]:
-        """Run the complete upload pipeline."""
+        """Run the complete upload pipeline without RPC refresh."""
         uploader_logger.info("\n" + "="*60)
         uploader_logger.info("STARTING UPLOAD PIPELINE")
         uploader_logger.info("="*60)
@@ -348,44 +413,43 @@ class PipelineOrchestrator:
         product_upload_results = self.product_uploader.process_all()
         self.results['uploading']['steps']['products'] = product_upload_results
         
+        # **CRITICAL: Wait for product upload to complete and commit**
+        if product_upload_results.get('total_products', 0) > 0:
+            wait_time = 5  # Increased from 3 to 5 seconds for better reliability
+            uploader_logger.info(
+                f"Waiting {wait_time} seconds for {product_upload_results['total_products']} "
+                f"products to commit to database..."
+            )
+            time.sleep(wait_time)
+        
         # Step 4: Upload collection-product mappings
         uploader_logger.info("\nStep 4: Uploading collection-product mappings...")
         mapping_upload_results = self.collection_product_uploader.process_all()
         self.results['uploading']['steps']['collection_products'] = mapping_upload_results
         
-        # After uploading all entity data, refresh the products_with_details
-        try:
-            def do_refresh(client):
-                return client.rpc('refresh_products_core').execute()
-
-            sup = SupabaseClient()
-            rpc_result = sup.safe_execute(do_refresh, 'Refresh products core data', max_retries=3)
-            if rpc_result and hasattr(rpc_result, 'data'):
-                uploader_logger.info('Called RPC `refresh_products_core` successfully')
-            else:
-                uploader_logger.warning('RPC `refresh_products_core` did not return expected data or failed')
-        except Exception as e:
-            uploader_logger.error(f'Error calling RPC refresh_products_core: {e}')
-
         uploader_logger.info("\n" + "="*60)
         uploader_logger.info("UPLOAD PIPELINE COMPLETE")
         uploader_logger.info("="*60)
         
         return self.results['uploading']
-    
+
     def run_complete_pipeline(self, shops: Optional[List[Dict[str, Any]]] = None,
                              skip_shops: bool = False,
-                             shop_update_days: Optional[int] = None) -> Dict[str, Any]:
+                             shop_update_days: Optional[int] = None,
+                             full_product_scrape: bool = False) -> Dict[str, Any]:
         """Run the complete end-to-end pipeline."""
         self.logger.info("\n" + "="*60)
         self.logger.info("STARTING COMPLETE PIPELINE")
+        if full_product_scrape:
+            self.logger.info("🔄 FULL PRODUCT SCRAPE MODE")
         self.logger.info("="*60)
         
         # Scraping phase
         scraping_results = self.run_scraping_pipeline(
             shops=shops,
             skip_shops=skip_shops,
-            shop_update_days=shop_update_days
+            shop_update_days=shop_update_days,
+            full_product_scrape=full_product_scrape
         )
         
         # Uploading phase
@@ -411,21 +475,22 @@ class PipelineOrchestrator:
                 'timestamp': self.timestamp,
                 'max_concurrent_shops': self.max_concurrent_shops,
                 'batch_size': self.batch_size,
-                'optimization_enabled': True,
+                'optimization_enabled': not self.full_product_scrape,
+                'full_product_scrape': self.full_product_scrape,
             },
             'scraping': self.results.get('scraping', {}),
             'uploading': self.results.get('uploading', {}),
             'optimization_benefits': {
-                'products': 'Skip shops scraped in last 6 hours, only fetch changed products',
+                'products': 'Skip shops scraped in last 6 hours, only fetch changed products' if not self.full_product_scrape else 'FULL scrape (all products fetched)',
                 'collections': 'Skip shops scraped in last 7 days',
                 'collection_products': 'Skip shops scraped in last 14 days, only meaningful collections',
-                'estimated_api_reduction': '70-90% after first run',
-                'estimated_time_reduction': '60-80% for daily runs'
+                'estimated_api_reduction': '70-90% after first run' if not self.full_product_scrape else '0% (full scrape)',
+                'estimated_time_reduction': '60-80% for daily runs' if not self.full_product_scrape else '0% (full scrape)'
             }
         }
         
         # Save summary to file
-        summary_file = settings.DATA_DIR / f"optimized_pipeline_summary_{self.timestamp}.json"
+        summary_file = settings.DATA_DIR / f"pipeline_summary_{self.timestamp}.json"
         with open(summary_file, 'w', encoding='utf-8') as f:
             json.dump(summary, f, indent=2, ensure_ascii=False)
         
