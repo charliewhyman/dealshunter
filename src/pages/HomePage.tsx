@@ -505,13 +505,11 @@ export function HomePage() {
           try {
             const supabase = getSupabase();
             const params = buildRpcParams(filters, page, sortOrder);
-            console.log('Calling RPC with params:', params);
             
             const { data, error } = await supabase.rpc('get_products_filtered', params);
             clearTimeout(timeoutId);
 
             if (error) {
-              console.error('RPC Error:', error);
               // Handle specific Supabase errors
               const errCode = (error as { code?: string }).code;
               const errStatus = (error as { status?: number }).status;
@@ -543,11 +541,6 @@ export function HomePage() {
 
             const newData = (data as (ProductWithDetails & { total_count: number })[]) || [];
             const totalCount = newData[0]?.total_count || 0;
-            
-            console.log(`Received ${newData.length} products, total count: ${totalCount}`);
-            if (newData.length > 0) {
-              console.log('First product shop_id:', newData[0].shop_id);
-            }
 
             // Store in cache
             if (totalCount != null) totalCountRef.current[filtersKey] = totalCount;
@@ -823,22 +816,32 @@ export function HomePage() {
       searchQuery,
       selectedPriceRange: JSON.parse(selectedPriceRangeKey) as [number, number],
     };
-
+  
     const pendingKey = JSON.stringify(pendingFilters);
-
+  
     if (pendingKey === committedFiltersKey) return;
-
-    if (commitFiltersDebounced.cancel) {
-      commitFiltersDebounced.cancel();
-    }
-
-    if (page === 0 && products.length === 0) {
-      setCommittedFilters(pendingFilters);
-    } else {
-      commitFiltersDebounced(pendingFilters);
-    }
-  }, [selectedShopNameKey, selectedSizeGroupsKey, selectedGroupedTypesKey, selectedTopLevelCategoriesKey, selectedGenderAgesKey, inStockOnly, onSaleOnly, searchQuery, selectedPriceRangeKey, page, products.length, commitFiltersDebounced, committedFiltersKey]);
-
+  
+    // Always reset page when filters change
+    setPage(0);
+    setProducts([]);
+    setInitialLoad(true);
+    setHasMore(true);
+    
+    // Update committed filters immediately (not debounced)
+    setCommittedFilters(pendingFilters);
+  }, [
+    selectedShopNameKey,
+    selectedSizeGroupsKey,
+    selectedGroupedTypesKey,
+    selectedTopLevelCategoriesKey,
+    selectedGenderAgesKey,
+    inStockOnly,
+    onSaleOnly,
+    searchQuery,
+    selectedPriceRangeKey,
+    committedFiltersKey
+  ]);
+  
   // Reset page when filters or sort order change
   useEffect(() => {
     setPage(0);
