@@ -79,6 +79,42 @@ export function HomePage() {
     }
   });
 
+  const [selectedGroupedTypes, setSelectedGroupedTypes] = useState<string[]>(() => {
+    try {
+      const saved = localStorage.getItem('selectedGroupedTypes');
+      const parsed = saved ? JSON.parse(saved) : [];
+      if (Array.isArray(parsed)) return parsed as string[];
+      if (parsed == null) return [];
+      return [String(parsed)];
+    } catch {
+      return [];
+    }
+  });
+
+  const [selectedTopLevelCategories, setSelectedTopLevelCategories] = useState<string[]>(() => {
+    try {
+      const saved = localStorage.getItem('selectedTopLevelCategories');
+      const parsed = saved ? JSON.parse(saved) : [];
+      if (Array.isArray(parsed)) return parsed as string[];
+      if (parsed == null) return [];
+      return [String(parsed)];
+    } catch {
+      return [];
+    }
+  });
+
+  const [selectedGenderAges, setSelectedGenderAges] = useState<string[]>(() => {
+    try {
+      const saved = localStorage.getItem('selectedGenderAges');
+      const parsed = saved ? JSON.parse(saved) : [];
+      if (Array.isArray(parsed)) return parsed as string[];
+      if (parsed == null) return [];
+      return [String(parsed)];
+    } catch {
+      return [];
+    }
+  });
+
   const [inStockOnly, setInStockOnly] = useState<boolean>(
     JSON.parse(localStorage.getItem('inStockOnly') || 'true')
   );
@@ -233,6 +269,9 @@ export function HomePage() {
   }, [products, fetchBatchPricingFor, fetchPricingDebounced]);
 
   const [allSizeData, setAllSizeData] = useState<{size_group: string}[]>([]);
+  const [allGroupedTypes, setAllGroupedTypes] = useState<Array<{grouped_product_type: string}>>([]);
+  const [allTopLevelCategories, setAllTopLevelCategories] = useState<Array<{top_level_category: string}>>([]);
+  const [allGenderAges, setAllGenderAges] = useState<Array<{gender_age: string}>>([]);
 
   const requestQueueRef = useRef<Array<() => Promise<void>>>([]);
   const isProcessingRef = useRef(false);
@@ -329,6 +368,9 @@ export function HomePage() {
   interface FilterOptions {
     selectedShopName: string[];
     selectedSizeGroups: string[];
+    selectedGroupedTypes: string[];
+    selectedTopLevelCategories: string[];
+    selectedGenderAges: string[];
     inStockOnly: boolean;
     onSaleOnly: boolean;
     searchQuery: string;
@@ -345,9 +387,24 @@ export function HomePage() {
       .map(s => s.trim())
       .filter(s => s.length > 0);
     
+    const groupedTypes = filters.selectedGroupedTypes
+      .map(s => s.trim())
+      .filter(s => s.length > 0);
+    
+    const topLevelCategories = filters.selectedTopLevelCategories
+      .map(s => s.trim())
+      .filter(s => s.length > 0);
+    
+    const genderAges = filters.selectedGenderAges
+      .map(s => s.trim())
+      .filter(s => s.length > 0);
+    
     return {
       p_shop_ids: shopIds.length > 0 ? shopIds : null,
       p_size_groups: sizeGroups.length > 0 ? sizeGroups : null,
+      p_grouped_types: groupedTypes.length > 0 ? groupedTypes : null,
+      p_top_level_categories: topLevelCategories.length > 0 ? topLevelCategories : null,
+      p_gender_ages: genderAges.length > 0 ? genderAges : null,
       p_in_stock_only: filters.inStockOnly,
       p_on_sale_only: filters.onSaleOnly,
       p_min_price: filters.selectedPriceRange[0],
@@ -622,6 +679,72 @@ export function HomePage() {
               .filter(item => item.size_group !== '')
           );
         }
+
+        // Fetch grouped product types from view
+        const groupedTypeData = await fetchWithCache('grouped_types', async () => {
+          const { data, error } = await supabase
+            .from('distinct_grouped_types')
+            .select('grouped_product_type');
+          
+          if (error) throw error;
+          return data as Array<{ grouped_product_type?: unknown }>;
+        });
+        
+        if (groupedTypeData) {
+          setAllGroupedTypes(
+            groupedTypeData
+              .map(item => ({
+                grouped_product_type: item.grouped_product_type != null ? 
+                  String(item.grouped_product_type) : ''
+              }))
+              .filter(item => item.grouped_product_type !== '')
+              .sort((a, b) => a.grouped_product_type.localeCompare(b.grouped_product_type))
+          );
+        }
+
+        // Fetch top level categories from view
+        const topLevelData = await fetchWithCache('top_level_categories', async () => {
+          const { data, error } = await supabase
+            .from('distinct_top_level_categories')
+            .select('top_level_category');
+          
+          if (error) throw error;
+          return data as Array<{ top_level_category?: unknown }>;
+        });
+        
+        if (topLevelData) {
+          setAllTopLevelCategories(
+            topLevelData
+              .map(item => ({
+                top_level_category: item.top_level_category != null ? 
+                  String(item.top_level_category) : ''
+              }))
+              .filter(item => item.top_level_category !== '')
+              .sort((a, b) => a.top_level_category.localeCompare(b.top_level_category))
+          );
+        }
+
+        // Fetch gender ages from view
+        const genderData = await fetchWithCache('gender_ages', async () => {
+          const { data, error } = await supabase
+            .from('distinct_gender_ages')
+            .select('gender_age');
+          
+          if (error) throw error;
+          return data as Array<{ gender_age?: unknown }>;
+        });
+        
+        if (genderData) {
+          setAllGenderAges(
+            genderData
+              .map(item => ({
+                gender_age: item.gender_age != null ? 
+                  String(item.gender_age) : ''
+              }))
+              .filter(item => item.gender_age !== '')
+              .sort((a, b) => a.gender_age.localeCompare(b.gender_age))
+          );
+        }
       } catch (error) {
         setInitialDataLoaded(true);
         console.error('Error fetching initial data:', error);
@@ -650,6 +773,9 @@ export function HomePage() {
   const [committedFilters, setCommittedFilters] = useState<FilterOptions>(() => ({
     selectedShopName,
     selectedSizeGroups,
+    selectedGroupedTypes,
+    selectedTopLevelCategories,
+    selectedGenderAges,
     inStockOnly,
     onSaleOnly,
     searchQuery,
@@ -662,13 +788,19 @@ export function HomePage() {
 
   const selectedShopNameKey = useMemo(() => JSON.stringify(selectedShopName), [selectedShopName]);
   const selectedSizeGroupsKey = useMemo(() => JSON.stringify(selectedSizeGroups), [selectedSizeGroups]);
+  const selectedGroupedTypesKey = useMemo(() => JSON.stringify(selectedGroupedTypes), [selectedGroupedTypes]);
+  const selectedTopLevelCategoriesKey = useMemo(() => JSON.stringify(selectedTopLevelCategories), [selectedTopLevelCategories]);
+  const selectedGenderAgesKey = useMemo(() => JSON.stringify(selectedGenderAges), [selectedGenderAges]);
   const selectedPriceRangeKey = useMemo(() => JSON.stringify(selectedPriceRange), [selectedPriceRange]);
-  const committedFiltersKey = useMemo(() => JSON.stringify(committedFilters), [committedFilters]);
+  const committedFiltersKey = useMemo(() => JSON.stringify(committedFilters), [committedFilters]); // <-- ADD THIS LINE
   
   useEffect(() => {
-    const pendingFilters = {
+    const pendingFilters: FilterOptions = {
       selectedShopName: JSON.parse(selectedShopNameKey),
       selectedSizeGroups: JSON.parse(selectedSizeGroupsKey),
+      selectedGroupedTypes: JSON.parse(selectedGroupedTypesKey),
+      selectedTopLevelCategories: JSON.parse(selectedTopLevelCategoriesKey),
+      selectedGenderAges: JSON.parse(selectedGenderAgesKey),
       inStockOnly,
       onSaleOnly,
       searchQuery,
@@ -688,18 +820,7 @@ export function HomePage() {
     } else {
       commitFiltersDebounced(pendingFilters);
     }
-  }, [
-    selectedShopNameKey,
-    selectedSizeGroupsKey,
-    inStockOnly,
-    onSaleOnly,
-    searchQuery,
-    selectedPriceRangeKey,
-    page,
-    products.length,
-    committedFiltersKey,
-    commitFiltersDebounced,
-  ]);
+  }, [selectedShopNameKey, selectedSizeGroupsKey, selectedGroupedTypesKey, selectedTopLevelCategoriesKey, selectedGenderAgesKey, inStockOnly, onSaleOnly, searchQuery, selectedPriceRangeKey, page, products.length, commitFiltersDebounced, committedFiltersKey]);
 
   // Reset page when filters or sort order change
   useEffect(() => {
@@ -709,7 +830,7 @@ export function HomePage() {
     setHasMore(true);
     isFetchingRef.current = false;
     observerLockRef.current = false;
-  }, [committedFiltersKey, sortOrder]);
+  }, [sortOrder]);
 
   // Initial load effect
   useEffect(() => {
@@ -731,12 +852,24 @@ export function HomePage() {
         console.error('Error:', err);
       }
     });
-  }, [page, committedFiltersKey, sortOrder, fetchFilteredProducts, committedFilters]);
+  }, [page, sortOrder, fetchFilteredProducts, committedFilters]);
 
   // Persist filters to localStorage
   useEffect(() => {
     localStorage.setItem('selectedShopName', JSON.stringify(selectedShopName));
   }, [selectedShopName]);
+  
+  useEffect(() => {
+    localStorage.setItem('selectedGroupedTypes', JSON.stringify(selectedGroupedTypes));
+  }, [selectedGroupedTypes]);
+  
+  useEffect(() => {
+    localStorage.setItem('selectedTopLevelCategories', JSON.stringify(selectedTopLevelCategories));
+  }, [selectedTopLevelCategories]);
+  
+  useEffect(() => {
+    localStorage.setItem('selectedGenderAges', JSON.stringify(selectedGenderAges));
+  }, [selectedGenderAges]);
   
   useEffect(() => {
     localStorage.setItem('inStockOnly', JSON.stringify(inStockOnly));
@@ -888,13 +1021,16 @@ export function HomePage() {
     const pendingFilters: FilterOptions = {
       selectedShopName,
       selectedSizeGroups,
+      selectedGroupedTypes,
+      selectedTopLevelCategories,
+      selectedGenderAges,
       inStockOnly,
       onSaleOnly,
       searchQuery,
       selectedPriceRange,
     };
 
-    if (commitFiltersDebounced?.cancel) commitFiltersDebounced.cancel();
+    if (commitFiltersDebounced.cancel) commitFiltersDebounced.cancel();
     setCommittedFilters(pendingFilters);
     setPage(0);
   };
@@ -905,6 +1041,9 @@ export function HomePage() {
     setCommittedFilters({
       selectedShopName,
       selectedSizeGroups,
+      selectedGroupedTypes,
+      selectedTopLevelCategories,
+      selectedGenderAges,
       inStockOnly,
       onSaleOnly,
       searchQuery,
@@ -936,6 +1075,39 @@ export function HomePage() {
     }));
   };
 
+  const getCurrentGroupedTypeOptions = () => {
+    const uniqueGroupedTypes = Array.from(
+      new Set(allGroupedTypes.map(item => item.grouped_product_type))
+    ).filter(Boolean);
+    
+    return uniqueGroupedTypes.map(type => ({
+      value: type,
+      label: type
+    }));
+  };
+
+  const getCurrentTopLevelOptions = () => {
+    const uniqueCategories = Array.from(
+      new Set(allTopLevelCategories.map(item => item.top_level_category))
+    ).filter(Boolean);
+    
+    return uniqueCategories.map(category => ({
+      value: category,
+      label: category
+    }));
+  };
+
+  const getCurrentGenderAgeOptions = () => {
+    const uniqueGenderAges = Array.from(
+      new Set(allGenderAges.map(item => item.gender_age))
+    ).filter(Boolean);
+    
+    return uniqueGenderAges.map(gender => ({
+      value: gender,
+      label: gender
+    }));
+  };
+
   const SizeGroupsFilter = () => {  
     return (
       <div>
@@ -956,6 +1128,66 @@ export function HomePage() {
     );
   };
 
+  const GroupedTypesFilter = () => {  
+    return (
+      <div>
+        <h3 className="text-xs font-medium text-gray-700 dark:text-gray-300 mb-2 sm:text-sm sm:mb-3">
+          Product Types {selectedGroupedTypes.length > 0 && (
+            <span className="ml-1 text-xs text-gray-500 dark:text-gray-400">
+              ({selectedGroupedTypes.length} selected)
+            </span>
+          )}
+        </h3>        
+        <MultiSelectDropdown
+          options={getCurrentGroupedTypeOptions()}
+          selected={selectedGroupedTypes}
+          onChange={setSelectedGroupedTypes}
+          placeholder="All types"
+        />
+      </div>
+    );
+  };
+
+  const TopLevelCategoriesFilter = () => {  
+    return (
+      <div>
+        <h3 className="text-xs font-medium text-gray-700 dark:text-gray-300 mb-2 sm:text-sm sm:mb-3">
+          Main Categories {selectedTopLevelCategories.length > 0 && (
+            <span className="ml-1 text-xs text-gray-500 dark:text-gray-400">
+              ({selectedTopLevelCategories.length} selected)
+            </span>
+          )}
+        </h3>        
+        <MultiSelectDropdown
+          options={getCurrentTopLevelOptions()}
+          selected={selectedTopLevelCategories}
+          onChange={setSelectedTopLevelCategories}
+          placeholder="All categories"
+        />
+      </div>
+    );
+  };
+
+  const GenderAgeFilter = () => {  
+    return (
+      <div>
+        <h3 className="text-xs font-medium text-gray-700 dark:text-gray-300 mb-2 sm:text-sm sm:mb-3">
+          Gender/Age {selectedGenderAges.length > 0 && (
+            <span className="ml-1 text-xs text-gray-500 dark:text-gray-400">
+              ({selectedGenderAges.length} selected)
+            </span>
+          )}
+        </h3>        
+        <MultiSelectDropdown
+          options={getCurrentGenderAgeOptions()}
+          selected={selectedGenderAges}
+          onChange={setSelectedGenderAges}
+          placeholder="All genders/ages"
+        />
+      </div>
+    );
+  };
+
   const isFetchingEmpty = products.length === 0 && (
     loading ||
     (pendingRequestsRef.current && pendingRequestsRef.current.size > 0) ||
@@ -964,6 +1196,9 @@ export function HomePage() {
 
   const handleClearAllFilters = () => {
     setSelectedShopName([]);
+    setSelectedGroupedTypes([]);
+    setSelectedTopLevelCategories([]);
+    setSelectedGenderAges([]);
     setInStockOnly(false);
     setOnSaleOnly(false);
     setSelectedSizeGroups([]);
@@ -1027,6 +1262,9 @@ export function HomePage() {
                   </span>
                   {
                     selectedShopName.length > 0 || 
+                    selectedGroupedTypes.length > 0 ||
+                    selectedTopLevelCategories.length > 0 ||
+                    selectedGenderAges.length > 0 ||
                     inStockOnly !== false || 
                     onSaleOnly !== false || 
                     !rangesEqual(selectedPriceRange, PRICE_RANGE) ? (
@@ -1061,6 +1299,10 @@ export function HomePage() {
                     isLoading={shopOptions.length === 0 && selectedShopName.length > 0}
                   />
                 </div>
+
+                <GroupedTypesFilter />
+                <TopLevelCategoriesFilter />
+                <GenderAgeFilter />
 
                 <div>
                   <h3 className="text-xs font-medium text-gray-700 dark:text-gray-300 mb-2 sm:text-sm sm:mb-3">
@@ -1134,6 +1376,9 @@ export function HomePage() {
                 </div>
 
                 {(selectedShopName.length > 0 || 
+                  selectedGroupedTypes.length > 0 ||
+                  selectedTopLevelCategories.length > 0 ||
+                  selectedGenderAges.length > 0 ||
                   inStockOnly !== false || 
                   onSaleOnly !== false || 
                   !rangesEqual(selectedPriceRange, PRICE_RANGE)) && (
@@ -1154,6 +1399,63 @@ export function HomePage() {
                                 {getShopLabel(shop)}
                                   <button 
                                   onClick={() => setSelectedShopName(prev => prev.filter(s => s !== shop))}
+                                  className="ml-1 inline-flex text-blue-500 hover:text-blue-700 dark:text-blue-300 dark:hover:text-blue-100"
+                                >
+                                  <AsyncLucideIcon name="X" className="h-2.5 w-2.5 sm:h-3 sm:w-3" />
+                                </button>
+                              </div>
+                            ))}
+                          </>
+                        )}
+
+                        {selectedGroupedTypes.length > 0 && (
+                          <>
+                            {selectedGroupedTypes.map(type => (
+                              <div 
+                                key={type}
+                                className="inline-flex items-center rounded-md bg-blue-50 dark:bg-blue-900/30 px-1.5 py-0.5 text-xs font-medium text-blue-700 dark:text-blue-200 ring-1 ring-inset ring-blue-700/10 dark:ring-blue-500/30 sm:px-2 sm:py-1"
+                              >
+                                {type}
+                                <button 
+                                  onClick={() => setSelectedGroupedTypes(prev => prev.filter(t => t !== type))}
+                                  className="ml-1 inline-flex text-blue-500 hover:text-blue-700 dark:text-blue-300 dark:hover:text-blue-100"
+                                >
+                                  <AsyncLucideIcon name="X" className="h-2.5 w-2.5 sm:h-3 sm:w-3" />
+                                </button>
+                              </div>
+                            ))}
+                          </>
+                        )}
+
+                        {selectedTopLevelCategories.length > 0 && (
+                          <>
+                            {selectedTopLevelCategories.map(category => (
+                              <div 
+                                key={category}
+                                className="inline-flex items-center rounded-md bg-blue-50 dark:bg-blue-900/30 px-1.5 py-0.5 text-xs font-medium text-blue-700 dark:text-blue-200 ring-1 ring-inset ring-blue-700/10 dark:ring-blue-500/30 sm:px-2 sm:py-1"
+                              >
+                                {category}
+                                <button 
+                                  onClick={() => setSelectedTopLevelCategories(prev => prev.filter(c => c !== category))}
+                                  className="ml-1 inline-flex text-blue-500 hover:text-blue-700 dark:text-blue-300 dark:hover:text-blue-100"
+                                >
+                                  <AsyncLucideIcon name="X" className="h-2.5 w-2.5 sm:h-3 sm:w-3" />
+                                </button>
+                              </div>
+                            ))}
+                          </>
+                        )}
+
+                        {selectedGenderAges.length > 0 && (
+                          <>
+                            {selectedGenderAges.map(gender => (
+                              <div 
+                                key={gender}
+                                className="inline-flex items-center rounded-md bg-blue-50 dark:bg-blue-900/30 px-1.5 py-0.5 text-xs font-medium text-blue-700 dark:text-blue-200 ring-1 ring-inset ring-blue-700/10 dark:ring-blue-500/30 sm:px-2 sm:py-1"
+                              >
+                                {gender}
+                                <button 
+                                  onClick={() => setSelectedGenderAges(prev => prev.filter(g => g !== gender))}
                                   className="ml-1 inline-flex text-blue-500 hover:text-blue-700 dark:text-blue-300 dark:hover:text-blue-100"
                                 >
                                   <AsyncLucideIcon name="X" className="h-2.5 w-2.5 sm:h-3 sm:w-3" />
@@ -1284,7 +1586,9 @@ export function HomePage() {
             ) : products.length === 0 ? (
               <div className="col-span-full flex flex-col items-center justify-center min-h-[150px] space-y-1 sm:min-h-[200px] sm:space-y-2">
                 <p className="text-gray-900 dark:text-gray-100 text-sm sm:text-base">
-                  {searchQuery || selectedShopName.length > 0
+                  {searchQuery || selectedShopName.length > 0 || 
+                   selectedGroupedTypes.length > 0 || selectedTopLevelCategories.length > 0 || 
+                   selectedGenderAges.length > 0
                     ? "No products match your filters."
                     : "No products available at the moment."}
                 </p>
