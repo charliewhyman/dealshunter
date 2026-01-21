@@ -22,63 +22,39 @@ class CollectionUploader(BaseUploader):
         return "id"
     
     def transform_data(self, raw_data: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
-        """Transform raw collection data, resolving shop_id by querying DB for shop url."""
-        # Collect all unique shop URLs from collections that are missing numeric shop_id
-        shop_urls = set()
-        for collection in raw_data:
-            # Prefer an existing shop_id if present
-            existing_shop_id = collection.get('shop_id')
-            if existing_shop_id is not None and (isinstance(existing_shop_id, int) or (isinstance(existing_shop_id, str) and str(existing_shop_id).strip().isdigit())):
-                # Already have valid numeric shop_id; skip URL collection for this item
-                continue
-            url = collection.get("shop_url") or collection.get("url") or None
-            if url:
-                shop_urls.add(url)
-        
-        # Query DB for shop url -> id mapping (only if needed)
-        url_to_id = {}
-        if shop_urls:
-            def do_select(client):
-                return client.table('shops').select('id,url').in_('url', list(shop_urls)).execute()
-            result = self.supabase.safe_execute(do_select, 'Fetch shop ids by url', max_retries=3)
-            if result and hasattr(result, 'data'):
-                for row in result.data:
-                    url_to_id[row['url']] = row['id']
-        
+        """Transform raw collection data using shop_id directly from JSON."""
         transformed = []
+        
         for collection in raw_data:
+            # Extract shop_id from JSON data
             raw_shop_id = collection.get('shop_id')
-            db_id = None
             
-            # Trust numeric shop_id if present
-            if raw_shop_id is not None and (isinstance(raw_shop_id, int) or (isinstance(raw_shop_id, str) and str(raw_shop_id).strip().isdigit())):
-                db_id = int(raw_shop_id)
-                self.logger.debug(f"Using numeric shop_id={db_id} for collection {collection.get('id')}")
-            else:
-                # Fall back to URL lookup
-                url = collection.get("shop_url") or collection.get("url") or None
-                db_id = url_to_id.get(url)
-                if db_id:
-                    self.logger.debug(f"Resolved shop_id={db_id} from URL for collection {collection.get('id')}")
-
-            if not db_id:
-                self.logger.warning(f"No valid shop_id found for collection {collection.get('id')} (raw_shop_id={raw_shop_id})")
+            # Validate and convert shop_id
+            if raw_shop_id is None:
+                self.logger.warning(f"No shop_id found for collection {collection.get('id')}")
                 continue
             
-            # Ensure we set shop_id for downstream processing
-            collection["shop_id"] = db_id
+            # Convert shop_id to integer if possible
+            try:
+                shop_id = int(raw_shop_id)
+                self.logger.debug(f"Using shop_id={shop_id} from JSON for collection {collection.get('id')}")
+            except (ValueError, TypeError):
+                self.logger.warning(f"Invalid shop_id format: {raw_shop_id} for collection {collection.get('id')}")
+                continue
             
+            # Prepare the transformed item
             safe_item = {
                 'title': collection.get('title', ''),
                 'handle': collection.get('handle', ''),
                 'description': collection.get('description'),
                 'products_count': collection.get('products_count'),
-                'shop_id': db_id,
+                'shop_id': shop_id,
                 'collection_url': collection.get('collection_url', ''),
                 'published_at_external': collection.get('published_at'),
                 'updated_at_external': collection.get('updated_at')
             }
             
+            # Add collection ID if present and valid
             raw_id = collection.get('id')
             if isinstance(raw_id, int) or (isinstance(raw_id, str) and str(raw_id).strip().isdigit()):
                 safe_item['id'] = str(raw_id).strip()
@@ -109,11 +85,12 @@ class CollectionUploader(BaseUploader):
             success = self.process_file(filepath)
             if success:
                 results['processed'] += 1
-                # Extract shop ID from filename
-                shop_id = filepath.stem.split('_')[0]
-                results['shop_ids'].add(shop_id)
+                # Since we can't easily extract shop_id without reading the file again,
+                # we'll leave shop_ids tracking for later if needed
+                # You can track shop_ids in process_file if needed
             else:
                 results['failed'] += 1
         
-        results['shop_ids'] = list(results['shop_ids'])
+        # Return empty shop_ids list since we can't extract them easily
+        results['shop_ids'] = []
         return results

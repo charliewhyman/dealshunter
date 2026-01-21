@@ -1,5 +1,6 @@
 """
 Product uploader with normalized image structure and product categorization.
+Filters to only upload available products (in-stock with valid prices).
 """
 
 import json
@@ -17,7 +18,7 @@ from uploader.product_categorizer import ProductCategorizer
 class ProductProcessor:
     """Helper class to process product data."""
     
-    def __init__(self):
+    def __init__(self, filter_available_only: bool = True, min_price_threshold: float = 0):
         self.supabase = SupabaseClient()
         self.processor = DataProcessor()
         self.categorizer = ProductCategorizer()
@@ -30,6 +31,18 @@ class ProductProcessor:
         }
         # Cache for base_url_id lookups
         self.base_url_cache = {}
+        # Filter settings
+        self.filter_available_only = filter_available_only
+        self.min_price_threshold = min_price_threshold
+        # Statistics
+        self.stats = {
+            'total_processed': 0,
+            'skipped_no_variants': 0,
+            'skipped_no_available': 0,
+            'skipped_no_price': 0,
+            'skipped_below_min_price': 0,
+            'uploaded': 0
+        }
     
     def get_or_create_base_url_id(self, src: str) -> Optional[int]:
         """Extract base URL and get/create its ID."""
@@ -98,8 +111,39 @@ class ProductProcessor:
             'version': version
         }
     
+    def should_skip_product(self, variants: List[Dict[str, Any]], min_price: Optional[float]) -> tuple[bool, str]:
+        """Determine if product should be skipped based on filters."""
+        self.stats['total_processed'] += 1
+        
+        # Check if product has variants
+        if not variants:
+            self.stats['skipped_no_variants'] += 1
+            return True, "no variants"
+        
+        # Check availability if filtering is enabled
+        if self.filter_available_only:
+            has_available = any(
+                self.processor.clean_boolean(v.get("available"))
+                for v in variants
+            )
+            if not has_available:
+                self.stats['skipped_no_available'] += 1
+                return True, "no available variants"
+        
+        # Check price
+        if min_price is None:
+            self.stats['skipped_no_price'] += 1
+            return True, "no valid price"
+        
+        # Check minimum price threshold
+        if min_price < self.min_price_threshold:
+            self.stats['skipped_below_min_price'] += 1
+            return True, f"price below threshold ({min_price} < {self.min_price_threshold})"
+        
+        return False, ""
+    
     def process_product(self, product: Dict[str, Any]) -> Optional[str]:
-        """Process a single product and its related data."""
+        """Process a single product and its related data WITH filtering."""
         if not isinstance(product, dict):
             uploader_logger.error(f"Expected dictionary but got {type(product).__name__}")
             return None
@@ -109,77 +153,86 @@ class ProductProcessor:
             if not product_id:
                 return None
             
-            # Extract category information using the categorizer
+            # Process variants first to calculate aggregated values and check filters
+            variants = product.get("variants", [])
+            variant_prices = []
+            variant_available = []
+            variant_discounts = []
+            variant_data = []
+            
+            for variant in variants:
+                variant_id = str(variant.get("id", ""))
+                price = self.processor.clean_numeric(variant.get("price"))
+                compare_price = self.processor.clean_numeric(variant.get("compare_at_price"))
+                available = self.processor.clean_boolean(variant.get("available"))
+                
+                position = variant.get("position", 0)
+                # Convert to int if it's a float
+                if isinstance(position, float):
+                    position = int(position)
+                elif not isinstance(position, int):
+                    try:
+                        position = int(float(position))
+                    except (ValueError, TypeError):
+                        position = 0
+                
+                # Store variant data for JSON aggregation
+                variant_entry = {
+                    "id": variant_id,
+                    "title": variant.get("title", ""),
+                    "price": price,
+                    "available": available,
+                    "compare_at_price": compare_price,
+                    "sku": variant.get("sku", ""),
+                    "position": position
+                }
+                variant_data.append(variant_entry)
+                
+                # Calculate aggregated values
+                if price is not None:
+                    variant_prices.append(float(price))
+                
+                if available:
+                    variant_available.append(True)
+                
+                # Calculate discount percentage if compare price exists
+                if price is not None and compare_price is not None and compare_price > 0 and price < compare_price:
+                    discount = ((float(compare_price) - float(price)) / float(compare_price)) * 100
+                    variant_discounts.append(discount)
+            
+            # Calculate aggregated values
+            min_price = min(variant_prices) if variant_prices else None
+            
+            # Apply filters BEFORE processing the rest of the data
+            skip, reason = self.should_skip_product(variants, min_price)
+            if skip:
+                uploader_logger.debug(f"Skipping product {product_id}: {reason}")
+                return None
+            
+            # Continue processing if product passes filters
+            in_stock = any(variant_available) if variant_available else False
+            max_discount = max(variant_discounts) if variant_discounts else None
+            on_sale = max_discount is not None and max_discount > 0
+            
+            # Extract category information
             product_type = product.get("product_type", "")
             category_info = self.categorizer.get_category_info(product_type)
             
-            # Process main product
-            product_data = {
-                "id": product_id,
-                "title": product.get("title", ""),
-                "handle": product.get("handle", ""),
-                "vendor": product.get("vendor", ""),
-                "description": self.processor.strip_html_tags(product.get("body_html", "")),
-                "updated_at_external": product.get("updated_at"),
-                "published_at_external": product.get("published_at"),
-                "product_type": product_type,  # Original product type
-                "grouped_product_type": category_info['grouped_product_type'],
-                "top_level_category": category_info['top_level_category'],
-                "subcategory": category_info['subcategory'],
-                "gender_age": category_info['gender_age'],
-                "tags": product.get("tags", []),
-                "url": product.get("product_url", ""),
-                "shop_id": product.get("shop_id", ""),
-            }
-            self.collections['products'].append(product_data)
+            # Process tags
+            raw_tags = product.get("tags", [])
+            if isinstance(raw_tags, str):
+                if raw_tags:
+                    tags_list = [tag.strip() for tag in raw_tags.split(",") if tag.strip()]
+                else:
+                    tags_list = []
+            elif isinstance(raw_tags, list):
+                tags_list = raw_tags
+            else:
+                tags_list = []
             
-            # Log categorization for debugging (first few products only)
-            if len(self.collections['products']) <= 5:
-                uploader_logger.debug(
-                    f"Categorized '{product_type[:50]}...' -> "
-                    f"grouped: {category_info['grouped_product_type']}, "
-                    f"gender: {category_info['gender_age']}"
-                )
-            
-            # Process options
-            options = product.get("options", [])
-            for opt in options:
-                option_data = {
-                    "id": self.processor.generate_deterministic_id('option', product_id, opt.get("name"), opt.get("position")),
-                    "product_id": product_id,
-                    "name": opt.get("name", ""),
-                    "position": opt.get("position", 0),
-                    "values": opt.get("values", []),
-                }
-                self.collections['options'].append(option_data)
-            
-            # Process variants
-            variants = product.get("variants", [])
-            for variant in variants:
-                variant_data = {
-                    "id": str(variant.get("id", "")),
-                    "product_id": product_id,
-                    "title": variant.get("title", ""),
-                    "option1": variant.get("option1"),
-                    "option2": variant.get("option2"),
-                    "option3": variant.get("option3"),
-                    "sku": variant.get("sku", ""),
-                    "requires_shipping": variant.get("requires_shipping"),
-                    "taxable": variant.get("taxable"),
-                    "featured_image": (variant.get("featured_image") or (variant.get("image") and variant.get("image").get("src"))),
-                    "available": self.processor.clean_boolean(variant.get("available")),
-                    "price": self.processor.clean_numeric(variant.get("price")),
-                    "grams": variant.get("grams"),
-                    "compare_at_price": self.processor.clean_numeric(variant.get("compare_at_price")),
-                    "position": variant.get("position"),
-                    "inventory_quantity": variant.get("inventory_quantity"),
-                    "updated_at_external": variant.get("updated_at"),
-                    "variant_type": variant.get("variant_type")
-                }
-                self.collections['variants'].append(variant_data)
-            
-            # Process images with normalized structure
+            # Process images for JSON aggregation
             images = product.get("images", [])
+            image_data = []
             for img in images:
                 src = img.get('src')
                 if not src:
@@ -188,10 +241,81 @@ class ProductProcessor:
                 # Get or create base_url_id
                 base_url_id = self.get_or_create_base_url_id(src)
                 if not base_url_id:
-                    uploader_logger.warning(f"Skipping image {img.get('id')} - could not resolve base_url_id")
                     continue
                 
                 # Extract file_path and version
+                parts = self.extract_image_parts(src)
+                
+                image_entry = {
+                    'id': img.get('id'),
+                    'src': src,
+                    'alt': img.get('alt', ''),
+                    'position': img.get('position', 0),
+                    'width': img.get('width'),
+                    'height': img.get('height'),
+                }
+                image_data.append(image_entry)
+            
+            # Process main product WITH aggregated data
+            product_data = {
+                "id": product_id,
+                "title": product.get("title", ""),
+                "handle": product.get("handle", ""),
+                "vendor": product.get("vendor", ""),
+                "description": self.processor.strip_html_tags(product.get("body_html", "")),
+                "updated_at_external": product.get("updated_at"),
+                "published_at_external": product.get("published_at"),
+                "product_type": product_type,
+                "grouped_product_type": category_info['grouped_product_type'],
+                "top_level_category": category_info['top_level_category'],
+                "subcategory": category_info['subcategory'],
+                "gender_age": category_info['gender_age'],
+                "tags": tags_list,
+                "url": product.get("product_url", ""),
+                "shop_id": product.get("shop_id", ""),
+                # Aggregated data
+                "min_price": min_price,
+                "in_stock": in_stock,
+                "max_discount_percentage": max_discount,
+                "on_sale": on_sale,
+                # JSON aggregated data
+                "variants": json.dumps(variant_data) if variant_data else None,
+                "images": json.dumps(image_data) if image_data else None,
+                # Will be populated from shops table
+                "shop_name": None,
+                # Timestamps
+                "created_at": product.get("created_at"),
+                "updated_at": product.get("updated_at"),
+                "last_modified": product.get("updated_at"),
+                # FTS search
+                "fts": None,
+            }
+            self.collections['products'].append(product_data)
+            self.stats['uploaded'] += 1
+            
+            # Also store individual variants and images for separate tables
+            # BUT only for products that passed the filter
+            for variant in variants:
+                variant_data = {
+                    "id": str(variant.get("id", "")),
+                    "product_id": product_id,
+                    "title": variant.get("title", ""),
+                    "available": self.processor.clean_boolean(variant.get("available")),
+                    "price": self.processor.clean_numeric(variant.get("price")),
+                    "compare_at_price": self.processor.clean_numeric(variant.get("compare_at_price")),
+                }
+                self.collections['variants'].append(variant_data)
+            
+            # Process images for images table
+            for img in images:
+                src = img.get('src')
+                if not src:
+                    continue
+                
+                base_url_id = self.get_or_create_base_url_id(src)
+                if not base_url_id:
+                    continue
+                
                 parts = self.extract_image_parts(src)
                 
                 image_data = {
@@ -209,47 +333,38 @@ class ProductProcessor:
                 }
                 self.collections['images'].append(image_data)
             
-            # Process offers
-            offers = product.get("offers", [])
-            if isinstance(offers, dict):
-                offers = [offers]
-            
-            for offer in offers:
-                seller_name = None
-                if isinstance(offer.get("seller"), dict):
-                    seller_name = offer["seller"].get("name")
-                
-                offer_data = {
-                    "id": self.processor.generate_deterministic_id(
-                        'offer', 
-                        product_id, 
-                        seller_name,
-                        offer.get("sku")
-                    ),
-                    "product_id": product_id,
-                    "availability": offer.get("availability"),
-                    "item_condition": offer.get("itemCondition"),
-                    "price_currency": offer.get("priceCurrency"),
-                    "price": self.processor.clean_numeric(offer.get("price")),
-                    "price_valid_until": offer.get("priceValidUntil"),
-                    "url": offer.get("url"),
-                    "checkout_page_url_template": offer.get("checkoutPageURLTemplate"),
-                    "image": offer.get("image"),
-                    "mpn": offer.get("mpn"),
-                    "sku": offer.get("sku"),
-                    "seller_name": seller_name,
-                }
-                self.collections['offers'].append(offer_data)
-            
             return product_id
             
         except Exception as e:
             uploader_logger.error(f"Error processing product {product.get('id', 'unknown')}: {e}")
             return None
     
-    def get_stats(self) -> Dict[str, int]:
+    def get_stats(self) -> Dict[str, Any]:
         """Get statistics about processed products."""
-        return {name: len(items) for name, items in self.collections.items()}
+        stats = {
+            'filter_stats': self.stats.copy(),
+            'collection_counts': {name: len(items) for name, items in self.collections.items()}
+        }
+        
+        # Calculate percentages
+        total = self.stats['total_processed']
+        if total > 0:
+            # Convert to int if database expects integer
+            stats['filter_stats']['uploaded_percentage'] = int(round((self.stats['uploaded'] / total) * 100, 0))
+            stats['filter_stats']['skipped_percentage'] = int(round(((total - self.stats['uploaded']) / total) * 100, 0))
+        
+        return stats
+    
+    def reset_stats(self):
+        """Reset statistics."""
+        self.stats = {
+            'total_processed': 0,
+            'skipped_no_variants': 0,
+            'skipped_no_available': 0,
+            'skipped_no_price': 0,
+            'skipped_below_min_price': 0,
+            'uploaded': 0
+        }
     
     def reload_categorization_config(self):
         """Reload the categorization configuration."""
@@ -257,82 +372,101 @@ class ProductProcessor:
         uploader_logger.info("🔄 Product categorization config reloaded")
 
 class ProductUploader(BaseUploader):
-    """Uploader for product data with categorization."""
+    """Uploader for product data with filtering for available products only."""
     
-    def __init__(self):
+    def __init__(self, filter_available_only: bool = True, min_price_threshold: float = 0):
         super().__init__('products')
-        self.processor = ProductProcessor()
+        self.filter_available_only = filter_available_only
+        self.min_price_threshold = min_price_threshold
+        self.processor = ProductProcessor(
+            filter_available_only=filter_available_only,
+            min_price_threshold=min_price_threshold
+        )
     
     def get_table_name(self) -> str:
-        # main core table for product details
         return "products_with_details_core"
-
+    
     def get_on_conflict(self) -> str:
-        """Use id as the ON CONFLICT target for products."""
         return "id"
     
     def transform_data(self, raw_data: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
         """Transform raw product data (not used because processing is done in process_file)."""
-        # This is handled in process_file with full processing
         return []
     
     def process_file(self, filepath: Path) -> bool:
-        """Process a single product file with full processing."""
+        """Process a single product file with filtering."""
         self.logger.info(f"Processing product file: {filepath.name}")
+        
         try:
             with open(filepath, 'r', encoding='utf-8') as f:
                 products = json.load(f)
             
+            self.logger.info(f"Found {len(products)} products in file")
+            
             product_ids = []
             
-            # Collect shop URLs only for products missing numeric shop_id
-            shop_urls = set()
-            for product in products:
-                raw_shop_id = product.get('shop_id')
-                # Skip if already has valid numeric shop_id
-                if raw_shop_id is not None and (isinstance(raw_shop_id, int) or (isinstance(raw_shop_id, str) and str(raw_shop_id).strip().isdigit())):
-                    continue
-                # Need to look up shop_id by URL
-                url = product.get("product_url") or product.get("shop_url") or product.get("url")
-                if url:
-                    shop_urls.add(url)
-            
-            # Query DB for shop url -> id mapping (only if needed)
-            url_to_id = {}
-            if shop_urls:
-                def do_select(client):
-                    return client.table('shops').select('id,url').in_('url', list(shop_urls)).execute()
-                result = self.supabase.safe_execute(do_select, 'Fetch shop ids by url', max_retries=3)
-                if result and hasattr(result, 'data'):
-                    for row in result.data:
-                        url_to_id[row['url']] = row['id']
-            
-            # Process all products
+            # Reset processor collections and stats
             self.processor.collections = {k: [] for k in self.processor.collections}
+            self.processor.reset_stats()
             
+            # Get shop names mapping
+            shop_id_to_name = {}
+            for product in products:
+                shop_id = product.get('shop_id')
+                if shop_id and shop_id not in shop_id_to_name:
+                    def get_shop_name(client):
+                        result = client.table('shops').select('shop_name').eq('id', shop_id).execute()
+                        return result.data[0]['shop_name'] if result.data else None
+                    
+                    shop_name = self.supabase.safe_execute(
+                        get_shop_name, 
+                        f"Get shop name for {shop_id}", 
+                        max_retries=2
+                    )
+                    shop_id_to_name[shop_id] = shop_name
+            
+            # Process products with filtering
             for product in products:
                 raw_shop_id = product.get('shop_id')
-                db_id = None
                 
-                # Trust numeric shop_id if present
-                if raw_shop_id is not None and (isinstance(raw_shop_id, int) or (isinstance(raw_shop_id, str) and str(raw_shop_id).strip().isdigit())):
-                    db_id = int(raw_shop_id)
-                    self.logger.debug(f"Using numeric shop_id={db_id} for product {product.get('id')}")
-                else:
-                    # Fall back to URL lookup
-                    url = product.get("product_url") or product.get("shop_url") or product.get("url")
-                    db_id = url_to_id.get(url)
-                    if db_id:
-                        self.logger.debug(f"Resolved shop_id={db_id} from URL for product {product.get('id')}")
-
-                if not db_id:
-                    self.logger.warning(f"No valid shop_id found for product {product.get('id')} (raw_shop_id={raw_shop_id})")
+                # Validate and convert shop_id
+                if raw_shop_id is None:
+                    self.logger.warning(f"No shop_id found for product {product.get('id')}")
                     continue
                 
-                product["shop_id"] = db_id
+                try:
+                    shop_id = int(raw_shop_id)
+                except (ValueError, TypeError):
+                    self.logger.warning(f"Invalid shop_id format: {raw_shop_id}")
+                    continue
+                
+                product["shop_id"] = shop_id
                 product_id = self.processor.process_product(product)
                 if product_id:
                     product_ids.append(product_id)
+            
+            # Log filtering statistics
+            stats = self.processor.get_stats()
+            filter_stats = stats['filter_stats']
+            total = filter_stats['total_processed']
+            uploaded = filter_stats['uploaded']
+            
+            self.logger.info(
+                f"📊 Filter stats for {filepath.name}: "
+                f"{uploaded}/{total} products uploaded ({filter_stats.get('uploaded_percentage', 0)}%)"
+            )
+            
+            if total > 0:
+                self.logger.info(f"  • Skipped no variants: {filter_stats['skipped_no_variants']}")
+                self.logger.info(f"  • Skipped no available: {filter_stats['skipped_no_available']}")
+                self.logger.info(f"  • Skipped no price: {filter_stats['skipped_no_price']}")
+                self.logger.info(f"  • Skipped below min price: {filter_stats['skipped_below_min_price']}")
+            
+            # Update shop names in the processed products
+            for product_data in self.processor.collections.get("products", []):
+                shop_id = product_data.get("shop_id")
+                if shop_id and shop_id in shop_id_to_name:
+                    product_data["shop_name"] = shop_id_to_name[shop_id]
             
             if self.processor.collections.get("products"):
                 # Log categorization summary
@@ -341,69 +475,71 @@ class ProductUploader(BaseUploader):
                     gpt = p.get("grouped_product_type", "Uncategorized")
                     grouped_types[gpt] = grouped_types.get(gpt, 0) + 1
                 
-                self.logger.info(f"📊 Categorization summary for {filepath.name}:")
+                self.logger.info(f"📊 Categorization summary ({uploaded} products):")
                 for gpt, count in sorted(grouped_types.items(), key=lambda x: x[1], reverse=True)[:10]:
-                    self.logger.info(f"  - {gpt}: {count} products")
+                    self.logger.info(f"  • {gpt}: {count} products")
                 
-                # Upsert into the core products table
+                # Upload products first
                 if self.supabase.bulk_upsert(
                     "products_with_details_core",
                     self.processor.collections["products"],
                     on_conflict="id"
                 ):
-                    self.logger.info(f"✅ Uploaded {len(self.processor.collections['products'])} products from {filepath.name}")
+                    self.logger.info(f"✅ Uploaded {uploaded} products to database")
+                    
+                    # Upload related tables
+                    related_tables = ['options', 'variants', 'images', 'offers']
+                    upload_success = True
+                    
+                    for table in related_tables:
+                        data = self.processor.collections.get(table)
+                        if data:
+                            self.logger.info(f"Uploading {len(data)} {table}...")
+                            
+                            # Filter related data to only include products that were uploaded
+                            if table in ['variants', 'images']:
+                                uploaded_product_ids = {p['id'] for p in self.processor.collections['products']}
+                                filtered_data = [
+                                    item for item in data 
+                                    if item.get('product_id') in uploaded_product_ids
+                                ]
+                                if len(filtered_data) < len(data):
+                                    self.logger.info(
+                                        f"  Filtered {len(data)} → {len(filtered_data)} {table} "
+                                        f"(only for uploaded products)"
+                                    )
+                                data = filtered_data
+                            
+                            if data and not self.supabase.bulk_upsert(
+                                table_name=table,
+                                data=data,
+                                on_conflict="id"
+                            ):
+                                self.logger.error(f"Failed to upload {table}")
+                                upload_success = False
+                                break
+                    
+                    if not upload_success:
+                        return False
+                    
+                    # Clean up stale products for this shop
+                    shop_ids = {p["shop_id"] for p in self.processor.collections["products"]}
+                    if len(shop_ids) == 1:
+                        shop_id = list(shop_ids)[0]
+                        self.cleanup_stale_records(product_ids, shop_id)
+                    
+                    self.file_manager.move_to_processed(filepath)
+                    self.logger.info(f"✅ Successfully processed {filepath.name}")
+                    return True
                 else:
-                    self.logger.error(f"❌ Failed to upload products from {filepath.name}")
+                    self.logger.error(f"❌ Failed to upload products")
                     return False
             else:
-                self.logger.warning(f"No products to upload from {filepath.name}")
+                self.logger.warning(f"No products passed filters in {filepath.name}")
+                # Still move to processed since we processed it
+                self.file_manager.move_to_processed(filepath)
                 return True
-            
-            # Upload related tables in parallel
-            related_tables = ['options', 'variants', 'images', 'offers']
-            
-            def upload_table(table_name: str, data: List[Dict]) -> bool:
-                if data:
-                    # Use primary key `id` for conflict target
-                    on_conflict = "id"
-                    return self.supabase.bulk_upsert(
-                        table_name=table_name,
-                        data=data,
-                        on_conflict=on_conflict
-                    )
-                return True
-            
-            with ThreadPoolExecutor(max_workers=4) as executor:
-                futures = []
-                for table in related_tables:
-                    if self.processor.collections.get(table):
-                        futures.append(
-                            executor.submit(
-                                upload_table,
-                                table,
-                                self.processor.collections[table]
-                            )
-                        )
                 
-                for future in as_completed(futures):
-                    try:
-                        if not future.result():
-                            self.logger.error("Failed to upload related table")
-                            return False
-                    except Exception as e:
-                        self.logger.error(f"Error in parallel upload: {e}")
-                        return False
-            
-            # Clean up stale products for this shop
-            shop_ids = {p["shop_id"] for p in self.processor.collections["products"]}
-            if len(shop_ids) == 1:
-                shop_id = list(shop_ids)[0]
-                self.cleanup_stale_records(product_ids, shop_id)
-
-            self.file_manager.move_to_processed(filepath)
-            self.logger.info(f"✅ Successfully processed {filepath.name}")
-            return True
-            
         except Exception as e:
             self.logger.error(f"❌ Error processing {filepath.name}: {e}")
             return False
@@ -416,20 +552,35 @@ class ProductUploader(BaseUploader):
             'failed': 0,
             'total_files': len(files),
             'total_products': 0,
-            'shop_ids': set()
+            'total_processed_products': 0,
+            'shop_ids': set(),
+            'filter_stats': {
+                'total_processed': 0,
+                'uploaded': 0,
+                'skipped': 0
+            }
         }
         
         if not files:
             self.logger.warning("No product files found")
             return results
         
-        self.logger.info(f"Found {len(files)} product files")
+        self.logger.info(
+            f"Found {len(files)} product files "
+            f"(filtering: {'ON' if self.filter_available_only else 'OFF'}, "
+            f"min price: {self.min_price_threshold})"
+        )
         
         for filepath in files:
             success = self.process_file(filepath)
             if success:
                 results['processed'] += 1
-                results['total_products'] += len(self.processor.collections.get('products', []))
+                stats = self.processor.get_stats()['filter_stats']
+                results['total_products'] += stats['uploaded']
+                results['total_processed_products'] += stats['total_processed']
+                results['filter_stats']['total_processed'] += stats['total_processed']
+                results['filter_stats']['uploaded'] += stats['uploaded']
+                results['filter_stats']['skipped'] += (stats['total_processed'] - stats['uploaded'])
                 
                 # Extract shop IDs
                 for product in self.processor.collections.get('products', []):
@@ -440,9 +591,26 @@ class ProductUploader(BaseUploader):
         
         results['shop_ids'] = list(results['shop_ids'])
         
-        # Log final categorization stats
-        if results['total_products'] > 0:
-            self.logger.info(f"🎉 Processed {results['total_products']} products total")
+        # Calculate final statistics
+        total_processed = results['filter_stats']['total_processed']
+        total_uploaded = results['filter_stats']['uploaded']
+        
+        if total_processed > 0:
+            upload_percentage = round((total_uploaded / total_processed) * 100, 1)
+            skip_percentage = round(((total_processed - total_uploaded) / total_processed) * 100, 1)
+            
+            self.logger.info(f"\n{'='*60}")
+            self.logger.info("📊 FINAL FILTERING STATISTICS")
+            self.logger.info(f"{'='*60}")
+            self.logger.info(f"Total products processed: {total_processed:,}")
+            self.logger.info(f"Total products uploaded: {total_uploaded:,} ({upload_percentage}%)")
+            self.logger.info(f"Total products skipped: {total_processed - total_uploaded:,} ({skip_percentage}%)")
+            self.logger.info(f"Database size reduction: {skip_percentage}%")
+            
+            if self.filter_available_only:
+                self.logger.info(f"Expected products in database: ~{total_uploaded:,}")
+                self.logger.info(f"Expected storage savings: {skip_percentage}%")
+            self.logger.info(f"{'='*60}")
         
         return results
     
