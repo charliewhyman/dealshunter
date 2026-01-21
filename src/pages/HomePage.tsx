@@ -400,11 +400,11 @@ export function HomePage() {
       .filter(s => s.length > 0);
     
     return {
-      p_shop_ids: shopIds.length > 0 ? shopIds : null,
-      p_size_groups: sizeGroups.length > 0 ? sizeGroups : null,
-      p_grouped_types: groupedTypes.length > 0 ? groupedTypes : null,
-      p_top_level_categories: topLevelCategories.length > 0 ? topLevelCategories : null,
-      p_gender_ages: genderAges.length > 0 ? genderAges : null,
+      p_shop_ids: shopIds.length > 0 ? shopIds : [],
+      p_size_groups: sizeGroups.length > 0 ? sizeGroups : [],
+      p_grouped_types: groupedTypes.length > 0 ? groupedTypes : [],
+      p_top_level_categories: topLevelCategories.length > 0 ? topLevelCategories : [],
+      p_gender_ages: genderAges.length > 0 ? genderAges : [],
       p_in_stock_only: filters.inStockOnly,
       p_on_sale_only: filters.onSaleOnly,
       p_min_price: filters.selectedPriceRange[0],
@@ -421,17 +421,27 @@ export function HomePage() {
       filters: FilterOptions,
       page: number,
       sortOrder: SortOrder,
+      isFilterChange: boolean = false
     ) => {
       const TIMEOUT_MS = 10000;
       const requestKey = `${JSON.stringify(filters)}-${page}-${sortOrder}`;
       const filtersKey = `${JSON.stringify(filters)}-${sortOrder}`;
+
+      // If filters changed, clear cache and existing products
+      if (isFilterChange) {
+        prefetchCacheRef.current = {};
+        totalCountRef.current = {};
+        startTransition(() => {
+          setProducts([]);
+        });
+      }
 
       // FAST PATH: Use prefetch cache
       const cached = prefetchCacheRef.current[requestKey];
       if (cached) {
         if (cached.count != null) totalCountRef.current[filtersKey] = cached.count;
         startTransition(() => {
-          setProducts(prev => (page === 0 ? cached.data : mergeUniqueProducts(prev, cached.data)));
+          setProducts(prev => (page === 0 || isFilterChange ? cached.data : mergeUniqueProducts(prev, cached.data)));
           const loadedItemsCount = (page + 1) * ITEMS_PER_PAGE;
           if (cached.count == null || cached.data.length === 0 || cached.data.length < ITEMS_PER_PAGE) {
             setHasMore(false);
@@ -495,11 +505,13 @@ export function HomePage() {
           try {
             const supabase = getSupabase();
             const params = buildRpcParams(filters, page, sortOrder);
+            console.log('Calling RPC with params:', params);
             
             const { data, error } = await supabase.rpc('get_products_filtered', params);
             clearTimeout(timeoutId);
 
             if (error) {
+              console.error('RPC Error:', error);
               // Handle specific Supabase errors
               const errCode = (error as { code?: string }).code;
               const errStatus = (error as { status?: number }).status;
@@ -531,6 +543,11 @@ export function HomePage() {
 
             const newData = (data as (ProductWithDetails & { total_count: number })[]) || [];
             const totalCount = newData[0]?.total_count || 0;
+            
+            console.log(`Received ${newData.length} products, total count: ${totalCount}`);
+            if (newData.length > 0) {
+              console.log('First product shop_id:', newData[0].shop_id);
+            }
 
             // Store in cache
             if (totalCount != null) totalCountRef.current[filtersKey] = totalCount;
@@ -567,7 +584,7 @@ export function HomePage() {
 
             // Update state
             startTransition(() => {
-              setProducts(prev => (page === 0 ? newData : mergeUniqueProducts(prev, newData)));
+              setProducts(prev => (page === 0 || isFilterChange ? newData : mergeUniqueProducts(prev, newData)));
               
               const loadedItemsCount = (page + 1) * ITEMS_PER_PAGE;
               
@@ -825,17 +842,27 @@ export function HomePage() {
   // Reset page when filters or sort order change
   useEffect(() => {
     setPage(0);
-    setProducts([]);
+    setProducts([]);  // CRITICAL: Clear products when filters change
     setInitialLoad(true);
     setHasMore(true);
     isFetchingRef.current = false;
     observerLockRef.current = false;
   }, [sortOrder]);
 
+  // Also reset when shop filter changes
+  useEffect(() => {
+    setPage(0);
+    setProducts([]);
+    setInitialLoad(true);
+    setHasMore(true);
+    isFetchingRef.current = false;
+    observerLockRef.current = false;
+  }, [selectedShopNameKey]);
+
   // Initial load effect
   useEffect(() => {
     if (initialLoad && initialDataLoaded) {
-      fetchFilteredProducts(committedFilters, 0, sortOrder).catch(err => {
+      fetchFilteredProducts(committedFilters, 0, sortOrder, true).catch(err => {
         if ((err as Error)?.name !== 'AbortError') {
           console.error('Initial load error:', err);
         }
@@ -847,7 +874,7 @@ export function HomePage() {
   useEffect(() => {
     if (page === 0) return;
 
-    fetchFilteredProducts(committedFilters, page, sortOrder).catch(err => {
+    fetchFilteredProducts(committedFilters, page, sortOrder, false).catch(err => {
       if ((err as Error)?.name !== 'AbortError') {
         console.error('Error:', err);
       }
