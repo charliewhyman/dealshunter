@@ -1,15 +1,14 @@
 """
-Product Scraper - Reduced polling with state tracking.
-Uses metadata-first approach to only fetch changed products.
+Product Scraper - With both incremental and full scrape modes.
+Optimized to skip OOS products in incremental mode.
+Now with robust 429 error handling and retry logic.
 """
-
 from datetime import datetime
 from typing import List, Dict, Any, Optional
 import time
 import hashlib
 import json
 from concurrent.futures import ThreadPoolExecutor, as_completed
-
 from scrapers.base_scraper import BaseScraper
 from config.schemas import ProductData
 import config.settings as settings
@@ -17,29 +16,116 @@ from core.session_manager import SessionManager
 from core.state_manager import StateManager
 from core.rate_limiter import SmartRateLimiter
 
-
 class ProductScraper(BaseScraper):
-    """Product scraper - only scrapes what changed."""
+    """Product scraper - supports both incremental and full scraping."""
     
     def __init__(self):
         super().__init__('products')
-        self.max_pages = 3  # Reduced from 10+
-        self.concurrent_pages = 2  # Reduced concurrency
-        self.batch_size = 50  # Smaller batches
+        
+        # TWO MODES: Full vs Incremental
+        self.full_scrape_mode = False  # Set to True for initial data collection
+        
+        # Full scrape settings (when full_scrape_mode = True)
+        self.full_max_pages = 100  # High limit for full scrape
+        self.full_max_requests = 1000  # High limit for full scrape
+        
+        # Incremental scrape settings (when full_scrape_mode = False)
+        self.inc_max_pages = 3  # Reduced from 10+ for incremental
+        self.inc_max_requests = 30  # Reduced concurrency for incremental
+        self.batch_size = 50  # Smaller batches for incremental
+        
+        # OOS filtering (NEW)
+        self.skip_oos_in_incremental = True  # Skip out-of-stock products
+        self.skip_oos_in_full = False  # Keep OOS in full scrapes for complete dataset
+        
+        # Current active settings (set based on mode)
+        self.max_pages = self.inc_max_pages
+        self.max_requests_per_shop = self.inc_max_requests
         
         # State tracking
         self.state_manager = StateManager()
         
         # Rate limiting
         self.min_shop_delay = 30  # Seconds between shops
-        self.max_requests_per_shop = 30  # Reduced from 50+
-        
-        # Skip thresholds
         self.skip_shop_hours = 6  # Skip shops scraped in last 6 hours
-        self.skip_product_hours = 24  # Skip individual products updated recently
+        
+        # Retry settings for 429 errors
+        self.max_429_retries = 3  # Max retries per page on 429
+        self.retry_delay_multiplier = 2  # Exponential backoff multiplier
+    
+    def set_full_scrape_mode(self, enabled: bool = True):
+        """Switch between full and incremental scrape modes."""
+        self.full_scrape_mode = enabled
+        if enabled:
+            self.max_pages = self.full_max_pages
+            self.max_requests_per_shop = self.full_max_requests
+            self.logger.info("🔄 Set to FULL scrape mode")
+        else:
+            self.max_pages = self.inc_max_pages
+            self.max_requests_per_shop = self.inc_max_requests
+            self.logger.info("📊 Set to INCREMENTAL scrape mode")
     
     def scrape_single(self, shop_data: Dict[str, Any]) -> List[Dict[str, Any]]:
-        """Scrape ONLY changed products for a single shop."""
+        """Main entry point - routes to full or incremental based on mode."""
+        if self.full_scrape_mode:
+            return self._scrape_single_full(shop_data)
+        else:
+            return self._scrape_single_incremental(shop_data)
+    
+    def _fetch_page_with_retry(self, session, url: str, params: dict, 
+                               shop_id: str, page: int) -> Optional[Dict]:
+        """Fetch a page with retry logic for 429 errors."""
+        retry_count = 0
+        
+        while retry_count <= self.max_429_retries:
+            try:
+                # Proactive wait before request
+                self.rate_limiter.wait_before_request(shop_id)
+                
+                response = session.get(url, params=params, timeout=30)
+                
+                # Handle 429 specifically
+                if response.status_code == 429:
+                    # Let rate limiter handle backoff
+                    wait_time = self.rate_limiter.wait(shop_id, response)
+                    
+                    if retry_count < self.max_429_retries:
+                        retry_count += 1
+                        self.logger.warning(
+                            f"Page {page} got 429, retry {retry_count}/{self.max_429_retries} "
+                            f"after {wait_time:.1f}s wait"
+                        )
+                        continue  # Retry same page
+                    else:
+                        self.logger.error(
+                            f"Page {page} failed after {self.max_429_retries} retries due to 429"
+                        )
+                        return None
+                
+                # Normal rate limiting for non-429 responses
+                self.rate_limiter.wait(shop_id, response)
+                
+                # Handle other non-200 status codes
+                if response.status_code != 200:
+                    self.logger.warning(f"Page {page} returned status {response.status_code}")
+                    return None
+                
+                # Success - parse and return
+                data = self._safe_parse_json(response)
+                return data
+                
+            except Exception as e:
+                self.logger.error(f"Error fetching page {page}: {e}")
+                if retry_count < self.max_429_retries:
+                    retry_count += 1
+                    time.sleep(2 * retry_count)  # Linear backoff for errors
+                else:
+                    return None
+        
+        return None
+    
+    def _scrape_single_full(self, shop_data: Dict[str, Any]) -> List[Dict[str, Any]]:
+        """FULL scrape: Get ALL products from a shop."""
         shop_id = shop_data.get('id')
         base_url = shop_data.get('url')
         
@@ -47,93 +133,48 @@ class ProductScraper(BaseScraper):
             self.logger.error(f"Invalid shop data: {shop_data}")
             return []
         
-        # Check if we should skip this shop entirely
-        if self.state_manager.should_skip_data_type(shop_id, 'products', self.skip_shop_hours):
-            self.logger.info(f"Skipping products for {shop_id} - scraped recently")
-            return []
-        
-        # Verify it's a Shopify store
-        if not self.is_shopify_store(base_url, shop_id):
-            self.logger.warning(f"Skipping products for non-Shopify store: {base_url}")
-            return []
-        
-        self.logger.info(f"Starting product scrape for {shop_id}")
+        self.logger.info(f"🚀 Starting FULL product scrape for {shop_id}")
         start_time = time.time()
         
         try:
-            # STEP 1: Fetch product metadata only (lightweight)
-            product_metadata = self._fetch_product_metadata(base_url, shop_id)
+            all_products = []
+            page = 1
+            empty_pages = 0
+            skipped_oos = 0
+            failed_pages = 0
             
-            if not product_metadata:
-                self.logger.info(f"No products found for {shop_id}")
-                # Update state to avoid checking again soon
-                self.state_manager.update_shop_state(shop_id, 'products', 0)
-                return []
+            session = SessionManager.get_session(shop_id)
             
-            # STEP 2: Identify changed products
-            products_to_scrape = self._identify_changed_products(shop_id, product_metadata)
+            # Determine if we should skip OOS for this mode
+            skip_oos = self.skip_oos_in_full
             
-            if not products_to_scrape:
-                self.logger.info(f"No changed products for {shop_id}")
-                # Update state with current count
-                self.state_manager.update_shop_state(shop_id, 'products', len(product_metadata))
-                return []
-            
-            self.logger.info(
-                f"{shop_id}: {len(products_to_scrape)}/{len(product_metadata)} products changed"
-            )
-            
-            # STEP 3: Fetch full details only for changed products
-            scraped_products = self._fetch_product_details(
-                base_url, shop_id, products_to_scrape
-            )
-            
-            # STEP 4: Update state
-            self.state_manager.update_shop_state(
-                shop_id, 'products', len(scraped_products), scraped_products
-            )
-            
-            elapsed = time.time() - start_time
-            self.logger.info(
-                f"Completed {shop_id}: {len(scraped_products)} products in {elapsed:.1f}s "
-                f"({len(products_to_scrape) - len(scraped_products)} failed)"
-            )
-            
-            return scraped_products
-            
-        except Exception as e:
-            self.logger.error(f"Error scraping {shop_id}: {e}")
-            return []
-    
-    def _fetch_product_metadata(self, base_url: str, shop_id: str) -> List[Dict[str, Any]]:
-        """Fetch minimal product metadata (IDs, handles, updated_at)."""
-        metadata = []
-        page = 1
-        empty_pages = 0
-        session = SessionManager.get_session(shop_id)
-        
-        self.logger.debug(f"Fetching product metadata for {shop_id}")
-        
-        while True:
-            if page > self.max_pages:
-                break
-            
-            try:
-                # Only request minimal fields - reduces response size significantly
-                url = f"{base_url}/products.json?limit=50&page={page}&fields=id,handle,title,updated_at"
-                
-                response = session.get(url, timeout=15)
-                self.rate_limiter.wait(shop_id, response)
-                
-                if response.status_code != 200:
-                    self.logger.warning(f"Metadata fetch failed: {response.status_code}")
+            while True:
+                if page > self.max_pages:
+                    self.logger.warning(f"Hit max pages ({self.max_pages}) for {shop_id}")
                     break
                 
-                data = self._safe_parse_json(response)
-                if not data or "products" not in data:
+                # Use retry logic for fetching
+                url = f"{base_url}/products.json"
+                params = {'limit': 250, 'page': page}
+                
+                data = self._fetch_page_with_retry(session, url, params, shop_id, page)
+                
+                if data is None:
+                    failed_pages += 1
+                    if failed_pages >= 3:
+                        self.logger.error(f"Too many failed pages ({failed_pages}), stopping")
+                        break
+                    page += 1
+                    continue
+                
+                # Reset failed counter on success
+                failed_pages = 0
+                
+                if "products" not in data:
                     break
                 
                 products = data["products"]
+                
                 if not products:
                     empty_pages += 1
                     if empty_pages >= 2:
@@ -144,151 +185,216 @@ class ProductScraper(BaseScraper):
                 # Reset empty counter
                 empty_pages = 0
                 
-                # Extract only what we need for change detection
+                # Process each product
                 for product in products:
-                    metadata.append({
-                        'id': str(product.get('id', '')),
-                        'handle': product.get('handle', ''),
-                        'title': product.get('title', ''),
-                        'updated_at': product.get('updated_at', ''),
-                    })
+                    try:
+                        # Skip OOS products if enabled
+                        if skip_oos:
+                            variants = product.get('variants', [])
+                            if not self._is_available(variants):
+                                skipped_oos += 1
+                                continue
+                        
+                        product_data = self._convert_to_product_data(
+                            product, shop_id, base_url
+                        )
+                        if product_data:
+                            all_products.append(product_data.to_dict())
+                    except Exception as e:
+                        self.logger.debug(f"Error converting product: {e}")
+                        continue
                 
-                self.logger.debug(f"{shop_id}: Page {page} - {len(products)} products")
+                self.logger.info(f"  {shop_id}: Page {page} - {len(products)} products")
                 
-                # If we got fewer than limit, we're done
-                if len(products) < 50:
+                # Stop if we got fewer than limit
+                if len(products) < 250:
                     break
-                
+                    
                 page += 1
                 
-                # Add delay between pages to be nice
-                if page % 2 == 0:  # Every 2 pages
-                    time.sleep(0.5)
-                    
-            except Exception as e:
-                self.logger.error(f"Error fetching metadata page {page}: {e}")
-                break
-        
-        return metadata
-    
-    def _identify_changed_products(self, shop_id: str, 
-                                   metadata: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
-        """Identify which products have changed since last scrape."""
-        changed = []
-        now = datetime.now()
-        
-        for product in metadata:
-            handle = product.get('handle')
-            updated_at = product.get('updated_at')
-            
-            if not handle or not updated_at:
-                continue
-            
-            # Check if product was recently updated
-            try:
-                # Parse updated_at timestamp
-                updated_dt = datetime.fromisoformat(updated_at.replace('Z', '+00:00'))
-                hours_since_update = (now - updated_dt).total_seconds() / 3600
-                
-                # Skip products updated very recently (they'll be fresh)
-                if hours_since_update < 1:  # Less than 1 hour ago
-                    continue
-            except:
-                pass
-            
-            # Check if we've seen this product before and if it changed
-            last_version = self.state_manager.get_item_version(shop_id, 'products', handle)
-            last_updated = self.state_manager.get_item_updated_at(shop_id, 'products', handle)
-            
-            # If product is new OR updated_at changed OR no version hash
-            if not last_version or last_updated != updated_at:
-                # Create a hash of key metadata for comparison
-                key_fields = {
-                    'handle': handle,
-                    'title': product.get('title'),
-                    'updated_at': updated_at,
-                }
-                current_hash = hashlib.md5(
-                    json.dumps(key_fields, sort_keys=True).encode()
-                ).hexdigest()[:8]
-                
-                # Only scrape if hash is different or doesn't exist
-                if not last_version or last_version != current_hash:
-                    changed.append(product)
-        
-        return changed
-    
-    def _fetch_product_details(self, base_url: str, shop_id: str,
-                               products_to_scrape: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
-        """Fetch full details for changed products with rate limiting."""
-        scraped_products = []
-        session = SessionManager.get_session(shop_id)
-        request_count = 0
-        failed_count = 0
-        
-        self.logger.info(f"Fetching {len(products_to_scrape)} changed products for {shop_id}")
-        
-        for i, product_info in enumerate(products_to_scrape):
-            if request_count >= self.max_requests_per_shop:
-                self.logger.warning(f"Hit max requests ({self.max_requests_per_shop}) for {shop_id}")
-                break
-            
-            try:
-                product_data = self._fetch_single_product(
-                    base_url, shop_id, product_info['handle'], session
-                )
-                request_count += 1
-                
-                if product_data:
-                    scraped_products.append(product_data)
+                # Small delay between pages (in addition to rate limiter)
+                if page % 5 == 0:  # Every 5 pages
+                    time.sleep(1)
                 else:
-                    failed_count += 1
-                
-                # Progress logging
-                if (i + 1) % 10 == 0 or (i + 1) == len(products_to_scrape):
-                    self.logger.info(
-                        f"{shop_id}: {i+1}/{len(products_to_scrape)} products "
-                        f"({len(scraped_products)} scraped, {failed_count} failed)"
-                    )
-                
-                # Rate limiting between requests
-                if i < len(products_to_scrape) - 1:
-                    time.sleep(0.5)  # 500ms between requests
-                    
+                    time.sleep(0.3)
+            
+            elapsed = time.time() - start_time
+            
+            if skip_oos and skipped_oos > 0:
+                self.logger.info(
+                    f"✅ FULL scrape {shop_id}: {len(all_products)} products "
+                    f"({skipped_oos} OOS skipped) in {elapsed:.1f}s"
+                )
+            else:
+                self.logger.info(
+                    f"✅ FULL scrape {shop_id}: {len(all_products)} products in {elapsed:.1f}s"
+                )
+            
+            # Update state manager
+            try:
+                self.state_manager.update_shop_state(
+                    shop_id, 
+                    'products', 
+                    len(all_products)
+                )
             except Exception as e:
-                self.logger.error(f"Error fetching product {product_info.get('handle')}: {e}")
-                failed_count += 1
-                # Continue with next product
-        
-        return scraped_products
+                self.logger.debug(f"Could not update state: {e}")
+            
+            return all_products
+            
+        except Exception as e:
+            self.logger.error(f"Error in full scrape {shop_id}: {e}")
+            return []
     
-    def _fetch_single_product(self, base_url: str, shop_id: str,
-                              handle: str, session) -> Optional[Dict[str, Any]]:
-        """Fetch full product details."""
+    def _scrape_single_incremental(self, shop_data: Dict[str, Any]) -> List[Dict[str, Any]]:
+        """INCREMENTAL scrape - optimized to skip OOS products."""
+        shop_id = shop_data.get('id')
+        base_url = shop_data.get('url')
+        
+        # Validate shop_id before proceeding
+        if not shop_id or not base_url:
+            self.logger.error(f"Invalid shop data - missing id or url: {shop_data}")
+            return []
+        
+        # Check if we should skip this shop entirely
+        should_skip = False
         try:
-            url = f"{base_url}/products/{handle}.json"
+            should_skip = self.state_manager.should_skip_data_type(
+                shop_id, 'products', self.skip_shop_hours
+            )
+        except Exception as e:
+            self.logger.debug(f"Could not check skip status: {e}")
+        
+        if should_skip:
+            self.logger.info(f"⏭️  Skipping products for {shop_id} - scraped recently")
+            return []
+        
+        self.logger.info(f"📊 Starting INCREMENTAL product scrape for {shop_id}")
+        start_time = time.time()
+        
+        try:
+            all_products = []
+            page = 1
+            empty_pages = 0
+            skipped_oos = 0
+            failed_pages = 0
             
-            response = session.get(url, timeout=20)
-            self.rate_limiter.wait(shop_id, response)
+            session = SessionManager.get_session(shop_id)
             
-            if response.status_code != 200:
-                self.logger.debug(f"Failed to fetch product {handle}: {response.status_code}")
-                return None
+            # Use incremental settings with OOS filtering
+            skip_oos = self.skip_oos_in_incremental
             
-            data = self._safe_parse_json(response)
-            if not data or "product" not in data:
-                return None
+            while True:
+                if page > self.max_pages:
+                    self.logger.info(f"Reached max pages ({self.max_pages}) for incremental scrape")
+                    break
+                
+                # Use retry logic for fetching
+                url = f"{base_url}/products.json"
+                params = {'limit': 250, 'page': page}
+                
+                data = self._fetch_page_with_retry(session, url, params, shop_id, page)
+                
+                if data is None:
+                    failed_pages += 1
+                    if failed_pages >= 3:
+                        self.logger.error(f"Too many failed pages ({failed_pages}), stopping")
+                        break
+                    page += 1
+                    continue
+                
+                # Reset failed counter on success
+                failed_pages = 0
+                
+                if "products" not in data:
+                    break
+                
+                products = data["products"]
+                
+                if not products:
+                    empty_pages += 1
+                    if empty_pages >= 2:
+                        break
+                    page += 1
+                    continue
+                
+                empty_pages = 0
+                
+                # Process products with OOS filtering
+                for product in products:
+                    try:
+                        # CRITICAL: Skip OOS products in incremental mode
+                        if skip_oos:
+                            variants = product.get('variants', [])
+                            if not self._is_available(variants):
+                                skipped_oos += 1
+                                continue
+                        
+                        product_data = self._convert_to_product_data(
+                            product, shop_id, base_url
+                        )
+                        if product_data:
+                            all_products.append(product_data.to_dict())
+                            
+                    except Exception as e:
+                        self.logger.debug(f"Error converting product: {e}")
+                        continue
+                
+                self.logger.info(
+                    f"  {shop_id}: Page {page} - {len(products)} found, "
+                    f"{len([p for p in products if self._is_available(p.get('variants', []))])} in stock"
+                )
+                
+                # Stop if we got fewer than limit
+                if len(products) < 250:
+                    break
+                    
+                page += 1
+                
+                # Delay between pages (in addition to rate limiter)
+                time.sleep(0.5)
             
-            product = data["product"]
+            elapsed = time.time() - start_time
             
-            # Convert to ProductData
-            product_data = ProductData(
+            if skip_oos:
+                self.logger.info(
+                    f"✅ INCREMENTAL scrape {shop_id}: {len(all_products)} in-stock products "
+                    f"({skipped_oos} OOS skipped) in {elapsed:.1f}s"
+                )
+            else:
+                self.logger.info(
+                    f"✅ INCREMENTAL scrape {shop_id}: {len(all_products)} products in {elapsed:.1f}s"
+                )
+            
+            # Update state
+            try:
+                self.state_manager.update_shop_state(
+                    shop_id, 
+                    'products', 
+                    len(all_products)
+                )
+            except Exception as e:
+                self.logger.debug(f"Could not update state: {e}")
+            
+            return all_products
+            
+        except Exception as e:
+            self.logger.error(f"Error in incremental scrape {shop_id}: {e}")
+            return []
+    
+    def _convert_to_product_data(self, product: Dict[str, Any], shop_id: str, base_url: str) -> Optional[ProductData]:
+        """Convert raw Shopify product to ProductData."""
+        try:
+            handle = product.get('handle', '')
+            product_url = f"{base_url}/products/{handle}" if handle else ""
+            
+            return ProductData(
                 shop_id=shop_id,
                 scraped_at=datetime.now().isoformat(),
                 id=str(product.get("id", "")),
-                handle=product.get("handle", ""),
+                handle=handle,
                 title=product.get("title", ""),
-                product_url=f"{base_url}/products/{handle}",
+                product_url=product_url,
                 description=product.get("body_html"),
                 product_type=product.get("product_type"),
                 vendor=product.get("vendor"),
@@ -302,14 +408,11 @@ class ProductScraper(BaseScraper):
                 variants=product.get("variants", []),
                 images=product.get("images", [])
             )
-            
-            return product_data.to_dict()
-            
         except Exception as e:
-            self.logger.debug(f"Error fetching product {handle}: {e}")
+            self.logger.debug(f"Error converting product {product.get('id')}: {e}")
             return None
     
-    # Keep helper methods from original
+    # Helper methods
     def _get_min_price(self, variants: List[Dict]) -> Optional[float]:
         """Get minimum price from variants."""
         if not variants:
@@ -340,10 +443,10 @@ class ProductScraper(BaseScraper):
         
         return min(prices) if prices else None
     
-    def _is_available(self, variants: List[Dict]) -> Optional[bool]:
-        """Check if any variant is available."""
+    def _is_available(self, variants: List[Dict]) -> bool:
+        """Check if any variant is available (in stock)."""
         if not variants:
-            return None
+            return False
         
         for v in variants:
             if v.get('available', False):
@@ -364,60 +467,5 @@ class ProductScraper(BaseScraper):
     
     def scrape_multiple(self, shops: List[Dict[str, Any]], 
                        max_workers: Optional[int] = None) -> Dict[str, List[Dict[str, Any]]]:
-        """Scrape multiple shops with intelligent pacing using parent's concurrency."""
-        # Use parent class's concurrent implementation for efficiency
+        """Scrape multiple shops."""
         return super().scrape_multiple(shops, max_workers)
-    
-    def _scrape_multiple_sequential(self, shops: List[Dict[str, Any]]) -> Dict[str, List[Dict[str, Any]]]:
-        """Alternative sequential implementation with delays between shops."""
-        results = {}
-        
-        if not shops:
-            return results
-        
-        self.logger.info(f"Starting sequential product scrape for {len(shops)} shops")
-        total_start = time.time()
-        
-        for i, shop in enumerate(shops):
-            shop_id = shop.get('id') or f"shop_{i}"
-            
-            try:
-                # Add delay between shops
-                if i > 0:
-                    delay = self.min_shop_delay
-                    self.logger.debug(f"Waiting {delay}s before next shop...")
-                    time.sleep(delay)
-                
-                # Scrape this shop
-                products = self.scrape_single(shop)
-                results[shop_id] = products
-                
-                # Progress logging
-                elapsed = time.time() - total_start
-                shops_done = i + 1
-                avg_time = elapsed / shops_done if shops_done > 0 else 0
-                remaining = len(shops) - shops_done
-                eta = avg_time * remaining if remaining > 0 else 0
-                
-                total_products = sum(len(p) for p in results.values())
-                
-                self.logger.info(
-                    f"Progress: {shops_done}/{len(shops)} shops, "
-                    f"{total_products} products, "
-                    f"ETA: {eta/60:.1f} min"
-                )
-                
-            except Exception as e:
-                self.logger.error(f"Error scraping {shop.get('url', 'unknown')}: {e}")
-                results[shop_id] = []
-        
-        total_products = sum(len(p) for p in results.values())
-        total_time = time.time() - total_start
-        
-        self.logger.info(
-            f"Product scraping completed: {len(results)} shops, "
-            f"{total_products} products, "
-            f"time: {total_time/60:.1f} minutes"
-        )
-        
-        return results

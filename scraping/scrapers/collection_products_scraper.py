@@ -1,10 +1,10 @@
 """
-Collection-Products Scraper - Minimal polling with state tracking.
+Collection-Products Scraper - Minimal polling with state tracking and robust 429 handling.
 Collection-product mappings change even less often than products.
 """
 
 from datetime import datetime
-from typing import List, Dict, Any, Optional
+from typing import List, Dict, Any, Optional, Tuple
 import time
 import hashlib
 import json
@@ -28,12 +28,16 @@ class CollectionProductsScraper(BaseScraper):
         
         # Rate limiting - be very conservative
         self.min_shop_delay = 15  # 15 seconds between shops
-        self.max_requests_per_shop = 20
+        self.max_requests_per_shop = 100  # Increased from 20 to ensure we don't miss items
         self.concurrent_collections = 2
         
         # Skip thresholds - mappings change rarely
         self.skip_shop_days = 14  # Skip shops scraped in last 14 days
         self.min_collection_size = 5  # Only scrape collections with at least 5 products
+        
+        # Retry settings for 429 errors
+        self.max_429_retries = 3
+        self.retry_delay_multiplier = 2
     
     def set_collections_data(self, collections_data: Dict[str, List[Dict]]):
         """Set collections data to map against."""
@@ -140,6 +144,65 @@ class CollectionProductsScraper(BaseScraper):
             json.dumps(key_fields, sort_keys=True).encode()
         ).hexdigest()[:8]
     
+    def _fetch_page_with_retry(self, session, url: str, shop_id: str, 
+                               handle: str, page: int) -> Optional[Dict]:
+        """Fetch a collection products page with retry logic for 429 errors."""
+        retry_count = 0
+        
+        while retry_count <= self.max_429_retries:
+            try:
+                # Proactive wait before request
+                self.rate_limiter.wait_before_request(shop_id)
+                
+                response = session.get(url, timeout=20)
+                
+                # Handle 429 specifically
+                if response.status_code == 429:
+                    # Let rate limiter handle backoff
+                    wait_time = self.rate_limiter.wait(shop_id, response)
+                    
+                    if retry_count < self.max_429_retries:
+                        retry_count += 1
+                        self.logger.warning(
+                            f"Collection {handle} page {page} got 429, "
+                            f"retry {retry_count}/{self.max_429_retries} after {wait_time:.1f}s wait"
+                        )
+                        continue  # Retry same page
+                    else:
+                        self.logger.error(
+                            f"Collection {handle} page {page} failed after "
+                            f"{self.max_429_retries} retries due to 429"
+                        )
+                        return None
+                
+                # Normal rate limiting for non-429 responses
+                self.rate_limiter.wait(shop_id, response)
+                
+                # Handle 404 (collection doesn't exist or has no products)
+                if response.status_code == 404:
+                    return None
+                
+                # Handle other non-200 status codes
+                if response.status_code != 200:
+                    self.logger.warning(
+                        f"Collection {handle} page {page} returned status {response.status_code}"
+                    )
+                    return None
+                
+                # Success - parse and return
+                data = self._safe_parse_json(response)
+                return data
+                
+            except Exception as e:
+                self.logger.error(f"Error fetching collection {handle} page {page}: {e}")
+                if retry_count < self.max_429_retries:
+                    retry_count += 1
+                    time.sleep(2 * retry_count)  # Linear backoff for errors
+                else:
+                    return None
+        
+        return None
+    
     def _fetch_mappings_conservative(self, base_url: str, shop_id: str,
                                      collections_info: List[Dict]) -> List[Dict[str, Any]]:
         """Fetch collection-product mappings with very conservative pacing."""
@@ -147,7 +210,8 @@ class CollectionProductsScraper(BaseScraper):
         session = SessionManager.get_session(shop_id)
         request_count = 0
         
-        self.logger.info(f"Fetching mappings for {len(collections_info)} collections for {shop_id}")
+        total_collections = len(collections_info)
+        self.logger.info(f"Fetching mappings for {total_collections} collections for {shop_id}")
         
         for i, info in enumerate(collections_info):
             collection = info['collection']
@@ -155,16 +219,21 @@ class CollectionProductsScraper(BaseScraper):
             handle = collection.get('handle')
             collection_id = str(collection.get('id', ''))
             
+            # Check if we're approaching the limit
             if request_count >= self.max_requests_per_shop:
-                self.logger.warning(f"Hit max requests ({self.max_requests_per_shop}) for {shop_id}")
+                self.logger.warning(
+                    f"Hit max requests ({self.max_requests_per_shop}) for {shop_id}. "
+                    f"Processed {i}/{total_collections} collections, {len(all_mappings)} mappings. "
+                    f"Increase max_requests_per_shop to scrape all collections."
+                )
                 break
             
             try:
                 # Fetch products for this collection
-                collection_mappings = self._fetch_collection_products(
+                collection_mappings, pages_fetched = self._fetch_collection_products(
                     base_url, shop_id, collection_id, handle, session
                 )
-                request_count += 1
+                request_count += pages_fetched
                 
                 if collection_mappings:
                     all_mappings.extend(collection_mappings)
@@ -181,94 +250,104 @@ class CollectionProductsScraper(BaseScraper):
                     if (i + 1) % 5 == 0:
                         self.state_manager.update_shop_state(shop_id, 'collection_products', len(all_mappings))
                 
-                # Progress logging
-                if (i + 1) % 5 == 0 or (i + 1) == len(collections_info):
+                # Progress logging every 5 collections or at the end
+                if (i + 1) % 5 == 0 or (i + 1) == total_collections:
                     self.logger.info(
-                        f"{shop_id}: {i+1}/{len(collections_info)} collections, "
-                        f"{len(all_mappings)} mappings"
+                        f"{shop_id}: {i+1}/{total_collections} collections, "
+                        f"{len(all_mappings)} mappings, "
+                        f"{request_count} requests"
                     )
                 
                 # Conservative delay between collections
-                if i < len(collections_info) - 1:
+                if i < total_collections - 1:
                     time.sleep(2)  # 2 seconds between collections
                     
             except Exception as e:
                 self.logger.error(f"Error fetching collection {handle}: {e}")
                 # Continue with next collection
         
+        # Final summary
+        self.logger.info(
+            f"{shop_id}: Completed {len(collections_info)} collections, "
+            f"{len(all_mappings)} mappings, {request_count} total requests"
+        )
+        
         return all_mappings
     
     def _fetch_collection_products(self, base_url: str, shop_id: str,
                                    collection_id: str, handle: str, 
-                                   session) -> List[Dict[str, Any]]:
-        """Fetch products for a single collection."""
+                                   session) -> Tuple[List[Dict[str, Any]], int]:
+        """Fetch products for a single collection. Returns (mappings, request_count)."""
         mappings = []
         page = 1
         empty_pages = 0
         max_empty_pages = 2
+        request_count = 0
+        failed_pages = 0
         
         while True:
-            if page > 3:  # Max 3 pages per collection (150 products)
+            # No hard page limit - fetch all pages until we run out
+            url = f"{base_url}/collections/{handle}/products.json?limit=50&page={page}"
+            
+            data = self._fetch_page_with_retry(session, url, shop_id, handle, page)
+            request_count += 1
+            
+            if data is None:
+                failed_pages += 1
+                if failed_pages >= 3:
+                    self.logger.warning(
+                        f"Collection {handle}: Too many failed pages ({failed_pages}), stopping"
+                    )
+                    break
+                page += 1
+                continue
+            
+            # Reset failed counter on success
+            failed_pages = 0
+            
+            if "products" not in data:
                 break
             
-            try:
-                url = f"{base_url}/collections/{handle}/products.json?limit=50&page={page}"
-                
-                response = session.get(url, timeout=20)
-                self.rate_limiter.wait(shop_id, response)
-                
-                if response.status_code == 404:
-                    # Collection doesn't exist or has no products
+            products = data["products"]
+            
+            if not products:
+                empty_pages += 1
+                if empty_pages >= max_empty_pages:
                     break
-                
-                if response.status_code != 200:
-                    self.logger.warning(f"Failed to fetch collection {handle} page {page}: {response.status_code}")
-                    break
-                
-                data = self._safe_parse_json(response)
-                if not data or "products" not in data:
-                    break
-                
-                products = data["products"]
-                if not products:
-                    empty_pages += 1
-                    if empty_pages >= max_empty_pages:
-                        break
-                    page += 1
-                    continue
-                
-                # Reset empty counter
-                empty_pages = 0
-                
-                # Process products in this page
-                for idx, product in enumerate(products):
-                    if product_id := product.get("id"):
-                        mapping = CollectionProductMapping(
-                            shop_id=shop_id,
-                            scraped_at=datetime.now().isoformat(),
-                            collection_id=collection_id,
-                            product_id=str(product_id),
-                            position=idx + 1,
-                            added_at=product.get("created_at")
-                        )
-                        mappings.append(mapping.to_dict())
-                
-                self.logger.debug(f"Collection {handle}: page {page} - {len(products)} products")
-                
-                # If we got fewer than limit, we're done
-                if len(products) < 50:
-                    break
-                
                 page += 1
-                
-                # Add delay between pages
-                time.sleep(0.5)
-                
-            except Exception as e:
-                self.logger.error(f"Error fetching collection {handle} page {page}: {e}")
+                continue
+            
+            # Reset empty counter
+            empty_pages = 0
+            
+            # Process products in this page
+            for idx, product in enumerate(products):
+                if product_id := product.get("id"):
+                    mapping = CollectionProductMapping(
+                        shop_id=shop_id,
+                        scraped_at=datetime.now().isoformat(),
+                        collection_id=collection_id,
+                        product_id=str(product_id),
+                        position=(page - 1) * 50 + idx + 1,  # Global position
+                        added_at=product.get("created_at")
+                    )
+                    mappings.append(mapping.to_dict())
+            
+            self.logger.debug(f"Collection {handle}: page {page} - {len(products)} products")
+            
+            # If we got fewer than limit, we're done
+            if len(products) < 50:
                 break
+            
+            page += 1
+            
+            # Add delay between pages (in addition to rate limiter)
+            time.sleep(0.5)
         
-        return mappings
+        if mappings:
+            self.logger.debug(f"Collection {handle}: {len(mappings)} total mappings from {request_count} requests")
+        
+        return mappings, request_count
     
     def scrape_multiple(self, shops: List[Dict[str, Any]], max_workers: Optional[int] = 5) -> Dict[str, List[Dict[str, Any]]]:
         """Scrape collection-product mappings with very conservative pacing."""
