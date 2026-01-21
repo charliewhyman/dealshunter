@@ -2,13 +2,9 @@
 Product uploader with normalized image structure and product categorization.
 Filters to only upload available products (in-stock with valid prices).
 """
-
 import json
-import re
 from typing import List, Dict, Any, Optional
 from pathlib import Path
-from concurrent.futures import ThreadPoolExecutor, as_completed
-
 from uploader.base_uploader import BaseUploader
 from uploader.data_processor import DataProcessor
 from uploader.supabase_client import SupabaseClient
@@ -29,8 +25,6 @@ class ProductProcessor:
             'images': [],
             'offers': []
         }
-        # Cache for base_url_id lookups
-        self.base_url_cache = {}
         # Filter settings
         self.filter_available_only = filter_available_only
         self.min_price_threshold = min_price_threshold
@@ -42,73 +36,6 @@ class ProductProcessor:
             'skipped_no_price': 0,
             'skipped_below_min_price': 0,
             'uploaded': 0
-        }
-    
-    def get_or_create_base_url_id(self, src: str) -> Optional[int]:
-        """Extract base URL and get/create its ID."""
-        if not src:
-            return None
-        
-        # Extract base URL (everything up to the filename)
-        # e.g. "https://cdn.shopify.com/s/files/1/0684/1067/1421/files/"
-        match = re.match(r'^(https://[^/]+/.+/)', src)
-        if not match:
-            uploader_logger.warning(f"Could not extract base URL from: {src}")
-            return None
-        
-        base_url = match.group(1)
-        
-        # Check cache first
-        if base_url in self.base_url_cache:
-            return self.base_url_cache[base_url]
-        
-        # Query or insert the base URL
-        try:
-            def do_select(client):
-                return client.table('image_base_urls').select('id').eq('base_url', base_url).execute()
-            
-            result = self.supabase.safe_execute(do_select, 'Fetch base_url_id', max_retries=3)
-            
-            if result and result.data:
-                base_url_id = result.data[0]['id']
-            else:
-                # Insert base URL
-                def do_insert(client):
-                    return client.table('image_base_urls').insert({'base_url': base_url}).execute()
-                
-                insert_result = self.supabase.safe_execute(do_insert, 'Insert base_url', max_retries=3)
-                if insert_result and insert_result.data:
-                    base_url_id = insert_result.data[0]['id']
-                else:
-                    uploader_logger.error(f"Failed to insert base_url: {base_url}")
-                    return None
-            
-            # Cache the result
-            self.base_url_cache[base_url] = base_url_id
-            return base_url_id
-            
-        except Exception as e:
-            uploader_logger.error(f"Error getting base_url_id: {e}")
-            return None
-    
-    def extract_image_parts(self, src: str) -> Dict[str, Optional[str]]:
-        """Extract file_path and version from full URL."""
-        if not src:
-            return {'file_path': None, 'version': None}
-        
-        # Extract filename (last path segment before query params)
-        # e.g. "ecksand-06733-w-0.70-round-ring_36b477ef-6e7b-4ee5-a38f-1a123c04ae87.png"
-        file_match = re.search(r'/([^/]+\.(?:png|jpg|jpeg|gif|webp))(?:\?|$)', src)
-        file_path = file_match.group(1) if file_match else None
-        
-        # Extract version parameter
-        # e.g. "v=1766140581"
-        version_match = re.search(r'v=(\d+)', src)
-        version = version_match.group(1) if version_match else None
-        
-        return {
-            'file_path': file_path,
-            'version': version
         }
     
     def should_skip_product(self, variants: List[Dict[str, Any]], min_price: Optional[float]) -> tuple[bool, str]:
@@ -230,21 +157,13 @@ class ProductProcessor:
             else:
                 tags_list = []
             
-            # Process images for JSON aggregation
+            # Process images for JSON aggregation (simplified - only store what we need)
             images = product.get("images", [])
             image_data = []
             for img in images:
                 src = img.get('src')
                 if not src:
                     continue
-                
-                # Get or create base_url_id
-                base_url_id = self.get_or_create_base_url_id(src)
-                if not base_url_id:
-                    continue
-                
-                # Extract file_path and version
-                parts = self.extract_image_parts(src)
                 
                 image_entry = {
                     'id': img.get('id'),
@@ -293,8 +212,7 @@ class ProductProcessor:
             self.collections['products'].append(product_data)
             self.stats['uploaded'] += 1
             
-            # Also store individual variants and images for separate tables
-            # BUT only for products that passed the filter
+            # Store individual variants for separate table
             for variant in variants:
                 variant_data = {
                     "id": str(variant.get("id", "")),
@@ -306,24 +224,16 @@ class ProductProcessor:
                 }
                 self.collections['variants'].append(variant_data)
             
-            # Process images for images table
+            # Store images for images table (simplified)
             for img in images:
                 src = img.get('src')
                 if not src:
                     continue
                 
-                base_url_id = self.get_or_create_base_url_id(src)
-                if not base_url_id:
-                    continue
-                
-                parts = self.extract_image_parts(src)
-                
                 image_data = {
                     'id': img.get('id'),
                     'product_id': product_id,
-                    'base_url_id': base_url_id,
-                    'file_path': parts['file_path'],
-                    'version': parts['version'],
+                    'src': src,
                     'alt': img.get('alt', ''),
                     'position': img.get('position', 0),
                     'updated_at': img.get('updated_at'),
@@ -349,7 +259,6 @@ class ProductProcessor:
         # Calculate percentages
         total = self.stats['total_processed']
         if total > 0:
-            # Convert to int if database expects integer
             stats['filter_stats']['uploaded_percentage'] = int(round((self.stats['uploaded'] / total) * 100, 0))
             stats['filter_stats']['skipped_percentage'] = int(round(((total - self.stats['uploaded']) / total) * 100, 0))
         
@@ -370,6 +279,7 @@ class ProductProcessor:
         """Reload the categorization configuration."""
         self.categorizer.reload_config()
         uploader_logger.info("🔄 Product categorization config reloaded")
+
 
 class ProductUploader(BaseUploader):
     """Uploader for product data with filtering for available products only."""
