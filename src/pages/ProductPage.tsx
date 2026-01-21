@@ -17,10 +17,7 @@ function ProductPage() {
     width?: number;
     height?: number;
     alt?: string;
-    base_url_id?: number;
-    file_path?: string;
   } | null>(null);
-  const [baseUrls, setBaseUrls] = useState<Map<number, string>>(new Map());
   const [imgLoaded, setImgLoaded] = useState(false);
   const [variants, setVariants] = useState<Array<{ title: string; available: boolean }>>([]);
   const { variantPrice, compareAtPrice, offerPrice } = useProductPricing(productId || '');
@@ -35,7 +32,7 @@ function ProductPage() {
         
         // Fetch product
         const { data: productData, error: productError } = await supabase
-          .from('products')
+          .from('products_with_details_core')
           .select('*')
           .eq('id', productId)
           .single();
@@ -48,29 +45,16 @@ function ProductPage() {
         
         setProduct(productData);
   
-        // Fetch image
+        // Fetch image (removed base_url_id and file_path)
         const { data: imageResult } = await supabase
           .from('images')
-          .select('src, width, height, alt, base_url_id, file_path')
+          .select('src, width, height, alt')
           .eq('product_id', productId)
           .order('position', { ascending: true })
           .limit(1)
           .single();
-
+        
         setImageData(imageResult || null);
-
-        // Fetch base URLs if needed
-        if (imageResult?.base_url_id) {
-          const { data: baseUrlData } = await supabase
-            .from('image_base_urls')
-            .select('id, base_url')
-            .eq('id', imageResult.base_url_id)
-            .single();
-          
-          if (baseUrlData) {
-            setBaseUrls(new Map([[baseUrlData.id, baseUrlData.base_url]]));
-          }
-        }
   
         // Fetch variants
         const { data: variantsData } = await supabase
@@ -90,99 +74,51 @@ function ProductPage() {
     if (productId) fetchProductData();
   }, [productId]);
 
-  // Build image URL and srcsets
+  // Build image URL and srcsets (simplified - only handles Shopify URLs)
   const { finalSrc, finalSrcSet, finalWebpSrcSet } = useMemo(() => {
-    if (!imageData) {
+    if (!imageData?.src || !imageData.src.startsWith('http')) {
       return { finalSrc: undefined, finalSrcSet: undefined, finalWebpSrcSet: undefined };
     }
 
-    // If we have a complete src URL, use it directly
-    if (imageData.src && imageData.src.startsWith('http')) {
-      const buildSrcSets = (url: string) => {
-        try {
-          // For product page, use larger sizes for high-quality display
-          const sizes = [640, 960, 1280];
-          const parsed = new URL(url);
-          const base = parsed.origin + parsed.pathname;
-          const originalParams = parsed.searchParams;
+    const buildSrcSets = (url: string) => {
+      try {
+        // For product page, use larger sizes for high-quality display
+        const sizes = [640, 960, 1280];
+        const parsed = new URL(url);
+        const base = parsed.origin + parsed.pathname;
+        const originalParams = parsed.searchParams;
 
-          const srcSet = sizes
-            .map((w) => {
-              const p = new URLSearchParams(originalParams.toString());
-              p.set('width', String(w));
-              return `${base}?${p.toString()} ${w}w`;
-            })
-            .join(', ');
+        const srcSet = sizes
+          .map((w) => {
+            const p = new URLSearchParams(originalParams.toString());
+            p.set('width', String(w));
+            return `${base}?${p.toString()} ${w}w`;
+          })
+          .join(', ');
 
-          const webpSrcSet = sizes
-            .map((w) => {
-              const p = new URLSearchParams(originalParams.toString());
-              p.set('width', String(w));
-              p.set('format', 'webp');
-              return `${base}?${p.toString()} ${w}w`;
-            })
-            .join(', ');
+        const webpSrcSet = sizes
+          .map((w) => {
+            const p = new URLSearchParams(originalParams.toString());
+            p.set('width', String(w));
+            p.set('format', 'webp');
+            return `${base}?${p.toString()} ${w}w`;
+          })
+          .join(', ');
 
-          // Use medium size as fallback
-          const fallbackParams = new URLSearchParams(originalParams.toString());
-          fallbackParams.set('width', '960');
-          const src = `${base}?${fallbackParams.toString()}`;
+        // Use medium size as fallback
+        const fallbackParams = new URLSearchParams(originalParams.toString());
+        fallbackParams.set('width', '960');
+        const src = `${base}?${fallbackParams.toString()}`;
 
-          return { src, srcSet, webpSrcSet };
-        } catch {
-          return { src: url, srcSet: undefined, webpSrcSet: undefined };
-        }
-      };
+        return { src, srcSet, webpSrcSet };
+      } catch {
+        return { src: url, srcSet: undefined, webpSrcSet: undefined };
+      }
+    };
 
-      const { src, srcSet, webpSrcSet } = buildSrcSets(imageData.src);
-      return { finalSrc: src, finalSrcSet: srcSet, finalWebpSrcSet: webpSrcSet };
-    }
-
-    // If we have base_url_id and file_path, construct the URL
-    if (imageData.base_url_id && imageData.file_path && baseUrls.has(imageData.base_url_id)) {
-      const baseUrl = baseUrls.get(imageData.base_url_id)!;
-      const fullUrl = `${baseUrl}${imageData.file_path}`;
-      
-      const buildSrcSets = (url: string) => {
-        try {
-          const sizes = [640, 960, 1280];
-          const parsed = new URL(url);
-          const base = parsed.origin + parsed.pathname;
-          const originalParams = parsed.searchParams;
-
-          const srcSet = sizes
-            .map((w) => {
-              const p = new URLSearchParams(originalParams.toString());
-              p.set('width', String(w));
-              return `${base}?${p.toString()} ${w}w`;
-            })
-            .join(', ');
-
-          const webpSrcSet = sizes
-            .map((w) => {
-              const p = new URLSearchParams(originalParams.toString());
-              p.set('width', String(w));
-              p.set('format', 'webp');
-              return `${base}?${p.toString()} ${w}w`;
-            })
-            .join(', ');
-
-          const fallbackParams = new URLSearchParams(originalParams.toString());
-          fallbackParams.set('width', '960');
-          const src = `${base}?${fallbackParams.toString()}`;
-
-          return { src, srcSet, webpSrcSet };
-        } catch {
-          return { src: url, srcSet: undefined, webpSrcSet: undefined };
-        }
-      };
-
-      const { src, srcSet, webpSrcSet } = buildSrcSets(fullUrl);
-      return { finalSrc: src, finalSrcSet: srcSet, finalWebpSrcSet: webpSrcSet };
-    }
-
-    return { finalSrc: undefined, finalSrcSet: undefined, finalWebpSrcSet: undefined };
-  }, [imageData, baseUrls]);
+    const { src, srcSet, webpSrcSet } = buildSrcSets(imageData.src);
+    return { finalSrc: src, finalSrcSet: srcSet, finalWebpSrcSet: webpSrcSet };
+  }, [imageData]);
 
   const handleSearchChange = (e: ChangeEvent<HTMLInputElement>) => {
     setSearchQuery(e.target.value);
@@ -215,6 +151,7 @@ function ProductPage() {
         handleSearchChange={handleSearchChange}
         handleSearchSubmit={handleSearchSubmit}
       />
+      
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-20 pb-8">
         <div className="text-gray-900 dark:text-gray-100">
           <div className="flex flex-col lg:flex-row gap-6 sm:gap-8">
@@ -228,11 +165,9 @@ function ProductPage() {
                       {finalWebpSrcSet && (
                         <source type="image/webp" srcSet={finalWebpSrcSet} sizes="(max-width: 768px) 100vw, 50vw" />
                       )}
-
                       {finalSrcSet && (
                         <source srcSet={finalSrcSet} sizes="(max-width: 768px) 100vw, 50vw" />
                       )}
-
                       {/* Main image with optimized attributes */}
                       <img
                         src={finalSrc}

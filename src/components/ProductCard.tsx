@@ -1,9 +1,8 @@
-import { useMemo, useState, memo, useLayoutEffect, useRef, useEffect } from 'react';
+import { useMemo, useState, memo, useLayoutEffect, useRef } from 'react';
 import AsyncLucideIcon from './AsyncLucideIcon';
 import { ProductWithDetails } from '../types';
 import { useNavigate } from 'react-router-dom';
 import { useProductPricing } from '../hooks/useProductPricing';
-import { getSupabase } from '../lib/supabase';
 import '../index.css';
 
 interface ProductCardProps {
@@ -25,45 +24,34 @@ function ProductCardComponent({ product, pricing, isLcp }: ProductCardProps) {
   const compareAtPrice = pricing?.compareAtPrice ?? pricingFromHook.compareAtPrice;
   const offerPrice = pricing?.offerPrice ?? pricingFromHook.offerPrice;
 
+  // Parse images if it's a string
+  const imagesArray = useMemo(() => {
+    if (Array.isArray(product.images)) {
+      return product.images;
+    }
+    if (typeof product.images === 'string') {
+      try {
+        const parsed = JSON.parse(product.images);
+        return Array.isArray(parsed) ? parsed : [];
+      } catch {
+        return [];
+      }
+    }
+    return [];
+  }, [product.images]);
+
   // Get the first image data
-  const firstImageRecord = product.images?.[0] as Record<string, unknown> | undefined;
+  const firstImageRecord = imagesArray[0] as Record<string, unknown> | undefined;
   const imageSrc = firstImageRecord?.src as string | undefined;
-  const baseUrlId = firstImageRecord?.base_url_id as number | undefined;
-  const filePath = firstImageRecord?.file_path as string | undefined;
   const dbWidth = firstImageRecord?.width as number | undefined;
   const dbHeight = firstImageRecord?.height as number | undefined;
   const dbAlt = firstImageRecord?.alt as string | undefined;
 
-  const [baseUrl, setBaseUrl] = useState<string | null>(null);
   const [imgLoaded, setImgLoaded] = useState(false);
-
-  // Fetch base URL if needed
-  useEffect(() => {
-    if (!baseUrlId) return;
-    
-    const fetchBaseUrl = async () => {
-      try {
-        const supabase = await getSupabase();
-        const { data } = await supabase
-          .from('image_base_urls')
-          .select('base_url')
-          .eq('id', baseUrlId)
-          .single();
-        
-        if (data) {
-          setBaseUrl(data.base_url);
-        }
-      } catch (error) {
-        console.error('Error fetching base URL:', error);
-      }
-    };
-
-    fetchBaseUrl();
-  }, [baseUrlId]);
 
   // Build image URL and srcsets
   const { finalSrc, finalSrcSet, finalWebpSrcSet } = useMemo(() => {
-    // If we have a complete src URL, use it directly
+    // Build srcsets from Shopify CDN URL
     if (imageSrc && imageSrc.startsWith('http')) {
       const buildSrcSets = (url: string) => {
         try {
@@ -103,50 +91,8 @@ function ProductCardComponent({ product, pricing, isLcp }: ProductCardProps) {
       return { finalSrc: src, finalSrcSet: srcSet, finalWebpSrcSet: webpSrcSet };
     }
 
-    // If we have base_url and file_path, construct the URL
-    if (baseUrl && filePath) {
-      const fullUrl = `${baseUrl}${filePath}`;
-      
-      const buildSrcSets = (url: string) => {
-        try {
-          const sizes = [220, 440, 880];
-          const parsed = new URL(url);
-          const base = parsed.origin + parsed.pathname;
-          const originalParams = parsed.searchParams;
-
-          const srcSet = sizes
-            .map((w) => {
-              const p = new URLSearchParams(originalParams.toString());
-              p.set('width', String(w));
-              return `${base}?${p.toString()} ${w}w`;
-            })
-            .join(', ');
-
-          const webpSrcSet = sizes
-            .map((w) => {
-              const p = new URLSearchParams(originalParams.toString());
-              p.set('width', String(w));
-              p.set('format', 'webp');
-              return `${base}?${p.toString()} ${w}w`;
-            })
-            .join(', ');
-
-          const fallbackParams = new URLSearchParams(originalParams.toString());
-          fallbackParams.set('width', '220');
-          const src = `${base}?${fallbackParams.toString()}`;
-
-          return { src, srcSet, webpSrcSet };
-        } catch {
-          return { src: url, srcSet: undefined, webpSrcSet: undefined };
-        }
-      };
-
-      const { src, srcSet, webpSrcSet } = buildSrcSets(fullUrl);
-      return { finalSrc: src, finalSrcSet: srcSet, finalWebpSrcSet: webpSrcSet };
-    }
-
     return { finalSrc: undefined, finalSrcSet: undefined, finalWebpSrcSet: undefined };
-  }, [imageSrc, baseUrl, filePath]);
+  }, [imageSrc]);
 
   const sizesAttr = '(max-width: 640px) 50vw, (max-width: 1024px) 33vw, 316px';
 
@@ -191,7 +137,21 @@ function ProductCardComponent({ product, pricing, isLcp }: ProductCardProps) {
 
   // Process variants from the product data
   const processedVariants = useMemo(() => {
-    const fromVariants = (product.variants || [])
+    // Parse variants if it's a JSON string, or use as-is if already an array
+    let variantsArray: unknown[] = [];
+    
+    if (Array.isArray(product.variants)) {
+      variantsArray = product.variants;
+    } else if (typeof product.variants === 'string') {
+      try {
+        const parsed = JSON.parse(product.variants);
+        variantsArray = Array.isArray(parsed) ? parsed : [];
+      } catch {
+        variantsArray = [];
+      }
+    }
+    
+    const fromVariants = variantsArray
       .filter((variant: unknown): variant is { title: string; available?: unknown } =>
         typeof variant === 'object' &&
         variant !== null &&
