@@ -29,6 +29,7 @@ export interface ProductWithDetails {
   size_groups?: string[];
   variants?: VariantDetail[];
   images?: ImageDetail[];
+  grouped_product_type?: string | null;
 }
 
 export interface ProductVariant {
