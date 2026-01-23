@@ -1,11 +1,7 @@
-import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
-import { HomePage } from './pages/HomePage';
-import ProductPage from './pages/ProductPage';
-import { AboutPage } from './pages/AboutPage';
-import { PrivacyPolicy } from './pages/PrivacyPolicy';
-import { TermsPage } from './pages/TermsPage';
+import { BrowserRouter as Router } from 'react-router-dom';
 import { Footer } from './components/Footer';
 import { ScrollToTop } from './components/ScrollToTop';
+import { AppRoutes } from './AppRoutes';
 
 function App() {
   return (
@@ -13,13 +9,7 @@ function App() {
       <ScrollToTop />
       <div className="min-h-screen bg-gray-50 dark:bg-gray-900 flex flex-col">
         <div className="flex-grow">
-          <Routes>
-            <Route path="/" element={<HomePage />} />
-            <Route path="/products/:productId" element={<ProductPage />} />
-            <Route path="/about" element={<AboutPage />} />
-            <Route path="/privacy" element={<PrivacyPolicy />} />
-            <Route path="/terms" element={<TermsPage />} />
-          </Routes>
+          <AppRoutes />
         </div>
         <Footer />
       </div>
