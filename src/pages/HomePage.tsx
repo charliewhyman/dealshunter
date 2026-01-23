@@ -1647,11 +1647,11 @@ useEffect(() => {
                   return (
                     <div
                       key={`${product.id}-${product.shop_id}`}
-                      className="h-full min-h-[320px]" // Add min-height here
+                      className="w-full"
                       data-prod-id={pid}
                       style={{ 
-                        contain: 'layout size style',
                         contentVisibility: 'auto',
+                        containIntrinsicSize: '360px 520px'
                       }}
                       ref={(el) => {
                         if (el) {
@@ -1661,6 +1661,7 @@ useEffect(() => {
                         }
                       }}
                     >
+
                       <ProductCard
                         product={product}
                         pricing={productPricings[pid]}
