@@ -32,7 +32,6 @@ export interface ProductWithDetails {
   grouped_product_type?: string | null;
   vendor?: string | null;
   tags: string[] | null;
-  
 }
 
 export interface ProductVariant {
