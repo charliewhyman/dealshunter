@@ -4,7 +4,7 @@ import { getSupabase } from '../lib/supabase';
 import AsyncLucideIcon from '../components/AsyncLucideIcon';
 import { ProductCard } from '../components/ProductCard';
 import { Header } from '../components/Header';
-import { useLocation, useNavigate } from 'react-router-dom';
+import { useLocation, useNavigate, useSearchParams } from 'react-router-dom';
 
 // Small local debounce utility to avoid importing the full lodash bundle 
 function createDebounced<Args extends unknown[]>(fn: (...args: Args) => void, wait: number): ((...args: Args) => void) & { cancel?: () => void } {
@@ -31,6 +31,8 @@ type SortOrder = 'asc' | 'desc' | 'discount_desc';
 
 export function HomePage() {
   const [products, setProducts] = useState<ProductWithDetails[]>([]);
+  const [searchParams] = useSearchParams();
+  const urlSearchQuery = searchParams.get('search') || '';
   const [loading, setLoading] = useState(true);
   const [initialLoad, setInitialLoad] = useState(true);
   const [initialDataLoaded, setInitialDataLoaded] = useState(false);
@@ -804,6 +806,11 @@ export function HomePage() {
   const selectedPriceRangeKey = useMemo(() => JSON.stringify(selectedPriceRange), [selectedPriceRange]);
   const committedFiltersKey = useMemo(() => JSON.stringify(committedFilters), [committedFilters]); // <-- ADD THIS LINE
   
+  // Keep searchQuery in sync with URL changes
+useEffect(() => {
+  setSearchQuery(urlSearchQuery);
+}, [urlSearchQuery]);
+
   useEffect(() => {
     const pendingFilters: FilterOptions = {
       selectedShopName: JSON.parse(selectedShopNameKey),

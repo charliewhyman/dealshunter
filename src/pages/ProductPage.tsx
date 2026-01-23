@@ -1,12 +1,12 @@
-import { ChangeEvent, FormEvent, useEffect, useMemo, useState } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
+import { ChangeEvent, FormEvent, useEffect, useMemo, useState, useRef } from 'react';
+import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import { getSupabase } from '../lib/supabase';
 import { ProductWithDetails } from '../types';
 import AsyncLucideIcon from '../components/AsyncLucideIcon';
 import { useProductPricing } from '../hooks/useProductPricing';
-import '../index.css';
-import { format } from 'date-fns/format';
 import { Header } from '../components/Header';
+import { format } from 'date-fns/format';
+import '../index.css';
 
 function ProductPage() {
   const { productId } = useParams<{ productId: string }>();
@@ -16,48 +16,63 @@ function ProductPage() {
   const [showFullDescription, setShowFullDescription] = useState(false);
   const { variantPrice, compareAtPrice, offerPrice } = useProductPricing(productId || '');
   const navigate = useNavigate();
-  const [searchQuery, setSearchQuery] = useState('');
+
+  // Read search query from URL
+  const [searchParams] = useSearchParams();
+  const searchQuery = searchParams.get('search') || '';
+
+  const DEBOUNCE_MS = 300;
+  const debounceRef = useRef<number | null>(null);
+
+  const handleSearchChange = (e: ChangeEvent<HTMLInputElement>) => {
+    const value = e.target.value;
+    if (debounceRef.current) window.clearTimeout(debounceRef.current);
+
+    debounceRef.current = window.setTimeout(() => {
+      if (value) navigate(`/?search=${encodeURIComponent(value)}`);
+      else navigate('/');
+      debounceRef.current = null;
+    }, DEBOUNCE_MS) as unknown as number;
+  };
+
+  const handleSearchSubmit = (e: FormEvent<HTMLFormElement>) => {
+    e.preventDefault();
+    const input = e.currentTarget.querySelector('input');
+    if (input) {
+      const value = (input as HTMLInputElement).value;
+      if (value) navigate(`/?search=${encodeURIComponent(value)}`);
+      else navigate('/');
+    }
+  };
 
   useEffect(() => {
     const fetchProductData = async () => {
       try {
         setLoading(true);
         const supabase = await getSupabase();
-        
-        // Fetch product with all details
         const { data: productData, error: productError } = await supabase
           .from('products_with_details_core')
           .select('*')
           .eq('id', productId)
           .single();
-  
+
         if (productError) throw productError;
-        if (!productData) {
-          setProduct(null);
-          return;
-        }
-        
-        console.log('Product data fetched:', productData); // Debug log
-        
         setProduct(productData as ProductWithDetails);
       } catch (error) {
-        console.error('Error fetching data:', error);
+        console.error('Error fetching product:', error);
         setProduct(null);
       } finally {
         setLoading(false);
       }
     };
-  
+
     if (productId) fetchProductData();
   }, [productId]);
 
-  // Parse images from product data
+  // Parse images
   const imagesArray = useMemo(() => {
     if (!product) return [];
-    
-    if (Array.isArray(product.images)) {
-      return product.images;
-    }
+    if (Array.isArray(product.images)) return product.images;
     if (typeof product.images === 'string') {
       try {
         const parsed = JSON.parse(product.images);
@@ -69,22 +84,19 @@ function ProductPage() {
     return [];
   }, [product]);
 
-  // Get the first image data
   const firstImageRecord = imagesArray[0] as Record<string, unknown> | undefined;
   const imageSrc = firstImageRecord?.src as string | undefined;
   const dbWidth = firstImageRecord?.width as number | undefined;
   const dbHeight = firstImageRecord?.height as number | undefined;
   const dbAlt = firstImageRecord?.alt as string | undefined;
 
-  // Parse variants from product data
+  // Parse variants
   const variants = useMemo(() => {
     if (!product) return [];
-    
     let variantsArray: unknown[] = [];
-    
-    if (Array.isArray(product.variants)) {
-      variantsArray = product.variants;
-    } else if (typeof product.variants === 'string') {
+
+    if (Array.isArray(product.variants)) variantsArray = product.variants;
+    else if (typeof product.variants === 'string') {
       try {
         const parsed = JSON.parse(product.variants);
         variantsArray = Array.isArray(parsed) ? parsed : [];
@@ -92,7 +104,7 @@ function ProductPage() {
         variantsArray = [];
       }
     }
-    
+
     return variantsArray
       .filter((variant: unknown): variant is { title: string; available?: unknown } =>
         typeof variant === 'object' &&
@@ -106,7 +118,7 @@ function ProductPage() {
       }));
   }, [product]);
 
-  // Build image URL and srcsets
+  // Build image srcsets
   const { finalSrc, finalSrcSet, finalWebpSrcSet } = useMemo(() => {
     if (!imageSrc || !imageSrc.startsWith('http')) {
       return { finalSrc: undefined, finalSrcSet: undefined, finalWebpSrcSet: undefined };
@@ -150,79 +162,49 @@ function ProductPage() {
     return { finalSrc: src, finalSrcSet: srcSet, finalWebpSrcSet: webpSrcSet };
   }, [imageSrc]);
 
-  const handleSearchChange = (e: ChangeEvent<HTMLInputElement>) => {
-    setSearchQuery(e.target.value);
-  };
-
-  const handleSearchSubmit = (e: FormEvent<HTMLFormElement>) => {
-    e.preventDefault();
-    navigate(`/?search=${searchQuery}`);
-  };
-
-  // Calculate discount percentage
+  // Discount and availability
   const discountPercentage = useMemo(() => {
     if (typeof compareAtPrice === 'number' && compareAtPrice > 0) {
       const price = (offerPrice ?? variantPrice) ?? 0;
-      if (price > 0) {
-        return Math.round(((compareAtPrice - price) / compareAtPrice) * 100);
-      }
+      if (price > 0) return Math.round(((compareAtPrice - price) / compareAtPrice) * 100);
     }
     return 0;
   }, [compareAtPrice, variantPrice, offerPrice]);
 
-  // Check product availability
   const isAvailable = useMemo(() => {
     if (!product) return false;
     const allVariantsUnavailable = variants.length > 0 && variants.every(v => !v.available);
     return product.in_stock && !allVariantsUnavailable;
   }, [product, variants]);
 
-  // Check if content is HTML (looks for HTML tags)
   const isHtmlDescription = useMemo(() => {
     if (!product?.description) return false;
-    
-    const description = product.description;
-    // Check if it contains HTML tags
     const htmlRegex = /<[a-z][\s\S]*>/i;
-    return htmlRegex.test(description);
+    return htmlRegex.test(product.description);
   }, [product?.description]);
 
-  // Extract plain text from HTML for preview
   const descriptionPreview = useMemo(() => {
     if (!product?.description) return '';
-    
     const description = product.description;
-    
+
     if (isHtmlDescription) {
-      // Create temp element to extract text
       const tempDiv = document.createElement('div');
       tempDiv.innerHTML = description;
       const text = tempDiv.textContent || tempDiv.innerText || '';
-      
-      if (text.length > 300 && !showFullDescription) {
-        return text.slice(0, 300) + '...';
-      }
-      return text;
+      return text.length > 300 && !showFullDescription ? text.slice(0, 300) + '...' : text;
     }
-    
-    // Plain text
-    if (description.length > 300 && !showFullDescription) {
-      return description.slice(0, 300) + '...';
-    }
-    return description;
+
+    return description.length > 300 && !showFullDescription ? description.slice(0, 300) + '...' : description;
   }, [product?.description, isHtmlDescription, showFullDescription]);
 
-  // Check if description needs truncation
   const needsTruncation = useMemo(() => {
     if (!product?.description) return false;
-    
     if (isHtmlDescription) {
       const tempDiv = document.createElement('div');
       tempDiv.innerHTML = product.description;
       const text = tempDiv.textContent || tempDiv.innerText || '';
       return text.length > 300;
     }
-    
     return product.description.length > 300;
   }, [product?.description, isHtmlDescription]);
 
