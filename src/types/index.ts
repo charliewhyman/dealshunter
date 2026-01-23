@@ -30,6 +30,9 @@ export interface ProductWithDetails {
   variants?: VariantDetail[];
   images?: ImageDetail[];
   grouped_product_type?: string | null;
+  vendor?: string | null;
+  tags: string[] | null;
+  
 }
 
 export interface ProductVariant {

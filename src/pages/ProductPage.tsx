@@ -13,6 +13,7 @@ function ProductPage() {
   const [product, setProduct] = useState<ProductWithDetails | null>(null);
   const [loading, setLoading] = useState(true);
   const [imgLoaded, setImgLoaded] = useState(false);
+  const [showFullDescription, setShowFullDescription] = useState(false);
   const { variantPrice, compareAtPrice, offerPrice } = useProductPricing(productId || '');
   const navigate = useNavigate();
   const [searchQuery, setSearchQuery] = useState('');
@@ -36,7 +37,9 @@ function ProductPage() {
           return;
         }
         
-        setProduct(productData);
+        console.log('Product data fetched:', productData); // Debug log
+        
+        setProduct(productData as ProductWithDetails);
       } catch (error) {
         console.error('Error fetching data:', error);
         setProduct(null);
@@ -48,7 +51,7 @@ function ProductPage() {
     if (productId) fetchProductData();
   }, [productId]);
 
-  // Parse images from product data (same approach as ProductCard)
+  // Parse images from product data
   const imagesArray = useMemo(() => {
     if (!product) return [];
     
@@ -73,7 +76,7 @@ function ProductPage() {
   const dbHeight = firstImageRecord?.height as number | undefined;
   const dbAlt = firstImageRecord?.alt as string | undefined;
 
-  // Parse variants from product data (same approach as ProductCard)
+  // Parse variants from product data
   const variants = useMemo(() => {
     if (!product) return [];
     
@@ -103,7 +106,7 @@ function ProductPage() {
       }));
   }, [product]);
 
-  // Build image URL and srcsets (same approach as ProductCard)
+  // Build image URL and srcsets
   const { finalSrc, finalSrcSet, finalWebpSrcSet } = useMemo(() => {
     if (!imageSrc || !imageSrc.startsWith('http')) {
       return { finalSrc: undefined, finalSrcSet: undefined, finalWebpSrcSet: undefined };
@@ -111,7 +114,6 @@ function ProductPage() {
 
     const buildSrcSets = (url: string) => {
       try {
-        // For product page, use larger sizes for high-quality display
         const sizes = [640, 960, 1280];
         const parsed = new URL(url);
         const base = parsed.origin + parsed.pathname;
@@ -175,9 +177,58 @@ function ProductPage() {
     return product.in_stock && !allVariantsUnavailable;
   }, [product, variants]);
 
+  // Check if content is HTML (looks for HTML tags)
+  const isHtmlDescription = useMemo(() => {
+    if (!product?.description) return false;
+    
+    const description = product.description;
+    // Check if it contains HTML tags
+    const htmlRegex = /<[a-z][\s\S]*>/i;
+    return htmlRegex.test(description);
+  }, [product?.description]);
+
+  // Extract plain text from HTML for preview
+  const descriptionPreview = useMemo(() => {
+    if (!product?.description) return '';
+    
+    const description = product.description;
+    
+    if (isHtmlDescription) {
+      // Create temp element to extract text
+      const tempDiv = document.createElement('div');
+      tempDiv.innerHTML = description;
+      const text = tempDiv.textContent || tempDiv.innerText || '';
+      
+      if (text.length > 300 && !showFullDescription) {
+        return text.slice(0, 300) + '...';
+      }
+      return text;
+    }
+    
+    // Plain text
+    if (description.length > 300 && !showFullDescription) {
+      return description.slice(0, 300) + '...';
+    }
+    return description;
+  }, [product?.description, isHtmlDescription, showFullDescription]);
+
+  // Check if description needs truncation
+  const needsTruncation = useMemo(() => {
+    if (!product?.description) return false;
+    
+    if (isHtmlDescription) {
+      const tempDiv = document.createElement('div');
+      tempDiv.innerHTML = product.description;
+      const text = tempDiv.textContent || tempDiv.innerText || '';
+      return text.length > 300;
+    }
+    
+    return product.description.length > 300;
+  }, [product?.description, isHtmlDescription]);
+
   if (loading) return (
     <div className="min-h-screen flex items-center justify-center">
-      <p className="text-gray-900 dark:text-gray-100">Loading...</p>
+      <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div>
     </div>
   );
 
@@ -201,27 +252,24 @@ function ProductPage() {
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-20 pb-8">
         <div className="text-gray-900 dark:text-gray-100">
           <div className="flex flex-col lg:flex-row gap-6 sm:gap-8">
-            {/* Photo Section - Responsive sizing */}
+            {/* Photo Section */}
             <div className="w-full lg:w-1/2 xl:w-2/5">
               <div className="sticky top-4">
                 <div className="w-full h-auto max-h-[70vh] relative">
                   {finalSrc ? (
                     <picture>
-                      {/* WebP first for best compression */}
                       {finalWebpSrcSet && (
                         <source type="image/webp" srcSet={finalWebpSrcSet} sizes="(max-width: 768px) 100vw, 50vw" />
                       )}
                       {finalSrcSet && (
                         <source srcSet={finalSrcSet} sizes="(max-width: 768px) 100vw, 50vw" />
                       )}
-                      {/* Main image with optimized attributes */}
                       <img
                         src={finalSrc}
                         srcSet={finalSrcSet}
                         sizes="(max-width: 768px) 100vw, 50vw"
                         loading="eager"
                         decoding="async"
-                        fetchPriority="high"
                         width={dbWidth}
                         height={dbHeight}
                         alt={dbAlt || product?.title || 'Product image'}
@@ -241,9 +289,9 @@ function ProductPage() {
               </div>
             </div>
 
-            {/* Product Details - Responsive spacing */}
+            {/* Product Details */}
             <div className="w-full lg:w-1/2 xl:w-3/5 space-y-4 sm:space-y-6">
-              {/* Breadcrumb / Shop Name */}
+              {/* Shop Name */}
               {product.shop_name && (
                 <p className="text-sm text-gray-500 dark:text-gray-400 uppercase tracking-wider">
                   {product.shop_name}
@@ -289,16 +337,7 @@ function ProductPage() {
                 )}
               </div>
 
-              {/* Description - Only show if available */}
-              {product.description && product.description.trim() && (
-                <div className="prose prose-sm sm:prose-base dark:prose-invert max-w-none">
-                  <p className="text-gray-700 dark:text-gray-300 leading-relaxed">
-                    {product.description}
-                  </p>
-                </div>
-              )}
-
-              {/* Variants Section - before purchase button for better UX */}
+              {/* Variants Section */}
               {variants.length > 0 && variants.some(v => v.title !== 'Default Title') && (
                 <div className="space-y-3">
                   <h3 className="text-sm font-semibold text-gray-900 dark:text-gray-100 uppercase tracking-wide">
@@ -325,13 +364,13 @@ function ProductPage() {
                 </div>
               )}
               
-              {/* Purchase Button - Responsive sizing */}
+              {/* Purchase Button */}
               <div className="pt-2">
                 <a
                   href={product.url ?? '#'}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className={`inline-flex items-center justify-center gap-2 w-full sm:w-auto px-6 py-3 sm:px-8 sm:py-4 text-base sm:text-lg font-semibold rounded-lg transition-all duration-200 ${
+                  className={`inline-flex items-center justify-center gap-2 w-full px-6 py-4 text-base sm:text-lg font-semibold rounded-lg transition-all duration-200 ${
                     isAvailable
                       ? 'text-white bg-blue-600 hover:bg-blue-700 dark:bg-blue-500 dark:hover:bg-blue-600 shadow-md hover:shadow-lg'
                       : 'text-gray-500 bg-gray-200 dark:bg-gray-700 dark:text-gray-400 cursor-not-allowed'
@@ -343,24 +382,135 @@ function ProductPage() {
                 </a>
               </div>
 
+              {/* Description Section - SIMPLIFIED */}
+              {product.description ? (
+                <div className="pt-6 border-t border-gray-200 dark:border-gray-700">
+                  <h2 className="text-xl font-semibold text-gray-900 dark:text-gray-100 mb-4">
+                    Product Description
+                  </h2>
+                  
+                  {isHtmlDescription ? (
+                    // HTML Description
+                    <div className="space-y-4">
+                      <div 
+                        className="text-gray-700 dark:text-gray-300 description-html"
+                        dangerouslySetInnerHTML={{ 
+                          __html: showFullDescription 
+                            ? product.description 
+                            : descriptionPreview 
+                        }}
+                      />
+                      
+                      {needsTruncation && (
+                        <button
+                          onClick={() => setShowFullDescription(!showFullDescription)}
+                          className="text-sm font-medium text-blue-600 dark:text-blue-400 
+                            hover:text-blue-700 dark:hover:text-blue-300 
+                            inline-flex items-center gap-1 focus:outline-none"
+                        >
+                          {showFullDescription ? (
+                            <>
+                              Show less
+                              <AsyncLucideIcon name="ChevronUp" className="w-4 h-4" />
+                            </>
+                          ) : (
+                            <>
+                              Read more
+                              <AsyncLucideIcon name="ChevronDown" className="w-4 h-4" />
+                            </>
+                          )}
+                        </button>
+                      )}
+                    </div>
+                  ) : (
+                    // Plain Text Description
+                    <div className="space-y-4">
+                      <div className="text-gray-700 dark:text-gray-300 whitespace-pre-line">
+                        {showFullDescription || !needsTruncation 
+                          ? product.description 
+                          : descriptionPreview}
+                      </div>
+                      
+                      {needsTruncation && (
+                        <button
+                          onClick={() => setShowFullDescription(!showFullDescription)}
+                          className="text-sm font-medium text-blue-600 dark:text-blue-400 
+                            hover:text-blue-700 dark:hover:text-blue-300 
+                            inline-flex items-center gap-1 focus:outline-none"
+                        >
+                          {showFullDescription ? (
+                            <>
+                              Show less
+                              <AsyncLucideIcon name="ChevronUp" className="w-4 h-4" />
+                            </>
+                          ) : (
+                            <>
+                              Read more
+                              <AsyncLucideIcon name="ChevronDown" className="w-4 h-4" />
+                            </>
+                          )}
+                        </button>
+                      )}
+                    </div>
+                  )}
+                </div>
+              ) : (
+                <div className="pt-6 border-t border-gray-200 dark:border-gray-700">
+                  <h2 className="text-xl font-semibold text-gray-900 dark:text-gray-100 mb-4">
+                    Product Description
+                  </h2>
+                  <p className="text-gray-500 dark:text-gray-400 italic">
+                    No description available.
+                  </p>
+                </div>
+              )}
+
               {/* Product Meta Information */}
-              <div className="pt-4 border-t border-gray-200 dark:border-gray-700 space-y-2">
+              <div className="pt-6 border-t border-gray-200 dark:border-gray-700 space-y-3">
                 {product.grouped_product_type && (
-                  <div className="flex items-center gap-2 text-sm">
-                    <span className="font-medium text-gray-700 dark:text-gray-300">Category:</span>
+                  <div className="flex items-start gap-2 text-sm">
+                    <span className="font-medium text-gray-700 dark:text-gray-300 min-w-24">Category:</span>
                     <span className="text-gray-600 dark:text-gray-400">{product.grouped_product_type}</span>
                   </div>
                 )}
                 
                 {product.shop_name && (
-                  <div className="flex items-center gap-2 text-sm">
-                    <span className="font-medium text-gray-700 dark:text-gray-300">Brand:</span>
+                  <div className="flex items-start gap-2 text-sm">
+                    <span className="font-medium text-gray-700 dark:text-gray-300 min-w-24">Brand:</span>
+                    <span className="text-gray-600 dark:text-gray-400">{product.vendor}</span>
+                  </div>
+                )}
+                
+                {product.shop_name && (
+                  <div className="flex items-start gap-2 text-sm">
+                    <span className="font-medium text-gray-700 dark:text-gray-300 min-w-24">Store:</span>
                     <span className="text-gray-600 dark:text-gray-400">{product.shop_name}</span>
                   </div>
                 )}
                 
-                <div className="flex items-center gap-2 text-sm">
-                  <span className="font-medium text-gray-700 dark:text-gray-300">Last updated:</span>
+                {product.tags && Array.isArray(product.tags) && product.tags.length > 0 && (
+                  <div className="flex items-start gap-2 text-sm">
+                    <span className="font-medium text-gray-700 dark:text-gray-300 min-w-24">Tags:</span>
+                    <div className="flex flex-wrap gap-1">
+                      {product.tags.slice(0, 10).map((tag, index) => (
+                        <span 
+                          key={index} 
+                          className="px-2 py-1 bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-400 rounded text-xs"
+                        >
+                          {tag}
+                        </span>
+                      ))}
+                      {product.tags.length > 10 && (
+                        <span className="text-gray-500 dark:text-gray-500 text-xs">
+                          +{product.tags.length - 10} more
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                )}
+                
+                <div className="flex items-start gap-2 text-sm">
+                  <span className="font-medium text-gray-700 dark:text-gray-300 min-w-24">Last updated:</span>
                   <span className="text-gray-600 dark:text-gray-400">
                     {product.updated_at_external
                       ? format(new Date(product.updated_at_external), 'MMMM do, yyyy')
