@@ -3,7 +3,7 @@ on:
   schedule:
     # Daily at 2am UTC - skip shop data scraping, faster concurrency
     - cron: '0 2 * * *'
-    # Weekly on Sunday at 3am UTC - full scrape including shops, slower concurrency
+    # Weekly on Sunday at 3am UTC - full scrape including shops
     - cron: '0 3 * * 0'
   workflow_dispatch:
     inputs:
@@ -51,11 +51,16 @@ on:
         required: false
         default: '180'
         type: string
+      full_product_scrape:
+        description: 'Force full product scrape (not just changed ones)'
+        required: false
+        default: false
+        type: boolean
 
 jobs:
   scrape:
     runs-on: ubuntu-latest
-    timeout-minutes: ${{ github.event.schedule == '0 3 * * 0' && 300 || 180 }}
+    timeout-minutes: ${{ github.event.schedule == '0 3 * * 0' && 420 || 180 }}
     environment: production
     
     steps:
@@ -91,28 +96,31 @@ jobs:
             echo "skip_shops=false" >> $GITHUB_OUTPUT
             echo "shop_update_days=14" >> $GITHUB_OUTPUT
             echo "max_concurrent=4" >> $GITHUB_OUTPUT
-            echo "batch_size=8" >> $GITHUB_OUTPUT
+            echo "batch_size=6" >> $GITHUB_OUTPUT
             echo "limit_shops=0" >> $GITHUB_OUTPUT
             echo "scrape_type=weekly_full" >> $GITHUB_OUTPUT
-            echo "timeout_minutes=300" >> $GITHUB_OUTPUT
+            echo "full_product_scrape=false" >> $GITHUB_OUTPUT
+            echo "timeout_minutes=410" >> $GITHUB_OUTPUT
           elif [ "${{ github.event.schedule }}" == "0 2 * * *" ]; then
-            echo "Running DAILY SCRAPE (skip shop data)"
+            echo "Running DAILY SCRAPE (skip shop data, focus on products/collections)"
             echo "skip_shops=true" >> $GITHUB_OUTPUT
-            echo "shop_update_days=30" >> $GITHUB_OUTPUT
-            echo "max_concurrent=6" >> $GITHUB_OUTPUT
-            echo "batch_size=12" >> $GITHUB_OUTPUT
-            echo "limit_shops=100" >> $GITHUB_OUTPUT
+            echo "shop_update_days=0" >> $GITHUB_OUTPUT
+            echo "max_concurrent=8" >> $GITHUB_OUTPUT  # Higher for daily
+            echo "batch_size=15" >> $GITHUB_OUTPUT     # Larger batches
+            echo "limit_shops=0" >> $GITHUB_OUTPUT     # No limit
             echo "scrape_type=daily" >> $GITHUB_OUTPUT
+            echo "full_product_scrape=false" >> $GITHUB_OUTPUT  # Only changed products
             echo "timeout_minutes=180" >> $GITHUB_OUTPUT
           else
-          echo "Running MANUAL SCRAPE with custom parameters"
-          echo "skip_shops=${{ inputs.skip_shops }}" >> $GITHUB_OUTPUT
-          echo "shop_update_days=${{ inputs.shop_update_days }}" >> $GITHUB_OUTPUT
-          echo "max_concurrent=${{ inputs.max_concurrent || 3 }}" >> $GITHUB_OUTPUT
-          echo "batch_size=${{ inputs.batch_size || 5 }}" >> $GITHUB_OUTPUT
-          echo "limit_shops=${{ inputs.limit_shops || 0 }}" >> $GITHUB_OUTPUT
-          echo "scrape_type=manual" >> $GITHUB_OUTPUT
-          echo "timeout_minutes=${{ inputs.timeout_minutes || 180 }}" >> $GITHUB_OUTPUT
+            echo "Running MANUAL SCRAPE with custom parameters"
+            echo "skip_shops=${{ github.event.inputs.skip_shops || 'false' }}" >> $GITHUB_OUTPUT
+            echo "shop_update_days=${{ github.event.inputs.shop_update_days || '0' }}" >> $GITHUB_OUTPUT
+            echo "max_concurrent=${{ github.event.inputs.max_concurrent || '3' }}" >> $GITHUB_OUTPUT
+            echo "batch_size=${{ github.event.inputs.batch_size || '5' }}" >> $GITHUB_OUTPUT
+            echo "limit_shops=${{ github.event.inputs.limit_shops || '0' }}" >> $GITHUB_OUTPUT
+            echo "scrape_type=manual" >> $GITHUB_OUTPUT
+            echo "full_product_scrape=${{ github.event.inputs.full_product_scrape || 'false' }}" >> $GITHUB_OUTPUT
+            echo "timeout_minutes=${{ github.event.inputs.timeout_minutes || '180' }}" >> $GITHUB_OUTPUT
           fi
       
       - name: Run scraper
@@ -130,38 +138,48 @@ jobs:
             exit 1
           fi
           
-          # Build command
-          CMD="uv run python run.py --mode=${{ inputs.mode || 'all' }}"
+          # Build command - use 'all' mode for complete pipeline
+          CMD="uv run python run.py --mode=all"
           CMD="$CMD --max-concurrent=${{ steps.strategy.outputs.max_concurrent }}"
           CMD="$CMD --batch-size=${{ steps.strategy.outputs.batch_size }}"
           
+          # Add skip-shops flag for daily scrapes
           if [ "${{ steps.strategy.outputs.skip_shops }}" == "true" ]; then
             CMD="$CMD --skip-shops"
-            echo "Mode: Daily scrape (shop data skipped)"
-          elif [ "${{ steps.strategy.outputs.shop_update_days }}" != "0" ]; then
-            CMD="$CMD --shop-update-days=${{ steps.strategy.outputs.shop_update_days }}"
-            echo "Mode: Scraping shops older than ${{ steps.strategy.outputs.shop_update_days }} days"
-          else
-            echo "Mode: Full scrape (including all shop data)"
+            echo "Mode: Daily scrape (shop data skipped, only products/collections)"
           fi
           
-          if [ -n "${{ inputs.shop_id }}" ]; then
-            CMD="$CMD --shop-id=${{ inputs.shop_id }}"
-            echo "Filtering to shop(s): ${{ inputs.shop_id }}"
+          # Add shop update days if specified
+          if [ "${{ steps.strategy.outputs.shop_update_days }}" != "0" ]; then
+            CMD="$CMD --shop-update-days=${{ steps.strategy.outputs.shop_update_days }}"
+            echo "Mode: Scraping shops older than ${{ steps.strategy.outputs.shop_update_days }} days"
+          fi
+          
+          # Add full product scrape flag if needed
+          if [ "${{ steps.strategy.outputs.full_product_scrape }}" == "true" ]; then
+            CMD="$CMD --full-product-scrape"
+            echo "Mode: Full product scrape (all products, not just changed)"
+          fi
+          
+          if [ -n "${{ github.event.inputs.shop_id }}" ]; then
+            CMD="$CMD --shop-id=${{ github.event.inputs.shop_id }}"
+            echo "Filtering to shop(s): ${{ github.event.inputs.shop_id }}"
           fi
           
           echo "Configuration:"
+          echo "  Mode: ${{ steps.strategy.outputs.scrape_type }}"
           echo "  Max Concurrent: ${{ steps.strategy.outputs.max_concurrent }}"
           echo "  Batch Size: ${{ steps.strategy.outputs.batch_size }}"
           echo "  Skip Shops: ${{ steps.strategy.outputs.skip_shops }}"
           echo "  Shop Update Days: ${{ steps.strategy.outputs.shop_update_days }}"
-          echo "  Timeout Minutes: ${{ steps.strategy.outputs.timeout_minutes || 180 }}"
+          echo "  Full Product Scrape: ${{ steps.strategy.outputs.full_product_scrape }}"
+          echo "  Timeout Minutes: ${{ steps.strategy.outputs.timeout_minutes }}"
           echo ""
           echo "Running: $CMD"
           
-          # FIX: Increase buffer time to 10 minutes before timeout
-          TIMEOUT_SECONDS=$(( (${{ steps.strategy.outputs.timeout_minutes || 180 }} - 10) * 60 ))
-          echo "Setting timeout to $TIMEOUT_SECONDS seconds (${{ steps.strategy.outputs.timeout_minutes || 180 }} minutes - 10 minutes buffer)"
+          # Use 15-minute buffer
+          TIMEOUT_SECONDS=$(( (${{ steps.strategy.outputs.timeout_minutes }} - 15) * 60 ))
+          echo "Setting timeout to $TIMEOUT_SECONDS seconds (${{ steps.strategy.outputs.timeout_minutes }} minutes - 15 minutes buffer)"
           
           timeout $TIMEOUT_SECONDS $CMD
           
@@ -171,9 +189,6 @@ jobs:
           if [ $EXIT_CODE -eq 124 ]; then
             echo "WARNING: Scraper timed out after $TIMEOUT_SECONDS seconds"
             echo "Try increasing the timeout_minutes parameter"
-            echo "Weekly scrapes may need 240+ minutes, daily scrapes 180+ minutes"
-            
-            # FIX: Don't fail the workflow on timeout, just warn
             echo "Continuing workflow despite timeout..."
           elif [ $EXIT_CODE -ne 0 ]; then
             echo "ERROR: Scraper failed with exit code $EXIT_CODE"
@@ -182,15 +197,15 @@ jobs:
             echo "SUCCESS: Scraper completed within timeout"
           fi
           
-      - name: Run database refresh (core only)
+      - name: Run database setup (once per week)
         if: success() && steps.strategy.outputs.scrape_type == 'weekly_full'
         env:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_SECRET_KEY: ${{ secrets.SUPABASE_SECRET_KEY }}
         run: |
           cd scraping
-          echo "Running core database refresh..."
-          uv run python run.py --mode=db --refresh-core
+          echo "Running database setup (weekly)..."
+          uv run python run.py --mode=db --setup-db
           
       - name: Upload artifacts
         if: always()
