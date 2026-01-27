@@ -26,7 +26,6 @@ ENV_FILE = BASE_DIR / ".env"
 SCRAPER_CONFIG = {
     'max_pages': {
         'products': 3,
-        'collections': 2,
     },
     'concurrent_pages': 2,
     'batch_size': 50,
@@ -40,7 +39,6 @@ SCRAPER_CONFIG = {
     'min_shop_delay': 30,  # Minimum delay between shops
     'max_requests_per_shop': {
         'products': 30,
-        'collections': 10,
     }
 }
 
@@ -55,9 +53,7 @@ UPLOADER_CONFIG = {
 
 # API endpoints
 API_ENDPOINTS = {
-    'collections': '/collections.json',
     'products': '/products.json',
-    'collection_products': '/collections/{handle}/products.json',
     'shop_info': '/admin/api/2023-10/shop.json'
 }
 

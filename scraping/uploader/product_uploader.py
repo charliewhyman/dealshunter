@@ -12,7 +12,6 @@ from datetime import datetime
 
 from uploader.base_uploader import BaseUploader
 from uploader.data_processor import DataProcessor
-from uploader.supabase_client import SupabaseClient
 from core.logger import uploader_logger
 from uploader.product_categorizer import ProductCategorizer
 

@@ -102,7 +102,7 @@ jobs:
             echo "full_product_scrape=false" >> $GITHUB_OUTPUT
             echo "timeout_minutes=410" >> $GITHUB_OUTPUT
           elif [ "${{ github.event.schedule }}" == "0 2 * * *" ]; then
-            echo "Running DAILY SCRAPE (skip shop data, focus on products/collections)"
+            echo "Running DAILY SCRAPE (skip shop data, focus on products)"
             echo "skip_shops=true" >> $GITHUB_OUTPUT
             echo "shop_update_days=0" >> $GITHUB_OUTPUT
             echo "max_concurrent=8" >> $GITHUB_OUTPUT  # Higher for daily
@@ -146,7 +146,7 @@ jobs:
           # Add skip-shops flag for daily scrapes
           if [ "${{ steps.strategy.outputs.skip_shops }}" == "true" ]; then
             CMD="$CMD --skip-shops"
-            echo "Mode: Daily scrape (shop data skipped, only products/collections)"
+            echo "Mode: Daily scrape (shop data skipped, only products)"
           fi
           
           # Add shop update days if specified

@@ -23,7 +23,7 @@ class FileManager:
         # Create subdirectories for each entity type under raw and processed.
         # Also reorganize any existing files in processed root into the
         # corresponding processed/<entity>/ folder (pattern: *_<entity>_*.json)
-        entity_types = ['shops', 'collections', 'products', 'collection_products']
+        entity_types = ['shops', 'products']
         for entity_type in entity_types:
             (self.data_dirs['raw'] / entity_type).mkdir(exist_ok=True, parents=True)
             (self.data_dirs['processed'] / entity_type).mkdir(exist_ok=True, parents=True)
@@ -34,7 +34,7 @@ class FileManager:
             # Only move files whose filename follows the convention
             # <shop>_<entity>_<timestamp>.json where the second token
             # exactly equals the entity_type. This avoids substring
-            # collisions (e.g. 'collection_products' matching 'products').
+            # collisions.
             for p in sorted(processed_root.glob("*.json")):
                 parts = p.name.split("_")
                 if len(parts) < 3:
@@ -100,7 +100,7 @@ class FileManager:
             entity_dir = None
             try:
                 parent_name = filepath.parent.name
-                if parent_name in ['shops', 'collections', 'products', 'collection_products']:
+                if parent_name in ['shops', 'products',]:
                     entity_dir = parent_name
             except Exception:
                 entity_dir = None
@@ -108,7 +108,7 @@ class FileManager:
             # If not under a known parent, try to infer from filename pattern
             if not entity_dir:
                 parts = filepath.name.split('_')
-                if len(parts) >= 2 and parts[1] in ['shops', 'collections', 'products', 'collection_products']:
+                if len(parts) >= 2 and parts[1] in ['shops', 'products']:
                     entity_dir = parts[1]
 
             if entity_dir:
@@ -170,7 +170,7 @@ class FileManager:
             # Iterate all json files and only move those where the
             # second underscore-separated token exactly matches
             # the requested data_type. This avoids accidental
-            # matches like 'collection_products' for 'products'.
+            # matches.
             for p in sorted(src_dir.glob("*.json")):
                 parts = p.name.split("_")
                 if len(parts) < 3:

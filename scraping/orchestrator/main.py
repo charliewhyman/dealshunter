@@ -13,14 +13,10 @@ import sys
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from scrapers.shop_scraper import ShopScraper
-from scrapers.collection_scraper import CollectionScraper
 from scrapers.product_scraper import ProductScraper
-from scrapers.collection_products_scraper import CollectionProductsScraper
 
 from uploader.shop_uploader import ShopUploader
-from uploader.collection_uploader import CollectionUploader
 from uploader.product_uploader import ProductUploader
-from uploader.collection_product_uploader import CollectionProductUploader
 
 from core.logger import scraper_logger, uploader_logger
 import config.settings as settings
@@ -42,15 +38,11 @@ class PipelineOrchestrator:
         
         # Initialize scrapers
         self.shop_scraper = ShopScraper()
-        self.collection_scraper = CollectionScraper()
         self.product_scraper = ProductScraper()
-        self.collection_products_scraper = CollectionProductsScraper()
         
         # Initialize uploaders
         self.shop_uploader = ShopUploader()
-        self.collection_uploader = CollectionUploader()
         self.product_uploader = ProductUploader()
-        self.collection_product_uploader = CollectionProductUploader()
         
         # Results storage
         self.results = {
@@ -246,7 +238,6 @@ class PipelineOrchestrator:
         
         # Process shops in batches
         all_shop_results = {}
-        all_collection_results = {}
         all_product_results = {}
         all_mapping_results = {}
         
@@ -268,18 +259,7 @@ class PipelineOrchestrator:
                     if data:
                         self.shop_scraper.save_results(shop_id, data, self.timestamp)
             
-            # Step 2: Scrape collections
-            self.logger.info("Scraping collections...")
-            collection_results = self._scrape_with_optimization(
-                self.collection_scraper, batch, "Collections", hours_threshold=168  # 7 days
-            )
-            all_collection_results.update(collection_results)
-            
-            for shop_id, data in collection_results.items():
-                if data:
-                    self.collection_scraper.save_results(shop_id, data, self.timestamp)
-            
-            # Step 3: Scrape products
+            # Step 2: Scrape products
             self.logger.info("Scraping products...")
             
             # Use force_scrape for full product scrape mode
@@ -296,36 +276,6 @@ class PipelineOrchestrator:
                 if data:
                     self.product_scraper.save_results(shop_id, data, self.timestamp)
             
-            # Step 4: Scrape collection-product mappings
-            self.logger.info("Scraping collection-product mappings...")
-            
-            # Prepare collections data for mapping scraper
-            collections_for_mapping = {}
-            for shop_id, collections in collection_results.items():
-                if collections:  # Only include shops that have collections
-                    collections_for_mapping[shop_id] = [
-                        {
-                            'id': coll.get('id'),
-                            'handle': coll.get('handle'),
-                            'products_count': coll.get('products_count'),
-                            'title': coll.get('title'),
-                            'updated_at': coll.get('updated_at')
-                        }
-                        for coll in collections
-                    ]
-            
-            self.collection_products_scraper.set_collections_data(collections_for_mapping)
-            
-            # Scrape mappings with optimization
-            mapping_results = self._scrape_with_optimization(
-                self.collection_products_scraper, batch, "Collection-Products", hours_threshold=336  # 14 days
-            )
-            all_mapping_results.update(mapping_results)
-            
-            for shop_id, data in mapping_results.items():
-                if data:
-                    self.collection_products_scraper.save_results(shop_id, data, self.timestamp)
-            
             # Log batch completion
             batch_time = time.time() - batch_start_time
             self.logger.info(f"Batch {batch_num} completed in {batch_time/60:.1f} minutes")
@@ -338,13 +288,6 @@ class PipelineOrchestrator:
                 'optimization': 'none (always scrape shops)'
             }
         
-        self.results['scraping']['steps']['collections'] = {
-            'shops_scraped': len(all_collection_results),
-            'total_records': sum(len(data) for data in all_collection_results.values()),
-            'shops_skipped': len(shops) - len(all_collection_results),
-            'optimization': 'skip if scraped in last 7 days'
-        }
-        
         # Special handling for product stats based on mode
         if self.full_product_scrape:
             product_optimization = 'FULL scrape (all products fetched)'
@@ -356,13 +299,6 @@ class PipelineOrchestrator:
             'total_records': sum(len(data) for data in all_product_results.values()),
             'shops_skipped': len(shops) - len(all_product_results),
             'optimization': product_optimization
-        }
-        
-        self.results['scraping']['steps']['collection_products'] = {
-            'shops_scraped': len(all_mapping_results),
-            'total_records': sum(len(data) for data in all_mapping_results.values()),
-            'shops_skipped': len(shops) - len(all_mapping_results),
-            'optimization': 'skip if scraped in last 14 days, only scrape meaningful collections'
         }
         
         # Add optimization summary
@@ -403,12 +339,7 @@ class PipelineOrchestrator:
         shop_upload_results = self.shop_uploader.process_all()
         self.results['uploading']['steps']['shops'] = shop_upload_results
         
-        # Step 2: Upload collections
-        uploader_logger.info("\nStep 2: Uploading collections...")
-        collection_upload_results = self.collection_uploader.process_all()
-        self.results['uploading']['steps']['collections'] = collection_upload_results
-        
-        # Step 3: Upload products (with related data)
+        # Step 2: Upload products (with related data)
         uploader_logger.info("\nStep 3: Uploading products...")
         product_upload_results = self.product_uploader.process_all()
         self.results['uploading']['steps']['products'] = product_upload_results
@@ -421,11 +352,6 @@ class PipelineOrchestrator:
                 f"products to commit to database..."
             )
             time.sleep(wait_time)
-        
-        # Step 4: Upload collection-product mappings
-        uploader_logger.info("\nStep 4: Uploading collection-product mappings...")
-        mapping_upload_results = self.collection_product_uploader.process_all()
-        self.results['uploading']['steps']['collection_products'] = mapping_upload_results
         
         uploader_logger.info("\n" + "="*60)
         uploader_logger.info("UPLOAD PIPELINE COMPLETE")
@@ -482,8 +408,6 @@ class PipelineOrchestrator:
             'uploading': self.results.get('uploading', {}),
             'optimization_benefits': {
                 'products': 'Skip shops scraped in last 6 hours, only fetch changed products' if not self.full_product_scrape else 'FULL scrape (all products fetched)',
-                'collections': 'Skip shops scraped in last 7 days',
-                'collection_products': 'Skip shops scraped in last 14 days, only meaningful collections',
                 'estimated_api_reduction': '70-90% after first run' if not self.full_product_scrape else '0% (full scrape)',
                 'estimated_time_reduction': '60-80% for daily runs' if not self.full_product_scrape else '0% (full scrape)'
             }
