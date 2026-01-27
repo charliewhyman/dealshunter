@@ -34,7 +34,6 @@ interface FilterOptions {
   selectedGroupedTypes: string[];
   selectedTopLevelCategories: string[];
   selectedGenderAges: string[];
-  inStockOnly: boolean;
   onSaleOnly: boolean;
   searchQuery: string;
   selectedPriceRange: [number, number];
@@ -121,10 +120,6 @@ export function HomePage() {
       return [];
     }
   });
-
-  const [inStockOnly, setInStockOnly] = useState<boolean>(
-    JSON.parse(localStorage.getItem('inStockOnly') || 'true')
-  );
   
   const [onSaleOnly, setOnSaleOnly] = useState<boolean>(
     JSON.parse(localStorage.getItem('onSaleOnly') || 'false')
@@ -314,7 +309,6 @@ export function HomePage() {
       p_grouped_types: filters.selectedGroupedTypes.filter(s => s.trim()),
       p_top_level_categories: filters.selectedTopLevelCategories.filter(s => s.trim()),
       p_gender_ages: filters.selectedGenderAges.filter(s => s.trim()),
-      p_in_stock_only: filters.inStockOnly,
       p_on_sale_only: filters.onSaleOnly,
       p_min_price: filters.selectedPriceRange[0],
       p_max_price: filters.selectedPriceRange[1],
@@ -510,7 +504,6 @@ export function HomePage() {
     selectedGroupedTypes,
     selectedTopLevelCategories,
     selectedGenderAges,
-    inStockOnly,
     onSaleOnly,
     searchQuery,
     selectedPriceRange,
@@ -538,7 +531,6 @@ export function HomePage() {
       selectedGroupedTypes: JSON.parse(selectedGroupedTypesKey),
       selectedTopLevelCategories: JSON.parse(selectedTopLevelCategoriesKey),
       selectedGenderAges: JSON.parse(selectedGenderAgesKey),
-      inStockOnly,
       onSaleOnly,
       searchQuery,
       selectedPriceRange: JSON.parse(selectedPriceRangeKey) as [number, number],
@@ -554,7 +546,7 @@ export function HomePage() {
     setCommittedFilters(pendingFilters);
   }, [
     selectedShopNameKey, selectedSizeGroupsKey, selectedGroupedTypesKey,
-    selectedTopLevelCategoriesKey, selectedGenderAgesKey, inStockOnly,
+    selectedTopLevelCategoriesKey, selectedGenderAgesKey,
     onSaleOnly, searchQuery, selectedPriceRangeKey, committedFiltersKey
   ]);
 
@@ -615,14 +607,6 @@ export function HomePage() {
       console.error('Failed to persist selectedGenderAges to localStorage:', error);
     }
   }, [selectedGenderAges]);
-  
-  useEffect(() => { 
-    try {
-      localStorage.setItem('inStockOnly', JSON.stringify(inStockOnly)); 
-    } catch (error) {
-      console.error('Failed to persist inStockOnly to localStorage:', error);
-    }
-  }, [inStockOnly]);
   
   useEffect(() => { 
     try {
@@ -704,7 +688,7 @@ export function HomePage() {
     setSortOrder(value as SortOrder);
     setCommittedFilters({
       selectedShopName, selectedSizeGroups, selectedGroupedTypes,
-      selectedTopLevelCategories, selectedGenderAges, inStockOnly,
+      selectedTopLevelCategories, selectedGenderAges,
       onSaleOnly, searchQuery, selectedPriceRange,
     });
     setPage(0);
@@ -731,7 +715,6 @@ export function HomePage() {
     setSelectedGroupedTypes([]);
     setSelectedTopLevelCategories([]);
     setSelectedGenderAges([]);
-    setInStockOnly(false);
     setOnSaleOnly(false);
     setSelectedSizeGroups([]);
     setSelectedPriceRange([...PRICE_RANGE]);
@@ -801,7 +784,7 @@ export function HomePage() {
               >
                 <div className="flex items-center space-x-2">
                   <span className="text-sm font-medium text-gray-900 dark:text-gray-100 sm:text-base">Filters</span>
-                  {(selectedShopName.length > 0 || selectedGroupedTypes.length > 0 || selectedTopLevelCategories.length > 0 || selectedGenderAges.length > 0 || inStockOnly || onSaleOnly || !rangesEqual(selectedPriceRange, PRICE_RANGE)) && (
+                  {(selectedShopName.length > 0 || selectedGroupedTypes.length > 0 || selectedTopLevelCategories.length > 0 || selectedGenderAges.length > 0 || onSaleOnly || !rangesEqual(selectedPriceRange, PRICE_RANGE)) && (
                     <span className="inline-flex items-center justify-center px-1.5 py-0.5 text-xs font-bold text-white bg-blue-600 rounded-full sm:px-2 sm:py-1">Active</span>
                   )}
                 </div>
@@ -868,17 +851,13 @@ export function HomePage() {
                   <h3 className="text-xs font-medium text-gray-700 dark:text-gray-300 mb-2 sm:text-sm sm:mb-3">Filters</h3>
                   <div className="flex gap-4 sm:gap-6">
                     <label className="flex items-center gap-2">
-                      <input type="checkbox" checked={inStockOnly} onChange={(e) => setInStockOnly(e.target.checked)} className="h-3.5 w-3.5 text-blue-600 border-gray-300 rounded" />
-                      <span className="text-xs text-gray-700 dark:text-gray-300 sm:text-sm">In Stock</span>
-                    </label>
-                    <label className="flex items-center gap-2">
                       <input type="checkbox" checked={onSaleOnly} onChange={(e) => setOnSaleOnly(e.target.checked)} className="h-3.5 w-3.5 text-blue-600 border-gray-300 rounded" />
                       <span className="text-xs text-gray-700 dark:text-gray-300 sm:text-sm">On Sale</span>
                     </label>
                   </div>
                 </div>
 
-                {(selectedShopName.length > 0 || selectedGroupedTypes.length > 0 || selectedTopLevelCategories.length > 0 || selectedGenderAges.length > 0 || inStockOnly || onSaleOnly || !rangesEqual(selectedPriceRange, PRICE_RANGE) || selectedSizeGroups.length > 0) && (
+                {(selectedShopName.length > 0 || selectedGroupedTypes.length > 0 || selectedTopLevelCategories.length > 0 || selectedGenderAges.length > 0 || onSaleOnly || !rangesEqual(selectedPriceRange, PRICE_RANGE) || selectedSizeGroups.length > 0) && (
                   <div className="pt-3 border-t border-gray-200 dark:border-gray-700 sm:pt-4">
                     <div className="space-y-2 sm:space-y-3">
                       <h3 className="text-xs font-medium text-gray-700 dark:text-gray-300 sm:text-sm">Active filters</h3>
@@ -927,14 +906,6 @@ export function HomePage() {
                           <div className="inline-flex items-center rounded-md bg-blue-50 dark:bg-blue-900/30 px-1.5 py-0.5 text-xs font-medium text-blue-700 dark:text-blue-200 ring-1 ring-inset ring-blue-700/10 sm:px-2 sm:py-1">
                             ${selectedPriceRange[0]} - ${selectedPriceRange[1]}
                             <button onClick={() => setSelectedPriceRange([...PRICE_RANGE])} className="ml-1 text-blue-500 hover:text-blue-700">
-                              <AsyncLucideIcon name="X" className="h-2.5 w-2.5 sm:h-3 sm:w-3" />
-                            </button>
-                          </div>
-                        )}
-                        {inStockOnly && (
-                          <div className="inline-flex items-center rounded-md bg-blue-50 dark:bg-blue-900/30 px-1.5 py-0.5 text-xs font-medium text-blue-700 dark:text-blue-200 ring-1 ring-inset ring-blue-700/10 sm:px-2 sm:py-1">
-                            In Stock
-                            <button onClick={() => setInStockOnly(false)} className="ml-1 text-blue-500 hover:text-blue-700">
                               <AsyncLucideIcon name="X" className="h-2.5 w-2.5 sm:h-3 sm:w-3" />
                             </button>
                           </div>
