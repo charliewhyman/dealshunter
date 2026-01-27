@@ -1,9 +1,9 @@
-from typing import Dict, Optional, Tuple
+from typing import Dict, Optional, Tuple, List, Any, Union
 from config.product_type_loader import ConfigLoader
 from core.logger import uploader_logger
 
 class ProductCategorizer:
-    """Service for categorizing products using JSON configuration."""
+    """Service for categorizing products using JSON configuration with enhanced gender detection."""
     
     def __init__(self):
         self.config = ConfigLoader.load_product_type_mapping()
@@ -19,19 +19,79 @@ class ProductCategorizer:
             return ""
         return text.lower().strip()
     
-    def extract_gender_age(self, product_type: str) -> str:
-        """Extract gender/age category from product type."""
+    def extract_gender_age(self, product_type: str, tags: Union[List[str], str, None] = None) -> str:
+        """
+        Extract gender/age category from product type and tags.
+        Checks both the product type string and any tags for gender indicators.
+        """
         if not product_type:
             return self.config.get("default_gender_age", "Unisex")
         
-        normalized = self._normalize_text(product_type)
+        # Normalize product type
+        normalized_type = self._normalize_text(product_type)
+        
+        # Build combined text to search
+        texts_to_search = [normalized_type]
+        
+        # Add tags if provided
+        if tags:
+            if isinstance(tags, list):
+                for tag in tags:
+                    if tag:  # Skip None/empty tags
+                        texts_to_search.append(self._normalize_text(str(tag)))
+            elif isinstance(tags, str):
+                texts_to_search.append(self._normalize_text(tags))
+        
+        # Also create a combined string for broader matching
+        combined_text = " ".join(texts_to_search)
+        
         patterns = self.config.get("gender_age_patterns", {})
         
+        # Check each pattern
         for category, pattern_list in patterns.items():
-            if any(pattern in normalized for pattern in pattern_list):
-                return category
+            # Check each text individually
+            for text in texts_to_search:
+                for pattern in pattern_list:
+                    if pattern in text:
+                        uploader_logger.debug(f"Matched gender '{category}' with pattern '{pattern}' in text: '{text}'")
+                        return category
+            
+            # Also check the combined text
+            for pattern in pattern_list:
+                if pattern in combined_text:
+                    uploader_logger.debug(f"Matched gender '{category}' with pattern '{pattern}' in combined text")
+                    return category
         
-        return self.config.get("default_gender_age", "Unisex")
+        # No match found, use default
+        default = self.config.get("default_gender_age", "Unisex")
+        uploader_logger.debug(f"No gender match found, using default: '{default}'")
+        return default
+    
+    def extract_gender_age_with_unisex_expansion(self, product_type: str, tags: Union[List[str], str, None] = None) -> Tuple[str, List[str]]:
+        """
+        Extract gender/age category with unisex expansion.
+        Returns: (primary_gender, all_gender_categories)
+        
+        For unisex items, returns ('Unisex', ['Unisex', 'Men', 'Women'])
+        For women's items, returns ('Women', ['Women'])
+        For men's items, returns ('Men', ['Men'])
+        """
+        primary_gender = self.extract_gender_age(product_type, tags)
+        
+        if primary_gender == "Unisex":
+            # Unisex items should appear in both Men's and Women's categories
+            all_genders = ["Unisex", "Men", "Women"]
+        elif primary_gender == "Womens":
+            all_genders = ["Womens"]
+        elif primary_gender == "Mens":
+            all_genders = ["Mens"]
+        elif primary_gender in ["Kids", "Baby"]:
+            all_genders = [primary_gender]
+        else:
+            # Fallback for any other category
+            all_genders = [primary_gender]
+        
+        return primary_gender, all_genders
     
     def categorize_product(self, product_type: str) -> Tuple[str, Optional[str]]:
         """Categorize product based on keywords.
@@ -77,12 +137,16 @@ class ProductCategorizer:
         self._cache[cache_key] = result
         return result
     
-    def get_category_info(self, product_type: str) -> Dict[str, Optional[str]]:
+    def get_category_info(self, product_type: str, tags: Union[List[str], str, None] = None) -> Dict[str, Any]:
         """Get complete category information for a product.
         Returns a dictionary where some values may be None.
+        
+        Args:
+            product_type: The product type string
+            tags: Optional list of tags or string of tags for gender detection
         """
         top_level, subcategory = self.categorize_product(product_type)
-        gender_age = self.extract_gender_age(product_type)
+        primary_gender, all_genders = self.extract_gender_age_with_unisex_expansion(product_type, tags)
         
         # Determine grouped product type
         if subcategory:
@@ -94,19 +158,23 @@ class ProductCategorizer:
             'grouped_product_type': grouped_type,
             'top_level_category': top_level,
             'subcategory': subcategory,  # This can be None
-            'gender_age': gender_age
+            'gender_age': primary_gender,
+            'gender_categories': all_genders,
+            'is_unisex': primary_gender == "Unisex" or "Unisex" in all_genders
         }
     
-    def get_category_info_with_defaults(self, product_type: str) -> Dict[str, str]:
+    def get_category_info_with_defaults(self, product_type: str, tags: Union[List[str], str, None] = None) -> Dict[str, Any]:
         """Get complete category information with default values instead of None."""
-        category_info = self.get_category_info(product_type)
+        category_info = self.get_category_info(product_type, tags)
         
         # Replace None with empty string or other defaults
         return {
             'grouped_product_type': category_info['grouped_product_type'] or '',
             'top_level_category': category_info['top_level_category'] or '',
             'subcategory': category_info['subcategory'] or '',  # Convert None to empty string
-            'gender_age': category_info['gender_age'] or ''
+            'gender_age': category_info['gender_age'] or '',
+            'gender_categories': category_info['gender_categories'] or [],
+            'is_unisex': category_info.get('is_unisex', False)
         }
     
     def clear_cache(self):

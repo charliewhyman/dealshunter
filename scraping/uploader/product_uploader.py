@@ -38,59 +38,22 @@ class HtmlSanitizer:
         ]
     
     def sanitize(self, html_content: str) -> str:
-        """Sanitize HTML content from Shopify."""
+        """Sanitize HTML content from Shopify - minimal sanitization."""
         if not html_content or not html_content.strip():
             return ""
         
         try:
-            # Step 1: Decode HTML entities
+            # Just decode HTML entities and return
             decoded = html_lib.unescape(html_content)
             
-            # Step 2: Remove dangerous content (simple approach)
-            # In production, install and use: pip install bleach
-            cleaned = decoded
-            
-            # Remove script, style, iframe tags
-            for pattern in self.shopify_app_patterns:
-                cleaned = re.sub(pattern, '', cleaned, flags=re.IGNORECASE | re.DOTALL)
-            
-            # Remove on* attributes (JavaScript event handlers)
-            cleaned = re.sub(r'\son\w+="[^"]*"', '', cleaned, flags=re.IGNORECASE)
-            cleaned = re.sub(r"\son\w+='[^']*'", '', cleaned, flags=re.IGNORECASE)
-            
-            # Step 3: Basic tag whitelisting (simplified)
-            # Allow only safe tags (this is a simplified version)
-            # In production, use bleach.clean() with proper configuration
-            
-            # Step 4: Add security attributes to links
-            cleaned = re.sub(
-                r'<a\s+(.*?href="https?://[^"]+"[^>]*)>',
-                r'<a \1 rel="noopener noreferrer">',
-                cleaned,
-                flags=re.IGNORECASE
-            )
-            
-            # Step 5: Ensure img tags have alt attributes
-            cleaned = re.sub(
-                r'<img\s+([^>]*?)(?<!alt=)(?=\s|>)',
-                r'<img \1 alt="Product image"',
-                cleaned,
-                flags=re.IGNORECASE
-            )
-            
-            # Step 6: Fix self-closing tags
-            cleaned = cleaned.replace('<br>', '<br />')
-            cleaned = cleaned.replace('<hr>', '<hr />')
-            
-            # Step 7: Add lazy loading to images
-            cleaned = cleaned.replace('<img ', '<img loading="lazy" ')
+            # Only remove script tags
+            cleaned = re.sub(r'<script[^>]*>.*?</script>', '', decoded, flags=re.IGNORECASE | re.DOTALL)
             
             return cleaned.strip()
             
         except Exception as e:
             uploader_logger.error(f"HTML sanitization error: {e}")
-            # Fallback: return plain text
-            return self._html_to_plain_text(html_content)
+            return html_content  # Return original as fallback
     
     def _html_to_plain_text(self, html_content: str, max_length: int = 2000) -> str:
         """Convert HTML to plain text as fallback."""
@@ -283,7 +246,7 @@ class ProductProcessor:
         }
     
     def process_product(self, product: Dict[str, Any]) -> Optional[str]:
-        """Process a single product and its related data."""
+        """Process a single product and its related data with enhanced gender detection."""
         if not isinstance(product, dict):
             uploader_logger.error(f"Expected dictionary but got {type(product).__name__}")
             return None
@@ -334,11 +297,7 @@ class ProductProcessor:
             max_discount = max(variant_discounts) if variant_discounts else None
             on_sale = max_discount is not None and max_discount > 0
             
-            # Extract category information
-            product_type = product.get("product_type", "")
-            category_info = self.categorizer.get_category_info(product_type)
-            
-            # Process tags
+            # Process tags FIRST (needed for gender detection)
             raw_tags = product.get("tags", [])
             if isinstance(raw_tags, str):
                 tags_list = [tag.strip() for tag in raw_tags.split(",") if tag.strip()] if raw_tags else []
@@ -346,6 +305,47 @@ class ProductProcessor:
                 tags_list = [str(tag).strip() for tag in raw_tags if tag]
             else:
                 tags_list = []
+            
+            # Extract category information WITH TAGS for better gender detection
+            product_type = product.get("product_type", "")
+            
+            # Check if the categorizer has the enhanced method
+            if hasattr(self.categorizer, 'get_category_info') and callable(self.categorizer.get_category_info):
+                try:
+                    # Try to call with tags parameter
+                    category_info = self.categorizer.get_category_info(product_type, tags_list)
+                    
+                    # Log gender detection for debugging
+                    uploader_logger.debug(
+                        f"Gender detection for product {product_id}: "
+                        f"type='{product_type}', "
+                        f"primary_gender='{category_info.get('gender_age', 'Unknown')}', "
+                        f"all_genders={category_info.get('gender_categories', [])}, "
+                        f"is_unisex={category_info.get('is_unisex', False)}"
+                    )
+                except TypeError:
+                    # Fallback to old method if new signature not supported
+                    category_info = self.categorizer.get_category_info(product_type)
+                    # Add default gender categories for backward compatibility
+                    primary_gender = category_info.get('gender_age', 'Unisex')
+                    gender_categories = [primary_gender]
+                    if primary_gender == 'Unisex':
+                        gender_categories = ['Unisex', 'Men', 'Women']
+                    category_info.update({
+                        'gender_categories': gender_categories,
+                        'is_unisex': primary_gender == 'Unisex'
+                    })
+            else:
+                # Fallback if categorizer doesn't have expected method
+                uploader_logger.warning(f"Categorizer doesn't have get_category_info method")
+                category_info = {
+                    'grouped_product_type': '',
+                    'top_level_category': '',
+                    'subcategory': None,
+                    'gender_age': 'Unisex',
+                    'gender_categories': ['Unisex', 'Men', 'Women'],
+                    'is_unisex': True
+                }
             
             # Process images
             images = product.get("images", [])
@@ -359,12 +359,19 @@ class ProductProcessor:
             raw_description = product.get("description", "")
             processed_description, description_format = self._process_description(raw_description)
             
+            # Ensure we have some description text
+            if not processed_description and raw_description:
+                # Fallback to plain text if HTML processing failed
+                processed_description = self.html_sanitizer._html_to_plain_text(raw_description)
+                description_format = 'plain'
+                uploader_logger.debug(f"Using plain text fallback for description of product {product_id}")
+            
             # Get product URL
             url = product.get("product_url", "")
             if not url and product.get("handle"):
                 url = f"https://{product.get('shop_domain', 'store')}.myshopify.com/products/{product['handle']}"
             
-            # Build product data
+            # Build product data with gender categories
             product_data = {
                 # Core product info
                 "id": product_id,
@@ -377,11 +384,15 @@ class ProductProcessor:
                 "description": processed_description,
                 "description_format": description_format,
                 
-                # Category information
-                "grouped_product_type": category_info['grouped_product_type'],
-                "top_level_category": category_info['top_level_category'],
-                "subcategory": category_info['subcategory'],
-                "gender_age": category_info['gender_age'],
+                # Category information with enhanced gender support
+                "grouped_product_type": category_info.get('grouped_product_type', ''),
+                "top_level_category": category_info.get('top_level_category', ''),
+                "subcategory": category_info.get('subcategory'),
+                "gender_age": category_info.get('gender_age', 'Unisex'),
+                
+                # NEW: Gender categories for filtering
+                "gender_categories": category_info.get('gender_categories', []),
+                "is_unisex": category_info.get('is_unisex', False),
                 
                 # Tags and metadata
                 "tags": tags_list,
@@ -446,6 +457,8 @@ class ProductProcessor:
             
         except Exception as e:
             uploader_logger.error(f"Error processing product {product.get('id', 'unknown')}: {e}")
+            import traceback
+            uploader_logger.error(traceback.format_exc())
             return None
     
     def get_stats(self) -> Dict[str, Any]:
