@@ -8,7 +8,7 @@ import { useLocation, useNavigate, useSearchParams } from 'react-router-dom';
 import { MultiSelectDropdown, SingleSelectDropdown } from '../components/Dropdowns';
 import TransformSlider from '../components/TransformSlider';
 
-const ITEMS_PER_PAGE = 20; // Increased for better UX
+const ITEMS_PER_PAGE = 20;
 const LCP_PRELOAD_COUNT = 4;
 
 type SortOrder = 'price_asc' | 'price_desc' | 'discount_desc';
@@ -976,9 +976,10 @@ export function HomePage() {
             )}
 
             <div className="relative min-h-[400px]">
-              <div className="grid gap-x-3 gap-y-4 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 sm:gap-x-4 sm:gap-y-6">
+              {/* UPDATED PRODUCT GRID - Mobile-first responsive design */}
+              <div className="grid grid-cols-2 gap-2 sm:gap-3 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
                 {initialLoad ? (
-                  <ProductGridSkeleton count={8} />
+                  <ProductGridSkeleton count={10} />
                 ) : isFetchingEmpty ? (
                   <div className="col-span-full flex flex-col items-center justify-center min-h-[200px]">
                     <AsyncLucideIcon name="Loader2" className="animate-spin h-8 w-8 text-gray-600 dark:text-gray-300 mb-3" />
@@ -1003,8 +1004,13 @@ export function HomePage() {
                             if (el) cardRefs.current.set(pid, el);
                             else cardRefs.current.delete(pid);
                           }}
+                          className="transform transition-transform duration-300 hover:-translate-y-1 active:scale-[0.98] touch-manipulation"
                         >
-                          <ProductCard product={product} pricing={productPricings[pid]} isLcp={page === 0 && index < LCP_PRELOAD_COUNT} />
+                          <ProductCard 
+                            product={product} 
+                            pricing={productPricings[pid]} 
+                            isLcp={page === 0 && index < LCP_PRELOAD_COUNT}
+                          />
                         </div>
                       );
                     })}
