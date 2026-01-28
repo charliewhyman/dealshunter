@@ -207,8 +207,8 @@
         }
     },
     "gender_age_patterns": {
-      "Mens": ["mens", "men's", "men ", "male"],
-      "Womens": ["womens", "women's", "ladies", "women ", "female"],
+      "Men's": ["mens", "men's", "men ", "male"],
+      "Women's": ["womens", "women's", "ladies", "women ", "female"],
       "Kids": ["kids", "kid ", "kid's", "children", "youth"],
       "Baby": ["baby", "infant", "toddler", "babies"],
       "Unisex": ["unisex"]
