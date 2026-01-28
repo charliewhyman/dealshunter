@@ -2,220 +2,214 @@
 @import 'tailwindcss/components';
 @import 'tailwindcss/utilities';
 
-:root {
-  font-family: Inter, system-ui, Avenir, Helvetica, Arial, sans-serif;
-  line-height: 1.5;
-  font-weight: 400;
+@layer base {
+  :root {
+    font-family: Inter, system-ui, Avenir, Helvetica, Arial, sans-serif;
+    line-height: 1.5;
+    font-weight: 400;
+    font-synthesis: none;
+    text-rendering: optimizeLegibility;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
 
-  color-scheme: light dark;
-  color: rgba(255, 255, 255, 0.87);
-  background-color: #242424;
+  body {
+    margin: 0;
+    display: flex;
+    flex-direction: column;
+    min-height: 100vh;
+    min-width: 320px;
+    @apply bg-white text-gray-900;
+  }
 
-  font-synthesis: none;
-  text-rendering: optimizeLegibility;
-  -webkit-font-smoothing: antialiased;
-  -moz-osx-font-smoothing: grayscale;
+  /* Dark mode overrides - Tailwind will handle these automatically */
+  @media (prefers-color-scheme: dark) {
+    body {
+      @apply bg-gray-900 text-gray-100;
+    }
+  }
+
+  /* If using class-based dark mode instead of media query */
+  .dark body {
+    @apply bg-gray-900 text-gray-100;
+  }
 }
 
-a {
-  font-weight: 500;
-  color: #646cff;
-  text-decoration: inherit;
-}
-a:hover {
-  color: #535bf2;
+@layer components {
+  a {
+    font-weight: 500;
+    color: #646cff;
+    text-decoration: inherit;
+  }
+  a:hover {
+    color: #535bf2;
+  }
+
+  button {
+    border-radius: 8px;
+    border: 1px solid transparent;
+    padding: 0.6em 1.2em;
+    font-size: 1em;
+    font-weight: 500;
+    font-family: inherit;
+    background-color: #1a1a1a;
+    cursor: pointer;
+    transition: border-color 0.25s;
+  }
+  button:hover {
+    border-color: #646cff;
+  }
+  button:focus,
+  button:focus-visible {
+    outline: 4px auto -webkit-focus-ring-color;
+  }
+
+  @media (prefers-color-scheme: light) {
+    button {
+      background-color: #f9f9f9;
+    }
+  }
+
+  .available {
+    @apply text-black dark:text-white;
+  }
+
+  .unavailable {
+    @apply text-gray-500 dark:text-gray-400 line-through;
+  }
+
+  .category-section {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+    gap: 2rem;
+    margin: 2rem 0;
+  }
+
+  .category-card {
+    @apply bg-white dark:bg-gray-800;
+    padding: 1.5rem;
+    border-radius: 8px;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+    border-top: 4px solid #dc2626;
+  }
+
+  .category-card h3 {
+    @apply text-blue-800 dark:text-blue-300;
+    margin-top: 0;
+    margin-bottom: 1rem;
+  }
+
+  .benefits-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+    gap: 1.5rem;
+    margin: 2rem 0;
+  }
+
+  .benefit {
+    @apply bg-gray-50 dark:bg-gray-800;
+    padding: 1.5rem;
+    border-radius: 8px;
+    text-align: center;
+  }
+
+  .benefit h4 {
+    @apply text-green-600 dark:text-green-400;
+    margin-bottom: 0.5rem;
+  }
+
+  .brand-list {
+    columns: 2;
+    column-gap: 2rem;
+    margin: 1rem 0;
+  }
+
+  .brand-list li {
+    margin-bottom: 0.5rem;
+    break-inside: avoid;
+    @apply text-gray-800 dark:text-gray-200;
+  }
+
+  .region-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: 1.5rem;
+    margin: 1rem 0;
+  }
+
+  .region {
+    @apply bg-gray-100 dark:bg-gray-800;
+    padding: 1rem;
+    border-radius: 6px;
+  }
+
+  .region h4 {
+    @apply text-purple-600 dark:text-purple-400;
+    margin-top: 0;
+  }
+
+  .how-it-works ol {
+    padding-left: 1.5rem;
+    margin: 1rem 0;
+  }
+
+  .how-it-works li {
+    margin-bottom: 1rem;
+    line-height: 1.6;
+    @apply text-gray-800 dark:text-gray-200;
+  }
+
+  .canadian-values {
+    @apply bg-blue-50 dark:bg-blue-900/30;
+    padding: 1.5rem;
+    border-radius: 8px;
+    margin: 2rem 0;
+  }
+
+  .cta-section {
+    @apply bg-green-50 dark:bg-green-900/30;
+    padding: 1.5rem;
+    border-radius: 8px;
+    margin: 2rem 0;
+    border-left: 4px solid #10b981;
+  }
+
+  .site-links {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 1rem;
+    margin: 2rem 0;
+    padding-top: 2rem;
+    border-top: 1px solid #e5e7eb;
+  }
+
+  .site-links a {
+    @apply text-blue-600 dark:text-blue-400;
+    text-decoration: none;
+  }
+
+  .site-links a:hover {
+    text-decoration: underline;
+  }
+
+  .canadian-footer {
+    text-align: center;
+    padding-top: 2rem;
+    border-top: 1px solid #e5e7eb;
+    @apply text-gray-600 dark:text-gray-400;
+    font-size: 0.875rem;
+  }
+
+  .proud {
+    @apply text-red-600 dark:text-red-400;
+    font-weight: bold;
+    margin-top: 0.5rem;
+  }
 }
 
-body {
-  margin: 0;
-  display: flex;
-  flex-direction: column;
-  min-height: 100vh;
-  min-width: 320px;
-  background-color: var(--bg-color); /* Use CSS variable for background */
-  color: var(--text-color); /* Use CSS variable for text color */
-}
-
+/* Ensure text colors work in both modes */
 h1 {
   font-size: 3.2em;
   line-height: 1.1;
-}
-
-button {
-  border-radius: 8px;
-  border: 1px solid transparent;
-  padding: 0.6em 1.2em;
-  font-size: 1em;
-  font-weight: 500;
-  font-family: inherit;
-  background-color: #1a1a1a;
-  cursor: pointer;
-  transition: border-color 0.25s;
-}
-button:hover {
-  border-color: #646cff;
-}
-button:focus,
-button:focus-visible {
-  outline: 4px auto -webkit-focus-ring-color;
-}
-
-@media (prefers-color-scheme: light) {
-  :root {
-    color: #213547;
-    background-color: #ffffff;
-  }
-  a:hover {
-    color: #747bff;
-  }
-  button {
-    background-color: #f9f9f9;
-  }
-}
-
-.available {
-  color: black; /* Example style for available variant */
-}
-
-.unavailable {
-  color: grey; /* Example style for unavailable variant */
-  text-decoration: line-through; /* Example style for unavailable variant */
-}
-
-:root {
-  --bg-color: #ffffff;
-  --text-color: #1e293b;
-}
-
-@media (prefers-color-scheme: dark) {
-  :root {
-    --bg-color: #1e293b;
-    --text-color: #f8fafc;
-  }
-}
-
-.category-section {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
-  gap: 2rem;
-  margin: 2rem 0;
-}
-
-.category-card {
-  background: white;
-  padding: 1.5rem;
-  border-radius: 8px;
-  box-shadow: 0 2px 8px rgba(0,0,0,0.1);
-  border-top: 4px solid #dc2626;
-}
-
-.category-card h3 {
-  color: #1e40af;
-  margin-top: 0;
-  margin-bottom: 1rem;
-}
-
-.benefits-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
-  gap: 1.5rem;
-  margin: 2rem 0;
-}
-
-.benefit {
-  background: #f8fafc;
-  padding: 1.5rem;
-  border-radius: 8px;
-  text-align: center;
-}
-
-.benefit h4 {
-  color: #059669;
-  margin-bottom: 0.5rem;
-}
-
-.brand-list {
-  columns: 2;
-  column-gap: 2rem;
-  margin: 1rem 0;
-}
-
-.brand-list li {
-  margin-bottom: 0.5rem;
-  break-inside: avoid;
-}
-
-.region-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-  gap: 1.5rem;
-  margin: 1rem 0;
-}
-
-.region {
-  background: #f1f5f9;
-  padding: 1rem;
-  border-radius: 6px;
-}
-
-.region h4 {
-  color: #7c3aed;
-  margin-top: 0;
-}
-
-.how-it-works ol {
-  padding-left: 1.5rem;
-  margin: 1rem 0;
-}
-
-.how-it-works li {
-  margin-bottom: 1rem;
-  line-height: 1.6;
-}
-
-.canadian-values {
-  background: #dbeafe;
-  padding: 1.5rem;
-  border-radius: 8px;
-  margin: 2rem 0;
-}
-
-.cta-section {
-  background: #f0fdf4;
-  padding: 1.5rem;
-  border-radius: 8px;
-  margin: 2rem 0;
-  border-left: 4px solid #10b981;
-}
-
-.site-links {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 1rem;
-  margin: 2rem 0;
-  padding-top: 2rem;
-  border-top: 1px solid #e5e7eb;
-}
-
-.site-links a {
-  color: #3b82f6;
-  text-decoration: none;
-}
-
-.site-links a:hover {
-  text-decoration: underline;
-}
-
-.canadian-footer {
-  text-align: center;
-  padding-top: 2rem;
-  border-top: 1px solid #e5e7eb;
-  color: #6b7280;
-  font-size: 0.875rem;
-}
-
-.proud {
-  color: #dc2626;
-  font-weight: bold;
-  margin-top: 0.5rem;
+  @apply text-gray-900 dark:text-white;
 }

@@ -191,7 +191,7 @@ function ProductCardComponent({ product, pricing, isLcp }: ProductCardProps) {
 
   return (
     <div
-      className="relative flex flex-col bg-white rounded-md shadow-sm hover:shadow-md transition-all cursor-pointer overflow-hidden product-card group"
+      className="relative flex flex-col bg-white dark:bg-gray-800 rounded-md shadow-sm hover:shadow-md dark:hover:shadow-gray-700 transition-all cursor-pointer overflow-hidden product-card group"
       onClick={handleCardClick}
     >
       {hasDiscount && (
@@ -201,12 +201,12 @@ function ProductCardComponent({ product, pricing, isLcp }: ProductCardProps) {
       )}
 
       {!isAvailable && (
-        <div className="absolute top-2 right-2 bg-gray-200 text-gray-700 text-xs font-bold px-1.5 py-0.5 rounded z-10">
+        <div className="absolute top-2 right-2 bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-300 text-xs font-bold px-1.5 py-0.5 rounded z-10">
           {!product.in_stock ? 'OUT OF STOCK' : 'UNAVAILABLE'}
         </div>
       )}
 
-      <div className="relative w-full pt-[56%] sm:pt-[70%] overflow-hidden bg-gray-100 flex-shrink-0 rounded-t-md">
+      <div className="relative w-full pt-[56%] sm:pt-[70%] overflow-hidden bg-gray-100 dark:bg-gray-900 flex-shrink-0 rounded-t-md">
         {finalSrc ? (
           <picture>
             {finalWebpSrcSet && <source type="image/webp" srcSet={finalWebpSrcSet} sizes={sizesAttr} />}
@@ -230,18 +230,20 @@ function ProductCardComponent({ product, pricing, isLcp }: ProductCardProps) {
           </picture>
         ) : (
           <div className="absolute top-0 left-0 w-full h-full flex items-center justify-center">
-            <span className="text-gray-400 text-sm">No Image</span>
+            <span className="text-gray-400 dark:text-gray-500 text-sm">No Image</span>
           </div>
         )}
       </div>
 
       <div className="flex flex-col p-2 sm:p-3 pb-2.5 sm:pb-4">
-        <p className="text-xs text-gray-500 uppercase tracking-wider mb-1 truncate h-4">{product.shop_name}</p>
+        <p className="text-xs text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-1 truncate h-4">
+          {product.shop_name}
+        </p>
 
         <div className="flex items-start justify-between mb-1 sm:mb-2 h-10 sm:h-11">
           <h3
-            className={`text-sm font-medium text-gray-900 text-left line-clamp-2 flex-grow mr-2 ${
-              !isAvailable ? 'line-through text-gray-400' : ''
+            className={`text-sm font-medium text-gray-900 dark:text-gray-100 text-left line-clamp-2 flex-grow mr-2 ${
+              !isAvailable ? 'line-through text-gray-400 dark:text-gray-500' : ''
             }`}
           >
             {product.title}
@@ -250,7 +252,7 @@ function ProductCardComponent({ product, pricing, isLcp }: ProductCardProps) {
             href={product.url || '#'}
             target="_blank"
             rel="noopener noreferrer"
-            className="text-gray-400 hover:text-gray-600 flex-shrink-0 mt-0.5"
+            className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 flex-shrink-0 mt-0.5"
             onClick={(e) => e.stopPropagation()}
             title="View on original site"
           >
@@ -267,28 +269,30 @@ function ProductCardComponent({ product, pricing, isLcp }: ProductCardProps) {
                 .map((variant, index) => (
                   <span
                     key={index}
-                    className="inline-flex items-center text-xs px-2 py-1 rounded-full border border-gray-300 bg-gray-100 text-gray-900"
+                    className="inline-flex items-center text-xs px-2 py-1 rounded-full border border-gray-300 dark:border-gray-600 bg-gray-100 dark:bg-gray-700 text-gray-900 dark:text-gray-100"
                     title={variant.title}
                   >
                     <span className="truncate max-w-[50px]">{variant.title}</span>
                   </span>
                 ))}
               {availableVariantsCount > 2 && (
-                <span className="text-xs text-gray-600 whitespace-nowrap">+{availableVariantsCount - 2}</span>
+                <span className="text-xs text-gray-600 dark:text-gray-400 whitespace-nowrap">
+                  +{availableVariantsCount - 2}
+                </span>
               )}
             </div>
           ) : (
-            <span className="text-xs text-gray-400 invisible">placeholder</span>
+            <span className="text-xs text-gray-400 dark:text-gray-600 invisible">placeholder</span>
           )}
         </div>
 
         <div className="min-h-6 flex items-center">
           <div className="flex items-baseline gap-1 w-full overflow-hidden">
-            <span className="text-sm sm:text-base md:text-lg font-bold text-gray-900 whitespace-nowrap overflow-hidden text-ellipsis">
+            <span className="text-sm sm:text-base md:text-lg font-bold text-gray-900 dark:text-gray-100 whitespace-nowrap overflow-hidden text-ellipsis">
               ${offerPrice?.toFixed(2) ?? variantPrice?.toFixed(2) ?? product.min_price?.toFixed(2) ?? '0.00'}
             </span>
             {compareAtPrice && compareAtPrice > ((offerPrice ?? variantPrice) ?? 0) && (
-              <span className="text-xs text-gray-500 line-through whitespace-nowrap shrink-0">
+              <span className="text-xs text-gray-500 dark:text-gray-400 line-through whitespace-nowrap shrink-0">
                 ${compareAtPrice.toFixed(2)}
               </span>
             )}
