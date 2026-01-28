@@ -1,4 +1,5 @@
 from typing import Dict, Optional, Tuple, List, Any, Union
+import re
 from config.product_type_loader import ConfigLoader
 from core.logger import uploader_logger
 
@@ -8,16 +9,66 @@ class ProductCategorizer:
     def __init__(self):
         self.config = ConfigLoader.load_product_type_mapping()
         self._cache = {}  # Cache for category lookups
+        self._prepare_keywords()
         
         # Log initialization
         category_count = len(self.config.get("category_mapping", {}))
         uploader_logger.info(f"📊 ProductCategorizer initialized with {category_count} categories")
+    
+    def _prepare_keywords(self):
+        """Preprocess keywords for better matching."""
+        self._keyword_patterns = {}
+        category_mapping = self.config.get("category_mapping", {})
+        
+        for category, rules in category_mapping.items():
+            # Create regex patterns for each keyword
+            patterns = []
+            for keyword in rules.get("keywords", []):
+                # Escape special characters and create word boundary pattern
+                pattern = r'\b' + re.escape(keyword) + r'\b'
+                patterns.append(pattern)
+            
+            # Create exclude patterns
+            exclude_patterns = []
+            for exclude in rules.get("exclude", []):
+                pattern = r'\b' + re.escape(exclude) + r'\b'
+                exclude_patterns.append(pattern)
+            
+            self._keyword_patterns[category] = {
+                'include': patterns,
+                'exclude': exclude_patterns,
+                'raw_keywords': rules.get("keywords", []),
+                'raw_excludes': rules.get("exclude", [])
+            }
     
     def _normalize_text(self, text: str) -> str:
         """Normalize text for matching."""
         if not text or not isinstance(text, str):
             return ""
         return text.lower().strip()
+    
+    def _calculate_match_score(self, text: str, patterns: List[str], keywords: List[str]) -> int:
+        """Calculate a match score based on keyword presence and specificity."""
+        score = 0
+        
+        # Check each pattern
+        for pattern in patterns:
+            if re.search(pattern, text):
+                score += 10
+        
+        # Additional scoring based on exact matches and specificity
+        for keyword in keywords:
+            # Exact match gets highest score
+            if f" {keyword} " in f" {text} ":
+                score += 15
+            # Contains with word boundaries
+            elif re.search(r'\b' + re.escape(keyword) + r'\b', text):
+                score += 10
+            # Simple contains (lowest score)
+            elif keyword in text:
+                score += 5
+        
+        return score
     
     def extract_gender_age(self, product_type: str, tags: Union[List[str], str, None] = None) -> str:
         """
@@ -47,20 +98,35 @@ class ProductCategorizer:
         
         patterns = self.config.get("gender_age_patterns", {})
         
-        # Check each pattern
+        # Track matches with scores
+        gender_scores = {}
+        
         for category, pattern_list in patterns.items():
+            score = 0
+            
             # Check each text individually
             for text in texts_to_search:
                 for pattern in pattern_list:
-                    if pattern in text:
-                        uploader_logger.debug(f"Matched gender '{category}' with pattern '{pattern}' in text: '{text}'")
-                        return category
+                    if re.search(r'\b' + re.escape(pattern) + r'\b', text):
+                        score += 10
+                    elif pattern in text:
+                        score += 5
             
-            # Also check the combined text
+            # Check combined text
             for pattern in pattern_list:
-                if pattern in combined_text:
-                    uploader_logger.debug(f"Matched gender '{category}' with pattern '{pattern}' in combined text")
-                    return category
+                if re.search(r'\b' + re.escape(pattern) + r'\b', combined_text):
+                    score += 5
+                elif pattern in combined_text:
+                    score += 2
+            
+            if score > 0:
+                gender_scores[category] = score
+        
+        # Pick best match
+        if gender_scores:
+            best_gender = max(gender_scores.items(), key=lambda x: x[1])[0]
+            uploader_logger.debug(f"Matched gender '{best_gender}' with score {gender_scores[best_gender]}")
+            return best_gender
         
         # No match found, use default
         default = self.config.get("default_gender_age", "Unisex")
@@ -87,6 +153,10 @@ class ProductCategorizer:
             all_genders = ["Mens"]
         elif primary_gender in ["Kids", "Baby"]:
             all_genders = [primary_gender]
+        elif primary_gender == "Women":
+            all_genders = ["Women"]
+        elif primary_gender == "Men":
+            all_genders = ["Men"]
         else:
             # Fallback for any other category
             all_genders = [primary_gender]
@@ -107,45 +177,168 @@ class ProductCategorizer:
         if not normalized:
             result = (self.config.get("uncategorized_fallback", "Uncategorized"), None)
             self._cache[cache_key] = result
+            uploader_logger.debug(f"No product type provided, using fallback: {result}")
             return result
         
-        category_mapping = self.config.get("category_mapping", {})
+        # Track all matches with scores
+        matches = []
         
-        for category, rules in category_mapping.items():
-            # Check keywords
-            keywords = rules.get("keywords", [])
-            has_keyword = any(keyword in normalized for keyword in keywords)
+        for category, patterns in self._keyword_patterns.items():
+            # Calculate match score
+            match_score = self._calculate_match_score(
+                normalized, 
+                patterns['include'], 
+                patterns['raw_keywords']
+            )
             
-            if has_keyword:
-                # Check excludes
-                excludes = rules.get("exclude", [])
-                has_exclude = any(exclude in normalized for exclude in excludes)
+            # Check for excludes
+            exclude_score = 0
+            for exclude_pattern in patterns['exclude']:
+                if re.search(exclude_pattern, normalized):
+                    exclude_score += 20  # Heavy penalty for excluded terms
+                    break
+            
+            for exclude in patterns['raw_excludes']:
+                if exclude in normalized:
+                    exclude_score += 10
+                    break
+            
+            # Final score
+            final_score = match_score - exclude_score
+            
+            if final_score > 0:
+                # Add specificity bonus (more specific categories get higher score)
+                specificity = len(category.split(' - '))  # More dashes = more specific
+                final_score += specificity * 5
                 
-                if not has_exclude:
-                    # Extract top-level category
-                    if ' - ' in category:
-                        top_level, subcategory = category.split(' - ', 1)
-                        result = (top_level, category)
-                    else:
-                        result = (category, None)
-                    
-                    self._cache[cache_key] = result
-                    return result
+                matches.append((final_score, category))
+        
+        # Sort by score (highest first)
+        matches.sort(key=lambda x: x[0], reverse=True)
+        
+        if matches:
+            best_score, best_category = matches[0]
+            
+            # Log the match for debugging
+            uploader_logger.debug(f"Categorized '{product_type}' as '{best_category}' (score: {best_score})")
+            
+            # Extract top-level category
+            if ' - ' in best_category:
+                top_level, subcategory = best_category.split(' - ', 1)
+                result = (top_level, best_category)
+            else:
+                result = (best_category, None)
+            
+            self._cache[cache_key] = result
+            return result
         
         # No match found
         result = (self.config.get("uncategorized_fallback", "Uncategorized"), None)
         self._cache[cache_key] = result
+        uploader_logger.debug(f"No category match found for '{product_type}', using fallback: {result}")
         return result
     
-    def get_category_info(self, product_type: str, tags: Union[List[str], str, None] = None) -> Dict[str, Any]:
+    def categorize_product_with_context(self, 
+                                      product_type: str,
+                                      title: Optional[str] = None,
+                                      description: Optional[str] = None,
+                                      vendor: Optional[str] = None) -> Tuple[str, Optional[str]]:
+        """
+        Enhanced categorization using multiple data sources.
+        Falls back to product_type only if no better match found.
+        """
+        # Create search text from all available sources
+        search_parts = []
+        
+        # Priority weights for different sources
+        weights = {
+            'product_type': 1.5,
+            'title': 1.2,
+            'description': 0.8,
+            'vendor': 0.5
+        }
+        
+        sources = [
+            (product_type, 'product_type'),
+            (title, 'title'),
+            (description, 'description'),
+            (vendor, 'vendor')
+        ]
+        
+        all_matches = {}
+        
+        for text, source_name in sources:
+            if not text:
+                continue
+                
+            normalized = self._normalize_text(text)
+            
+            # Find matches in this text
+            for category, patterns in self._keyword_patterns.items():
+                match_score = self._calculate_match_score(
+                    normalized,
+                    patterns['include'],
+                    patterns['raw_keywords']
+                )
+                
+                # Apply source weight
+                weighted_score = match_score * weights[source_name]
+                
+                # Check excludes
+                exclude_penalty = 0
+                for exclude in patterns['raw_excludes']:
+                    if exclude in normalized:
+                        exclude_penalty = 30  # Heavy penalty
+                        break
+                
+                final_score = weighted_score - exclude_penalty
+                
+                if final_score > 0:
+                    # Add to aggregate scores
+                    if category not in all_matches:
+                        all_matches[category] = 0
+                    all_matches[category] += final_score
+        
+        if all_matches:
+            # Pick best category
+            best_category = max(all_matches.items(), key=lambda x: x[1])[0]
+            best_score = all_matches[best_category]
+            
+            uploader_logger.debug(f"Categorized with context: '{best_category}' (score: {best_score})")
+            
+            if ' - ' in best_category:
+                top_level, subcategory = best_category.split(' - ', 1)
+                return (top_level, best_category)
+            else:
+                return (best_category, None)
+        
+        # Fall back to product_type only
+        return self.categorize_product(product_type)
+    
+    def get_category_info(self, 
+                         product_type: str, 
+                         tags: Union[List[str], str, None] = None,
+                         title: Optional[str] = None,
+                         description: Optional[str] = None,
+                         vendor: Optional[str] = None) -> Dict[str, Any]:
         """Get complete category information for a product.
         Returns a dictionary where some values may be None.
         
         Args:
             product_type: The product type string
             tags: Optional list of tags or string of tags for gender detection
+            title: Optional product title for better categorization
+            description: Optional description for better categorization
+            vendor: Optional vendor/brand for better categorization
         """
-        top_level, subcategory = self.categorize_product(product_type)
+        # Use enhanced categorization if additional context is provided
+        if title or description or vendor:
+            top_level, subcategory = self.categorize_product_with_context(
+                product_type, title, description, vendor
+            )
+        else:
+            top_level, subcategory = self.categorize_product(product_type)
+            
         primary_gender, all_genders = self.extract_gender_age_with_unisex_expansion(product_type, tags)
         
         # Determine grouped product type
@@ -163,9 +356,16 @@ class ProductCategorizer:
             'is_unisex': primary_gender == "Unisex" or "Unisex" in all_genders
         }
     
-    def get_category_info_with_defaults(self, product_type: str, tags: Union[List[str], str, None] = None) -> Dict[str, Any]:
+    def get_category_info_with_defaults(self, 
+                                       product_type: str, 
+                                       tags: Union[List[str], str, None] = None,
+                                       title: Optional[str] = None,
+                                       description: Optional[str] = None,
+                                       vendor: Optional[str] = None) -> Dict[str, Any]:
         """Get complete category information with default values instead of None."""
-        category_info = self.get_category_info(product_type, tags)
+        category_info = self.get_category_info(
+            product_type, tags, title, description, vendor
+        )
         
         # Replace None with empty string or other defaults
         return {
@@ -185,6 +385,36 @@ class ProductCategorizer:
     def reload_config(self):
         """Reload configuration from file."""
         self.config = ConfigLoader.load_product_type_mapping()
+        self._prepare_keywords()  # Re-prepare keywords
         self.clear_cache()
         category_count = len(self.config.get("category_mapping", {}))
         uploader_logger.info(f"🔄 Reloaded product type mapping with {category_count} categories")
+    
+    def get_category_hierarchy(self, product_type: str) -> Dict[str, Any]:
+        """
+        Returns structured hierarchy for UI filters.
+        Useful for building breadcrumbs and multi-level filtering.
+        """
+        top_level, subcategory = self.categorize_product(product_type)
+        
+        hierarchy = {
+            'level_1': top_level,
+            'level_2': None,
+            'level_3': None,
+            'breadcrumb': [top_level],
+            'filter_path': top_level.lower().replace(' ', '-')
+        }
+        
+        if subcategory:
+            parts = subcategory.split(' - ')
+            for i, part in enumerate(parts[1:], 1):  # Skip level_1 (already in parts[0])
+                hierarchy[f'level_{i+1}'] = part
+                hierarchy['breadcrumb'].append(part)
+            
+            # Update filter path
+            hierarchy['filter_path'] = '/'.join(
+                p.lower().replace(' ', '-') 
+                for p in parts
+            )
+        
+        return hierarchy

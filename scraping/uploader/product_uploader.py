@@ -1,7 +1,6 @@
 """
 Product uploader with normalized image structure and product categorization.
 Filters to only upload available products (in-stock with valid prices).
-NOW WITH PROPER HTML DESCRIPTION HANDLING - COMPLETE PRODUCTION VERSION.
 """
 import json
 import re
@@ -9,6 +8,7 @@ import html as html_lib
 from typing import List, Dict, Any, Optional, Tuple
 from pathlib import Path
 from datetime import datetime
+import time
 
 from uploader.base_uploader import BaseUploader
 from uploader.data_processor import DataProcessor
@@ -152,7 +152,7 @@ class ProductProcessor:
             uploader_logger.warning(f"Error processing description: {e}")
             self.stats['failed_descriptions'] += 1
             return None, 'none'
-    
+        
     def should_skip_product(self, variants: List[Dict[str, Any]], min_price: Optional[float]) -> Tuple[bool, str]:
         """Determine if product should be skipped based on filters."""
         self.stats['total_processed'] += 1
@@ -191,32 +191,13 @@ class ProductProcessor:
         compare_price = self.processor.clean_numeric(variant.get("compare_at_price"))
         available = self.processor.clean_boolean(variant.get("available"))
         
-        # Handle position
-        position = variant.get("position", 0)
-        if isinstance(position, float):
-            position = int(position)
-        elif not isinstance(position, int):
-            try:
-                position = int(float(position))
-            except (ValueError, TypeError):
-                position = 0
-        
-        # Extract option values
-        option1 = variant.get("option1", "")
-        option2 = variant.get("option2", "")
-        option3 = variant.get("option3", "")
-        
         return {
             "id": variant_id,
             "title": variant.get("title", ""),
             "price": price,
             "available": available,
             "compare_at_price": compare_price,
-            "sku": variant.get("sku", ""),
-            "position": position,
-            "option1": option1 if option1 else None,
-            "option2": option2 if option2 else None,
-            "option3": option3 if option3 else None,
+
         }
     
     def _extract_image_data(self, image: Dict[str, Any]) -> Optional[Dict[str, Any]]:
@@ -405,7 +386,6 @@ class ProductProcessor:
                 "in_stock": in_stock,
                 "max_discount_percentage": max_discount,
                 "on_sale": on_sale,
-                "total_variants": len(variants),
                 
                 # JSON aggregated data
                 "variants": json.dumps(variant_data) if variant_data else None,
@@ -431,11 +411,6 @@ class ProductProcessor:
                     "available": variant_entry["available"],
                     "price": variant_entry["price"],
                     "compare_at_price": variant_entry["compare_at_price"],
-                    "sku": variant_entry["sku"],
-                    "position": variant_entry["position"],
-                    "option1": variant_entry["option1"],
-                    "option2": variant_entry["option2"],
-                    "option3": variant_entry["option3"],
                 }
                 self.collections['variants'].append(variant_db_entry)
             
@@ -524,20 +499,32 @@ class ProductProcessor:
 
 
 class ProductUploader(BaseUploader):
-    """Main product uploader with HTML description support."""
+    """Main product uploader with HTML description support and timeout handling."""
     
     def __init__(
         self, 
         filter_available_only: bool = True, 
         min_price_threshold: float = 0,
         preserve_html: bool = True,
-        batch_size: int = 100
+        batch_size: int = 100,
+        timeout_retry_config: Optional[Dict[str, Any]] = None
     ):
         super().__init__('products')
         self.filter_available_only = filter_available_only
         self.min_price_threshold = min_price_threshold
         self.preserve_html = preserve_html
         self.batch_size = batch_size
+        
+        # Configure timeout handling with aggressive settings for deletes
+        self.timeout_retry_config = timeout_retry_config or {
+            'max_retries': 5,  # Increased retries
+            'initial_delay': 1.0,  # Start with 1 second
+            'backoff_factor': 2.0,
+            'max_delay': 60.0,  # Longer max delay
+            'batch_size_reduction_factor': 0.3,  # More aggressive reduction
+            'min_batch_size': 5,  # Smaller minimum
+            'delete_batch_size': 10,  # Even smaller for deletes
+        }
         
         self.product_processor = ProductProcessor(
             filter_available_only=filter_available_only,
@@ -549,7 +536,8 @@ class ProductUploader(BaseUploader):
             f"ProductUploader initialized: "
             f"filter_available_only={filter_available_only}, "
             f"min_price_threshold={min_price_threshold}, "
-            f"preserve_html={preserve_html}"
+            f"preserve_html={preserve_html}, "
+            f"timeout_retries={self.timeout_retry_config['max_retries']}"
         )
     
     def get_table_name(self) -> str:
@@ -557,8 +545,6 @@ class ProductUploader(BaseUploader):
     
     def transform_data(self, raw_data: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
         """Transform raw product data."""
-        # This method is kept for compatibility with BaseUploader interface
-        # but actual processing is done in process_file
         return []
     
     def _get_shop_names_mapping(self, shop_ids: set) -> Dict[str, str]:
@@ -572,22 +558,33 @@ class ProductUploader(BaseUploader):
             # Convert to list for Supabase query
             shop_ids_list = list(shop_ids)
             
-            # Query shops table
-            def get_shops(client):
-                result = client.table('shops') \
-                    .select('id, shop_name') \
-                    .in_('id', shop_ids_list) \
-                    .execute()
-                return result.data
+            # Query shops table with smaller batches
+            all_shops = []
+            batch_size = 50
             
-            shops_data = self.supabase.safe_execute(
-                get_shops,
-                f"Get shop names for {len(shop_ids)} shops",
-                max_retries=3
-            )
+            for i in range(0, len(shop_ids_list), batch_size):
+                batch = shop_ids_list[i:i + batch_size]
+                batch_num = i // batch_size + 1
+                total_batches = (len(shop_ids_list) - 1) // batch_size + 1
+                
+                def get_shops_batch(client):
+                    result = client.table('shops') \
+                        .select('id, shop_name') \
+                        .in_('id', batch) \
+                        .execute()
+                    return result.data
+                
+                shops_batch = self.supabase.safe_execute(
+                    get_shops_batch,
+                    f"Get shop names batch {batch_num}/{total_batches}",
+                    max_retries=2
+                )
+                
+                if shops_batch:
+                    all_shops.extend(shops_batch)
             
-            if shops_data:
-                for shop in shops_data:
+            if all_shops:
+                for shop in all_shops:
                     shop_id_to_name[str(shop['id'])] = shop['shop_name']
             
             uploader_logger.debug(f"Found {len(shop_id_to_name)} shop names")
@@ -596,6 +593,246 @@ class ProductUploader(BaseUploader):
             uploader_logger.error(f"Error fetching shop names: {e}")
         
         return shop_id_to_name
+    
+    def _is_timeout_error(self, error: Exception) -> bool:
+        """Check if error is a timeout error."""
+        error_msg = str(error).lower()
+        return any(timeout_indicator in error_msg for timeout_indicator in 
+                  ['timeout', '57014', 'statement timeout', 'canceling statement'])
+    
+    def _handle_timeout_retry(self, operation_type: str, operation_name: str,
+                             attempt: int = 1, batch_size: Optional[int] = None) -> bool:
+        """
+        Handle timeout retry logic with exponential backoff.
+        """
+        config = self.timeout_retry_config
+        max_retries = config['max_retries']
+        
+        if attempt > max_retries:
+            self.logger.error(f"Max retries ({max_retries}) exceeded for {operation_name}")
+            return False
+        
+        # Calculate exponential backoff delay
+        delay = min(
+            config['initial_delay'] * (config['backoff_factor'] ** (attempt - 1)),
+            config['max_delay']
+        )
+        
+        self.logger.warning(
+            f"Timeout attempt {attempt}/{max_retries} for {operation_name}. "
+            f"Waiting {delay:.1f}s before retry..."
+        )
+        
+        time.sleep(delay)
+        return True  # Continue retry
+    
+    def _safe_bulk_upsert(self, data: List[Dict[str, Any]], table_name: str, 
+                         on_conflict: str = "id") -> bool:
+        """
+        Safe bulk upsert with timeout retry handling and correct batch numbering.
+        """
+        if not data:
+            return True
+        
+        config = self.timeout_retry_config
+        
+        # Start with small batch sizes
+        initial_batch_size = min(50, len(data))  # Start small
+        total_batches = (len(data) - 1) // initial_batch_size + 1
+        
+        self.logger.info(f"Uploading {len(data)} records to {table_name} in {total_batches} batches")
+        
+        all_success = True
+        
+        for i in range(0, len(data), initial_batch_size):
+            batch = data[i:i + initial_batch_size]
+            batch_num = i // initial_batch_size + 1
+            batch_name = f"batch {batch_num}/{total_batches} to {table_name}"
+            
+            # Only log progress for large operations
+            if total_batches > 10 and batch_num % 10 == 0:
+                self.logger.info(f"Processing {batch_name} ({len(batch)} records)")
+            
+            success = self._execute_upsert_with_retry(batch, table_name, on_conflict, batch_name)
+            if not success:
+                all_success = False
+                # Try individual inserts as last resort
+                if len(batch) > 1:
+                    self.logger.info(f"Trying individual inserts for failed batch {batch_num}/{total_batches}...")
+                    individual_success = True
+                    for idx, record in enumerate(batch, 1):
+                        record_name = f"individual record {idx}/{len(batch)} to {table_name}"
+                        record_success = self._execute_upsert_with_retry(
+                            [record], table_name, on_conflict, record_name
+                        )
+                        if not record_success:
+                            individual_success = False
+                    
+                    if individual_success:
+                        self.logger.info(f"Individual inserts succeeded for batch {batch_num}/{total_batches}")
+                    else:
+                        self.logger.error(f"Individual inserts also failed for batch {batch_num}/{total_batches}")
+        
+        return all_success
+    
+    def _execute_upsert_with_retry(self, data: List[Dict[str, Any]], table_name: str,
+                                  on_conflict: str, operation_name: str) -> bool:
+        """Execute upsert with retry logic."""
+        config = self.timeout_retry_config
+        max_retries = config['max_retries']
+        
+        for attempt in range(1, max_retries + 1):
+            try:
+                success = self.supabase.bulk_upsert(
+                    table_name=table_name,
+                    data=data,
+                    on_conflict=on_conflict
+                )
+                if success and attempt == 1:
+                    self.logger.debug(f"✅ {operation_name} succeeded")
+                elif success:
+                    self.logger.debug(f"✅ {operation_name} succeeded on retry {attempt}")
+                return success
+            except Exception as e:
+                if self._is_timeout_error(e):
+                    self.logger.warning(f"Timeout on {operation_name} (attempt {attempt}): {e}")
+                    if attempt < max_retries:
+                        # Wait and retry with same data
+                        time.sleep(config['initial_delay'] * (config['backoff_factor'] ** (attempt - 1)))
+                    else:
+                        self.logger.error(f"Max retries exceeded for {operation_name}")
+                        return False
+                else:
+                    self.logger.error(f"Non-timeout error on {operation_name}: {e}")
+                    return False
+        
+        return False
+    
+    def _safe_bulk_delete(self, table_name: str, ids: List[str]) -> bool:
+        """
+        Safe bulk delete with ultra-small batch sizes and aggressive retry.
+        """
+        if not ids:
+            return True
+        
+        config = self.timeout_retry_config
+        delete_batch_size = config.get('delete_batch_size', 5)  # Very small batches
+        total_batches = (len(ids) - 1) // delete_batch_size + 1
+        
+        self.logger.info(f"Deleting {len(ids)} records from {table_name} in {total_batches} batches")
+        
+        all_success = True
+        
+        for i in range(0, len(ids), delete_batch_size):
+            batch = ids[i:i + delete_batch_size]
+            batch_num = i // delete_batch_size + 1
+            
+            # Only log progress for large operations
+            if total_batches > 10 and batch_num % 10 == 0:
+                self.logger.info(f"Deleting batch {batch_num}/{total_batches} ({len(batch)} records)")
+            
+            success = self._execute_delete_with_retry(table_name, batch, batch_num, total_batches)
+            if not success:
+                all_success = False
+                
+                # Try individual deletes
+                self.logger.info(f"Trying individual deletes for batch {batch_num}/{total_batches}...")
+                individual_success = True
+                for idx, record_id in enumerate(batch, 1):
+                    if not self._execute_single_delete(table_name, record_id):
+                        individual_success = False
+                        self.logger.warning(f"Failed to delete individual record {idx}/{len(batch)}")
+                
+                if individual_success:
+                    self.logger.info(f"Individual deletes succeeded for batch {batch_num}/{total_batches}")
+                else:
+                    self.logger.error(f"Individual deletes also failed for batch {batch_num}/{total_batches}")
+            
+            # Small delay between batches to prevent overwhelming the database
+            if i + delete_batch_size < len(ids):
+                time.sleep(0.1)
+        
+        return all_success
+    
+    def _execute_delete_with_retry(self, table_name: str, ids: List[str], 
+                                  batch_num: int, total_batches: int) -> bool:
+        """Execute delete with retry logic and correct batch numbering."""
+        config = self.timeout_retry_config
+        max_retries = config['max_retries']
+        operation_name = f"batch {batch_num}/{total_batches} delete from {table_name} ({len(ids)} records)"
+        
+        for attempt in range(1, max_retries + 1):
+            try:
+                success = self.supabase.bulk_delete(table_name, ids)
+                if success:
+                    self.logger.debug(f"✅ {operation_name} succeeded")
+                    return True
+                else:
+                    self.logger.warning(f"⚠️ {operation_name} failed (not a timeout)")
+                    return False
+            except Exception as e:
+                if self._is_timeout_error(e):
+                    self.logger.warning(f"Timeout on {operation_name} (attempt {attempt}): {e}")
+                    if attempt < max_retries:
+                        # Exponential backoff
+                        delay = min(
+                            config['initial_delay'] * (config['backoff_factor'] ** (attempt - 1)),
+                            config['max_delay']
+                        )
+                        time.sleep(delay)
+                    else:
+                        self.logger.error(f"Max retries exceeded for {operation_name}")
+                        return False
+                else:
+                    self.logger.error(f"Non-timeout error on {operation_name}: {e}")
+                    return False
+        
+        return False
+    
+    def _execute_single_delete(self, table_name: str, record_id: str) -> bool:
+        """Execute a single record delete with retry."""
+        config = self.timeout_retry_config
+        max_retries = 3
+        
+        for attempt in range(1, max_retries + 1):
+            try:
+                # Use direct client for single delete
+                result = self.supabase.client.table(table_name).delete().eq('id', record_id).execute()
+                
+                # Check for errors
+                if hasattr(result, 'error'):
+                    self.logger.debug(f"Delete error for {record_id}: {result}")
+                    return False
+                
+                return True
+            except Exception as e:
+                if self._is_timeout_error(e):
+                    if attempt < max_retries:
+                        time.sleep(1)
+                    else:
+                        self.logger.debug(f"Max retries exceeded for single delete of {record_id}")
+                        return False
+                else:
+                    self.logger.debug(f"Error deleting {record_id}: {e}")
+                    return False
+        
+        return False
+    
+    def _safe_execute_query(self, query_func, description: str, max_retries: int = 3) -> Any:
+        """Execute a query with timeout retry handling."""
+        for attempt in range(1, max_retries + 1):
+            try:
+                return self.supabase.safe_execute(query_func, description, max_retries=1)
+            except Exception as e:
+                if self._is_timeout_error(e) and attempt < max_retries:
+                    delay = min(2.0 * (attempt - 1), 10.0)
+                    self.logger.warning(f"Query timeout ({description}), retry {attempt}/{max_retries} in {delay}s...")
+                    time.sleep(delay)
+                else:
+                    self.logger.error(f"Error during {description}: {e}")
+                    return None
+        
+        return None
     
     def process_file(self, filepath: Path) -> bool:
         """Process a single product file with filtering and HTML support."""
@@ -678,9 +915,9 @@ class ProductUploader(BaseUploader):
                 
                 self.logger.info(f"🚀 Uploading {uploaded} products to database...")
                 
-                success = self.supabase.bulk_upsert(
-                    table_name="products_with_details_core",
+                success = self._safe_bulk_upsert(
                     data=products_data,
+                    table_name="products_with_details_core",
                     on_conflict="id"
                 )
                 
@@ -691,9 +928,9 @@ class ProductUploader(BaseUploader):
                     variants = self.product_processor.collections.get("variants", [])
                     if variants:
                         self.logger.info(f"📋 Uploading {len(variants)} variants...")
-                        variants_success = self.supabase.bulk_upsert(
-                            table_name="variants",
+                        variants_success = self._safe_bulk_upsert(
                             data=variants,
+                            table_name="variants",
                             on_conflict="id"
                         )
                         if variants_success:
@@ -705,9 +942,9 @@ class ProductUploader(BaseUploader):
                     images = self.product_processor.collections.get("images", [])
                     if images:
                         self.logger.info(f"🖼️  Uploading {len(images)} images...")
-                        images_success = self.supabase.bulk_upsert(
-                            table_name="images",
+                        images_success = self._safe_bulk_upsert(
                             data=images,
+                            table_name="images",
                             on_conflict="id"
                         )
                         if images_success:
@@ -719,14 +956,17 @@ class ProductUploader(BaseUploader):
                     if product_ids:
                         shop_ids = {p["shop_id"] for p in self.product_processor.collections["products"]}
                         for shop_id in shop_ids:
-                            self.cleanup_stale_records(product_ids, str(shop_id))
+                            # Skip cleanup if we're having timeout issues
+                            if len(product_ids) > 1000:  # Skip cleanup for large datasets
+                                self.logger.warning(f"Skipping cleanup for shop {shop_id} due to large dataset")
+                            else:
+                                self.cleanup_stale_records(product_ids, str(shop_id))
                     
                     # Move file to processed
                     try:
                         self.file_manager.move_to_processed(filepath)
                     except Exception as e:
                         self.logger.warning(f"Could not move file to processed: {e}")
-                        # Try alternative approach
                         try:
                             processed_dir = self.file_manager.data_dirs['processed'] / 'products'
                             processed_dir.mkdir(parents=True, exist_ok=True)
@@ -757,7 +997,6 @@ class ProductUploader(BaseUploader):
                 
         except json.JSONDecodeError as e:
             self.logger.error(f"❌ JSON decode error in {filepath.name}: {e}")
-            # Move file to failed directory
             try:
                 failed_dir = self.file_manager.data_dirs['failed'] / 'products'
                 failed_dir.mkdir(parents=True, exist_ok=True)
@@ -769,7 +1008,6 @@ class ProductUploader(BaseUploader):
             self.logger.error(f"❌ Error processing {filepath.name}: {e}")
             import traceback
             self.logger.error(traceback.format_exc())
-            # Move file to failed directory
             try:
                 failed_dir = self.file_manager.data_dirs['failed'] / 'products'
                 failed_dir.mkdir(parents=True, exist_ok=True)
@@ -781,20 +1019,23 @@ class ProductUploader(BaseUploader):
     def cleanup_stale_records(self, current_ids: List[str], shop_id: Optional[str] = None) -> bool:
         """
         Remove products from database that are no longer in the current data.
-        
-        Overrides BaseUploader.cleanup_stale_records with proper signature.
         """
         try:
-            self.logger.debug(f"Cleaning up stale records for shop {shop_id}...")
+            if not current_ids:
+                return True
+            
+            self.logger.debug(f"Starting cleanup for shop {shop_id}...")
             
             # Get all product IDs for this shop from database
             def get_existing_products(client):
                 query = client.table("products_with_details_core").select("id")
                 if shop_id:
                     query = query.eq("shop_id", shop_id)
+                # Limit to avoid huge queries
+                query = query.limit(10000)
                 return query.execute()
             
-            result = self.supabase.safe_execute(
+            result = self._safe_execute_query(
                 get_existing_products,
                 f"Get existing product IDs for shop {shop_id}",
                 max_retries=2
@@ -813,10 +1054,24 @@ class ProductUploader(BaseUploader):
                 self.logger.info(f"No stale products to delete for shop {shop_id}")
                 return True
             
+            if len(to_delete) > 1000:
+                self.logger.warning(
+                    f"Large number of records to delete ({len(to_delete)}). "
+                    f"Consider manual cleanup for shop {shop_id}"
+                )
+                # Process in smaller chunks
+                for i in range(0, len(to_delete), 500):
+                    chunk = to_delete[i:i + 500]
+                    chunk_num = i // 500 + 1
+                    total_chunks = (len(to_delete) - 1) // 500 + 1
+                    self.logger.info(f"Deleting chunk {chunk_num}/{total_chunks} ({len(chunk)} records)")
+                    self._safe_bulk_delete("products_with_details_core", chunk)
+                return True
+            
             self.logger.info(f"🗑️  Removing {len(to_delete)} stale products for shop {shop_id}")
             
-            # Delete stale records
-            success = self.supabase.bulk_delete("products_with_details_core", to_delete)
+            # Delete stale records using safe delete
+            success = self._safe_bulk_delete("products_with_details_core", to_delete)
             
             if success:
                 self.logger.info(f"✅ Removed {len(to_delete)} stale products")
