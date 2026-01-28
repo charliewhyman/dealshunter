@@ -1104,20 +1104,19 @@ export function HomePage() {
           </div>
   
           {/* Products Grid */}
-          <div className="flex-1">
-            {/* E-commerce Best Practice: Results count and sort */}
-            <div className="mb-3 flex items-center justify-between sm:mb-4">
-              <div className="text-sm text-gray-600 dark:text-gray-400">
-                {!loading && products.length > 0 && (
-                  <span className="font-medium">
-                    {products.length} {products.length === 1 ? 'product' : 'products'} found
-                  </span>
-                )}
-              </div>
-              <div className="w-40 sm:w-48">
-                <SingleSelectDropdown options={sortOptions} selected={sortOrder} onChange={handleSortChange} placeholder="Sort by" />
-              </div>
+        <div className="flex-1">
+          {/* E-commerce Best Practice: Results count and sort */}
+          <div className="mb-3 flex items-center justify-end sm:mb-4">
+            {/* Sort dropdown aligned to the right */}
+            <div className="w-40 sm:w-48">
+              <SingleSelectDropdown 
+                options={sortOptions} 
+                selected={sortOrder} 
+                onChange={handleSortChange} 
+                placeholder="Sort by" 
+              />
             </div>
+          </div>
   
             {error && (
               <div className="mb-4 p-4 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg">
