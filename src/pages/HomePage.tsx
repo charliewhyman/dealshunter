@@ -1022,9 +1022,6 @@ export function HomePage() {
                       <div className="flex items-center gap-2">
                         <AsyncLucideIcon name="Tag" className="h-4 w-4 text-orange-600 dark:text-orange-400" />
                         <span className="text-sm font-medium text-gray-900 dark:text-gray-100">On Sale Only</span>
-                        <span className="inline-flex items-center rounded-full bg-orange-100 dark:bg-orange-900 px-2 py-0.5 text-xs font-medium text-orange-800 dark:text-orange-300">
-                          Save Now
-                        </span>
                       </div>
                       <p className="text-xs text-gray-600 dark:text-gray-400 mt-1">
                         Show only discounted products
