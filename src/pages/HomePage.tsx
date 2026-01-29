@@ -45,7 +45,7 @@ export function HomePage() {
   const [products, setProducts] = useState<ProductWithDetails[]>([]);
   const [searchParams] = useSearchParams();
   const urlSearchQuery = searchParams.get('search') || '';
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading] = useState(true);
   const [initialLoad, setInitialLoad] = useState(true);
   const [hasMore, setHasMore] = useState(true);
   const [page, setPage] = useState(0);
@@ -69,7 +69,6 @@ export function HomePage() {
   // Hybrid loading: auto-load initially, then show "Load More"
   const autoLoadCountRef = useRef(0);
   const [showLoadMoreButton, setShowLoadMoreButton] = useState(false);
-  const [isClearing, setIsClearing] = useState(false);
 
   const [searchQuery, setSearchQuery] = useState<string>(() => {
     try {
@@ -288,11 +287,31 @@ export function HomePage() {
     return data;
   }, [CACHE_TTL]);
 
-  // Build RPC parameters
-  const buildRpcParams = useCallback((filters: FilterOptions, page: number, sortOrder: SortOrder) => {
-    // Fetch ITEMS_PER_PAGE + 1 to check if there's more data
-    const limit = ITEMS_PER_PAGE + 1;
+  const mergeUniqueProducts = useCallback((prev: ProductWithDetails[], next: ProductWithDetails[]) => {
+    const seen = new Set<string>();
+    const out: ProductWithDetails[] = [];
     
+    for (const p of prev) {
+      const id = String(p.id);
+      if (!seen.has(id)) {
+        seen.add(id);
+        out.push(p);
+      }
+    }
+    
+    for (const p of next) {
+      const id = String(p.id);
+      if (!seen.has(id)) {
+        seen.add(id);
+        out.push(p);
+      }
+    }
+    
+    return out;
+  }, []);
+
+  // Build RPC parameters - IMPORTANT: Fetch ITEMS_PER_PAGE + 1
+  const buildRpcParams = useCallback((filters: FilterOptions, page: number, sortOrder: SortOrder) => {
     return {
       p_shop_ids: filters.selectedShopName.filter(s => s.trim()),
       p_size_groups: filters.selectedSizeGroups.filter(s => s.trim()),
@@ -303,15 +322,15 @@ export function HomePage() {
       p_min_price: filters.selectedPriceRange[0],
       p_max_price: filters.selectedPriceRange[1],
       p_search_query: filters.searchQuery?.trim() || null,
-      p_limit: limit,
+      p_limit: ITEMS_PER_PAGE + 1, // Fetch one extra to check if there's more data
       p_offset: page * ITEMS_PER_PAGE,
       p_sort_order: sortOrder === 'price_asc' ? 'price_asc' : 
                     sortOrder === 'price_desc' ? 'price_desc' : 
-                    sortOrder === 'newest' ? 'created_desc' : 'discount_desc'
+                    sortOrder === 'newest' ? 'newest' : 'discount_desc'
     };
   }, []);
 
-  // Main fetch function
+  // Main fetch function with LIMIT+1 pattern
   const fetchFilteredProducts = useCallback(async (
     filters: FilterOptions,
     page: number,
@@ -328,63 +347,32 @@ export function HomePage() {
     // Mark request as in-flight
     inFlightRequestsRef.current.add(requestKey);
     
-    // Set loading state BEFORE clearing (prevents flashing)
-    if (page === 0 || isFilterChange) {
+    // Clear cache on filter change
+    if (isFilterChange) {
+      prefetchCacheRef.current = {};
+      autoLoadCountRef.current = 0;
       startTransition(() => {
         setProducts([]);
         setShowLoadMoreButton(false);
-        setLoading(true);
-        setInitialLoad(true);
-        setHasMore(true);
-        setError(null);
       });
-    } else {
-      setLoading(true);
     }
-    
-    isFetchingRef.current = true;
     
     // Check cache first
     const cached = prefetchCacheRef.current[requestKey];
     if (cached) {
-      const newData = cached.data;
-      const hasMoreData = newData.length > ITEMS_PER_PAGE;
-      const productsToShow = hasMoreData ? newData.slice(0, ITEMS_PER_PAGE) : newData;
+      const hasMoreData = cached.data.length > ITEMS_PER_PAGE;
+      const productsToShow = hasMoreData ? cached.data.slice(0, ITEMS_PER_PAGE) : cached.data;
       
-      // Update state in a single transition
-      startTransition(() => {
-        setProducts(prev => {
-          if (page === 0 || isFilterChange) {
-            return productsToShow;
-          }
-          // Merge unique products
-          const seen = new Set<string>();
-          const out: ProductWithDetails[] = [];
-          
-          for (const p of prev) {
-            const id = String(p.id);
-            if (!seen.has(id)) {
-              seen.add(id);
-              out.push(p);
-            }
-          }
-          
-          for (const p of productsToShow) {
-            const id = String(p.id);
-            if (!seen.has(id)) {
-              seen.add(id);
-              out.push(p);
-            }
-          }
-          
-          return out;
+      // Use setTimeout to batch updates and prevent flash
+      setTimeout(() => {
+        startTransition(() => {
+          setProducts(prev => page === 0 || isFilterChange ? productsToShow : mergeUniqueProducts(prev, productsToShow));
+          setHasMore(hasMoreData);
+          setInitialLoad(false);
+          setError(null);
+          setLoading(false);
         });
-        
-        setHasMore(hasMoreData);
-        setInitialLoad(false);
-        setError(null);
-        setLoading(false);
-      });
+      }, 0);
       
       isFetchingRef.current = false;
       observerLockRef.current = false;
@@ -396,20 +384,16 @@ export function HomePage() {
         canLoadMoreRef.current = true;
       }, LOAD_COOLDOWN);
       
-      // Update auto-load count and show button state
+      // Update auto-load count and show button state AFTER cached load
       if (!isFilterChange && page > 0) {
         autoLoadCountRef.current += 1;
         const newCount = autoLoadCountRef.current;
         
-        if (newCount >= MAX_AUTO_LOADS) {
-          setShowLoadMoreButton(true);
-        }
-      }
-      
-      // Fetch pricing for visible products
-      if (productsToShow.length > 0) {
-        const ids = productsToShow.map(p => p.id).filter(Boolean);
-        scheduleIdle(() => fetchBatchPricingFor(ids));
+        startTransition(() => {
+          if (newCount >= MAX_AUTO_LOADS) {
+            setShowLoadMoreButton(true);
+          }
+        });
       }
       
       // Prefetch next page if still in auto-load phase
@@ -424,6 +408,8 @@ export function HomePage() {
               
               if (Array.isArray(nextData)) {
                 prefetchCacheRef.current[nextKey] = { data: nextData as ProductWithDetails[] };
+                const ids = nextData.slice(0, ITEMS_PER_PAGE).map(p => p.id).filter(Boolean);
+                if (ids.length) fetchBatchPricingFor(ids);
               }
             } catch (error) {
               console.error('Failed to prefetch next page:', error);
@@ -439,6 +425,8 @@ export function HomePage() {
     const controller = new AbortController();
     currentRequestRef.current = controller;
     const timeoutId = setTimeout(() => controller.abort(), 30000);
+    isFetchingRef.current = true;
+    setLoading(true);
     
     try {
       const supabase = getSupabase();
@@ -453,45 +441,21 @@ export function HomePage() {
       const hasMoreData = newData.length > ITEMS_PER_PAGE;
       const productsToShow = hasMoreData ? newData.slice(0, ITEMS_PER_PAGE) : newData;
       
-      // Store in cache
+      // Store in cache with full data (including +1)
       prefetchCacheRef.current[requestKey] = { data: newData };
       
-      // Update state in a single transition
-      startTransition(() => {
-        setProducts(prev => {
-          if (page === 0 || isFilterChange) {
-            return productsToShow;
-          }
-          // Merge unique products
-          const seen = new Set<string>();
-          const out: ProductWithDetails[] = [];
-          
-          for (const p of prev) {
-            const id = String(p.id);
-            if (!seen.has(id)) {
-              seen.add(id);
-              out.push(p);
-            }
-          }
-          
-          for (const p of productsToShow) {
-            const id = String(p.id);
-            if (!seen.has(id)) {
-              seen.add(id);
-              out.push(p);
-            }
-          }
-          
-          return out;
+      // Use setTimeout to batch updates and prevent flash
+      setTimeout(() => {
+        startTransition(() => {
+          setProducts(prev => page === 0 || isFilterChange ? productsToShow : mergeUniqueProducts(prev, productsToShow));
+          setHasMore(hasMoreData);
+          setInitialLoad(false);
+          setError(null);
+          setLoading(false);
         });
-        
-        setHasMore(hasMoreData);
-        setInitialLoad(false);
-        setError(null);
-        setLoading(false);
-      });
+      }, 0);
       
-      // Fetch pricing for visible products
+      // Fetch pricing
       if (productsToShow.length > 0) {
         const ids = productsToShow.map(p => p.id).filter(Boolean);
         scheduleIdle(() => fetchBatchPricingFor(ids));
@@ -502,9 +466,11 @@ export function HomePage() {
         autoLoadCountRef.current += 1;
         const newCount = autoLoadCountRef.current;
         
-        if (newCount >= MAX_AUTO_LOADS) {
-          setShowLoadMoreButton(true);
-        }
+        startTransition(() => {
+          if (newCount >= MAX_AUTO_LOADS) {
+            setShowLoadMoreButton(true);
+          }
+        });
       }
       
       // Prefetch next page only if we haven't hit the auto-load limit
@@ -518,6 +484,8 @@ export function HomePage() {
               
               if (Array.isArray(nextData)) {
                 prefetchCacheRef.current[nextKey] = { data: nextData as ProductWithDetails[] };
+                const nextIds = nextData.slice(0, ITEMS_PER_PAGE).map(p => p.id).filter(Boolean);
+                if (nextIds.length) fetchBatchPricingFor(nextIds);
               }
             } catch (error) {
               console.error('Failed to prefetch next page from database:', error);
@@ -535,12 +503,14 @@ export function HomePage() {
       
       console.error('Fetch error in fetchFilteredProducts:', err);
       
-      startTransition(() => {
-        setError('Failed to load products. Please try again.');
-        setHasMore(false);
-        setInitialLoad(false);
-        setLoading(false);
-      });
+      setTimeout(() => {
+        startTransition(() => {
+          setError('Failed to load products. Please try again.');
+          setHasMore(false);
+          setInitialLoad(false);
+          setLoading(false);
+        });
+      }, 0);
     } finally {
       if (!controller.signal.aborted) {
         isFetchingRef.current = false;
@@ -548,7 +518,7 @@ export function HomePage() {
         inFlightRequestsRef.current.delete(requestKey);
       }
     }
-  }, [scheduleIdle, buildRpcParams, fetchBatchPricingFor]);
+  }, [mergeUniqueProducts, scheduleIdle, buildRpcParams, fetchBatchPricingFor]);
 
   // Fetch initial filter data
   useEffect(() => {
@@ -610,46 +580,32 @@ export function HomePage() {
     setSearchQuery(urlSearchQuery);
   }, [urlSearchQuery]);
 
-  // Debounced filter update
-  const debouncedFilterUpdate = useRef(
-    createDebounced(() => {
-      const pendingFilters: FilterOptions = {
-        selectedShopName,
-        selectedSizeGroups,
-        selectedGroupedTypes,
-        selectedTopLevelCategories,
-        selectedGenderAges,
-        onSaleOnly,
-        searchQuery,
-        selectedPriceRange,
-      };
-      
-      const pendingKey = JSON.stringify(pendingFilters);
-      
-      if (pendingKey === prevFilterKeyRef.current) return;
-      
-      prevFilterKeyRef.current = pendingKey;
-      
-      // Cancel any pending fetch
-      if (currentRequestRef.current) {
-        currentRequestRef.current.abort();
-      }
-      
-      // Reset everything in a single batch
-      startTransition(() => {
-        setPage(0);
-        setProducts([]);
-        setInitialLoad(true);
-        setHasMore(true);
-        autoLoadCountRef.current = 0;
-        setShowLoadMoreButton(false);
-        setCommittedFilters(pendingFilters);
-      });
-    }, 300)
-  ).current;
-
+  // Update committed filters when any filter changes - NO DEBOUNCE, immediate update
   useEffect(() => {
-    debouncedFilterUpdate();
+    const pendingFilters: FilterOptions = {
+      selectedShopName,
+      selectedSizeGroups,
+      selectedGroupedTypes,
+      selectedTopLevelCategories,
+      selectedGenderAges,
+      onSaleOnly,
+      searchQuery,
+      selectedPriceRange,
+    };
+    
+    const pendingKey = JSON.stringify(pendingFilters);
+    
+    if (pendingKey === prevFilterKeyRef.current) return;
+    
+    prevFilterKeyRef.current = pendingKey;
+    
+    setPage(0);
+    setProducts([]);
+    setInitialLoad(true);
+    setHasMore(true);
+    autoLoadCountRef.current = 0;
+    setShowLoadMoreButton(false);
+    setCommittedFilters(pendingFilters);
   }, [
     selectedShopName,
     selectedSizeGroups,
@@ -659,7 +615,6 @@ export function HomePage() {
     onSaleOnly,
     searchQuery,
     selectedPriceRange,
-    debouncedFilterUpdate
   ]);
   
   // Reset on sort order change
@@ -827,7 +782,7 @@ export function HomePage() {
   const handleSearchChange = (e: ChangeEvent<HTMLInputElement>) => setSearchQuery(e.target.value);
   const handleSearchSubmit = (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault();
-    navigate(`/?search=${searchQuery}`);
+    navigate(`/?search=${encodeURIComponent(searchQuery)}`);
   };
   
   const handleSortChange = (value: string) => {
@@ -856,43 +811,17 @@ export function HomePage() {
     }
   };
 
-  const handleClearAllFilters = async () => {
-    setIsClearing(true);
-    
-    // Cancel any in-flight requests
-    if (currentRequestRef.current) {
-      currentRequestRef.current.abort();
-    }
-    
-    // Clear caches
-    prefetchCacheRef.current = {};
-    inFlightRequestsRef.current.clear();
-    
-    // Batch all state updates in a single transition
-    startTransition(() => {
-      setSelectedShopName([]);
-      setSelectedGroupedTypes([]);
-      setSelectedTopLevelCategories([]);
-      setSelectedGenderAges([]);
-      setOnSaleOnly(false);
-      setSelectedSizeGroups([]);
-      setSelectedPriceRange([...PRICE_RANGE]);
-      setSearchQuery('');
-      setPage(0);
-      setProducts([]);
-      setInitialLoad(true);
-      setHasMore(true);
-      autoLoadCountRef.current = 0;
-      setShowLoadMoreButton(false);
-      setError(null);
-    });
-    
-    // Clear URL search params
-    navigate('/', { replace: true });
-    
-    // Small delay to ensure state updates are processed
-    await new Promise(resolve => setTimeout(resolve, 100));
-    setIsClearing(false);
+  const handleClearAllFilters = () => {
+    setSelectedShopName([]);
+    setSelectedGroupedTypes([]);
+    setSelectedTopLevelCategories([]);
+    setSelectedGenderAges([]);
+    setOnSaleOnly(false);
+    setSelectedSizeGroups([]);
+    setSelectedPriceRange([...PRICE_RANGE]);
+    setSearchQuery('');
+    autoLoadCountRef.current = 0;
+    setShowLoadMoreButton(false);
   };
 
   const handleLoadMoreClick = () => {
@@ -948,9 +877,7 @@ export function HomePage() {
     );
   }
 
-  // Simplified display logic
-  const showSkeleton = initialLoad && products.length === 0;
-  const showNoProducts = !initialLoad && !loading && products.length === 0;
+  const isFetchingEmpty = products.length === 0 && loading;
   
   const activeFilterCount = [
     selectedShopName.length > 0,
@@ -1007,14 +934,9 @@ export function HomePage() {
                   {activeFilterCount > 0 && (
                     <button
                       onClick={handleClearAllFilters}
-                      disabled={isClearing}
-                      className="text-xs font-medium text-blue-600 hover:text-blue-800 dark:text-blue-400 dark:hover:text-blue-300 flex items-center gap-1 disabled:opacity-50"
+                      className="text-xs font-medium text-blue-600 hover:text-blue-800 dark:text-blue-400 dark:hover:text-blue-300 flex items-center gap-1"
                     >
-                      {isClearing ? (
-                        <AsyncLucideIcon name="Loader2" className="h-3 w-3 animate-spin" />
-                      ) : (
-                        <AsyncLucideIcon name="X" className="h-3 w-3" />
-                      )}
+                      <AsyncLucideIcon name="X" className="h-3 w-3" />
                       Clear all
                     </button>
                   )}
@@ -1217,19 +1139,19 @@ export function HomePage() {
   
             <div className="relative min-h-[400px]">
               <div className="grid grid-cols-2 gap-2 sm:gap-3 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
-                {showSkeleton ? (
+                {initialLoad ? (
                   <ProductGridSkeleton count={10} />
-                ) : showNoProducts ? (
+                ) : isFetchingEmpty ? (
+                  <div className="col-span-full flex flex-col items-center justify-center min-h-[200px]">
+                    <AsyncLucideIcon name="Loader2" className="animate-spin h-8 w-8 text-gray-600 dark:text-gray-300 mb-3" />
+                    <p className="text-gray-900 dark:text-gray-100 text-sm">Loading products…</p>
+                  </div>
+                ) : products.length === 0 ? (
                   <div className="col-span-full flex flex-col items-center justify-center min-h-[200px] py-8">
                     <AsyncLucideIcon name="Search" className="h-12 w-12 text-gray-400 dark:text-gray-600 mb-4" />
                     <p className="text-gray-900 dark:text-gray-100 text-sm font-medium">No products found</p>
                     <p className="text-gray-600 dark:text-gray-400 text-sm mt-1">Try adjusting your filters or search term</p>
-                    <button 
-                      onClick={handleClearAllFilters} 
-                      disabled={isClearing}
-                      className="mt-4 px-4 py-2 text-sm font-medium text-blue-600 dark:text-blue-400 hover:text-blue-800 dark:hover:text-blue-300 disabled:opacity-50 flex items-center gap-2"
-                    >
-                      {isClearing && <AsyncLucideIcon name="Loader2" className="h-4 w-4 animate-spin" />}
+                    <button onClick={handleClearAllFilters} className="mt-4 px-4 py-2 text-sm font-medium text-blue-600 dark:text-blue-400 hover:text-blue-800 dark:hover:text-blue-300">
                       Clear all filters
                     </button>
                   </div>
@@ -1313,14 +1235,9 @@ export function HomePage() {
                     {activeFilterCount > 0 && (
                       <button
                         onClick={handleClearAllFilters}
-                        disabled={isClearing}
-                        className="inline-flex items-center gap-2 px-4 py-2 text-gray-600 dark:text-gray-400 hover:text-gray-800 dark:hover:text-gray-200 text-sm font-medium border border-gray-300 dark:border-gray-600 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors disabled:opacity-50"
+                        className="inline-flex items-center gap-2 px-4 py-2 text-gray-600 dark:text-gray-400 hover:text-gray-800 dark:hover:text-gray-200 text-sm font-medium border border-gray-300 dark:border-gray-600 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors"
                       >
-                        {isClearing ? (
-                          <AsyncLucideIcon name="Loader2" className="h-4 w-4 animate-spin" />
-                        ) : (
-                          <AsyncLucideIcon name="X" className="h-4 w-4" />
-                        )}
+                        <AsyncLucideIcon name="X" className="h-4 w-4" />
                         Clear filters
                       </button>
                     )}
