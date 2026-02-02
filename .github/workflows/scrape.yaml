@@ -1,10 +1,10 @@
 name: Shopify Scraper
 on:
   schedule:
-    # Daily at 2am UTC - skip shop data scraping, faster concurrency
+    # Daily at 2am UTC - scrape only products
     - cron: '0 2 * * *'
-    # Weekly on Sunday at 3am UTC - full scrape including shops
-    - cron: '0 3 * * 0'
+    # Monthly on the 1st at 3am UTC - shop refresh + maintenance
+    - cron: '0 3 1 * *'
   workflow_dispatch:
     inputs:
       mode:
@@ -21,58 +21,23 @@ on:
         required: false
         default: false
         type: boolean
-      shop_update_days:
-        description: 'Only scrape shops older than N days (0 = scrape all)'
-        required: false
-        default: '0'
-        type: string
-      shop_id:
-        description: 'Specific shop ID(s) to scrape (comma-separated)'
-        required: false
-        default: ''
-        type: string
-      max_concurrent:
-        description: 'Maximum concurrent shops to scrape (default: 3)'
-        required: false
-        default: '3'
-        type: string
-      batch_size:
-        description: 'Batch size for processing shops (default: 5)'
-        required: false
-        default: '5'
-        type: string
-      limit_shops:
-        description: 'Limit total number of shops to scrape (0 = no limit)'
-        required: false
-        default: '0'
-        type: string
-      timeout_minutes:
-        description: 'Timeout in minutes (default: 180)'
-        required: false
-        default: '180'
-        type: string
-      full_product_scrape:
-        description: 'Force full product scrape (not just changed ones)'
-        required: false
-        default: false
-        type: boolean
 
 jobs:
   scrape:
     runs-on: ubuntu-latest
-    timeout-minutes: ${{ github.event.schedule == '0 3 * * 0' && 420 || 180 }}
+    timeout-minutes: ${{ github.event.schedule == '0 3 1 * *' && 420 || 180 }}
     environment: production
-    
+
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
-        
+
       - name: Install uv
         uses: astral-sh/setup-uv@v3
-        
+
       - name: Set up Python
         run: uv python install 3.11
-        
+
       - name: Cache uv dependencies
         uses: actions/cache@v4
         with:
@@ -82,47 +47,41 @@ jobs:
           key: ${{ runner.os }}-uv-${{ hashFiles('scraping/uv.lock', 'scraping/pyproject.toml') }}
           restore-keys: |
             ${{ runner.os }}-uv-
-            
+
       - name: Install dependencies
         run: |
           cd scraping
           uv sync --frozen
-      
+
       - name: Determine scraping strategy
         id: strategy
         run: |
-          if [ "${{ github.event.schedule }}" == "0 3 * * 0" ]; then
-            echo "Running WEEKLY FULL SCRAPE (including shop data)"
+          if [ "${{ github.event.schedule }}" == "0 2 * * *" ]; then
+            echo "Running DAILY PRODUCT SCRAPE"
+            echo "skip_shops=true" >> $GITHUB_OUTPUT
+            echo "shop_update_days=0" >> $GITHUB_OUTPUT
+            echo "max_concurrent=8" >> $GITHUB_OUTPUT
+            echo "batch_size=15" >> $GITHUB_OUTPUT
+            echo "limit_shops=0" >> $GITHUB_OUTPUT
+            echo "scrape_type=daily" >> $GITHUB_OUTPUT
+            echo "full_product_scrape=false" >> $GITHUB_OUTPUT
+            echo "timeout_minutes=180" >> $GITHUB_OUTPUT
+          elif [ "${{ github.event.schedule }}" == "0 3 1 * *" ]; then
+            echo "Running MONTHLY SHOP + MAINTENANCE"
             echo "skip_shops=false" >> $GITHUB_OUTPUT
-            echo "shop_update_days=14" >> $GITHUB_OUTPUT
+            echo "shop_update_days=30" >> $GITHUB_OUTPUT
             echo "max_concurrent=4" >> $GITHUB_OUTPUT
             echo "batch_size=6" >> $GITHUB_OUTPUT
             echo "limit_shops=0" >> $GITHUB_OUTPUT
-            echo "scrape_type=weekly_full" >> $GITHUB_OUTPUT
+            echo "scrape_type=monthly" >> $GITHUB_OUTPUT
             echo "full_product_scrape=false" >> $GITHUB_OUTPUT
-            echo "timeout_minutes=410" >> $GITHUB_OUTPUT
-          elif [ "${{ github.event.schedule }}" == "0 2 * * *" ]; then
-            echo "Running DAILY SCRAPE (skip shop data, focus on products)"
-            echo "skip_shops=true" >> $GITHUB_OUTPUT
-            echo "shop_update_days=0" >> $GITHUB_OUTPUT
-            echo "max_concurrent=8" >> $GITHUB_OUTPUT  # Higher for daily
-            echo "batch_size=15" >> $GITHUB_OUTPUT     # Larger batches
-            echo "limit_shops=0" >> $GITHUB_OUTPUT     # No limit
-            echo "scrape_type=daily" >> $GITHUB_OUTPUT
-            echo "full_product_scrape=false" >> $GITHUB_OUTPUT  # Only changed products
-            echo "timeout_minutes=180" >> $GITHUB_OUTPUT
+            echo "timeout_minutes=420" >> $GITHUB_OUTPUT
           else
             echo "Running MANUAL SCRAPE with custom parameters"
             echo "skip_shops=${{ github.event.inputs.skip_shops || 'false' }}" >> $GITHUB_OUTPUT
-            echo "shop_update_days=${{ github.event.inputs.shop_update_days || '0' }}" >> $GITHUB_OUTPUT
-            echo "max_concurrent=${{ github.event.inputs.max_concurrent || '3' }}" >> $GITHUB_OUTPUT
-            echo "batch_size=${{ github.event.inputs.batch_size || '5' }}" >> $GITHUB_OUTPUT
-            echo "limit_shops=${{ github.event.inputs.limit_shops || '0' }}" >> $GITHUB_OUTPUT
             echo "scrape_type=manual" >> $GITHUB_OUTPUT
-            echo "full_product_scrape=${{ github.event.inputs.full_product_scrape || 'false' }}" >> $GITHUB_OUTPUT
-            echo "timeout_minutes=${{ github.event.inputs.timeout_minutes || '180' }}" >> $GITHUB_OUTPUT
           fi
-      
+
       - name: Run scraper
         id: run_scraper
         env:
@@ -131,82 +90,32 @@ jobs:
           ENVIRONMENT: production
         run: |
           cd scraping
-          
-          # Verify environment variables
-          if [ -z "$SUPABASE_URL" ]; then
-            echo "ERROR: SUPABASE_URL is not set!"
-            exit 1
-          fi
-          
-          # Build command - use 'all' mode for complete pipeline
           CMD="uv run python run.py --mode=all"
           CMD="$CMD --max-concurrent=${{ steps.strategy.outputs.max_concurrent }}"
           CMD="$CMD --batch-size=${{ steps.strategy.outputs.batch_size }}"
-          
-          # Add skip-shops flag for daily scrapes
           if [ "${{ steps.strategy.outputs.skip_shops }}" == "true" ]; then
             CMD="$CMD --skip-shops"
-            echo "Mode: Daily scrape (shop data skipped, only products)"
           fi
-          
-          # Add shop update days if specified
           if [ "${{ steps.strategy.outputs.shop_update_days }}" != "0" ]; then
             CMD="$CMD --shop-update-days=${{ steps.strategy.outputs.shop_update_days }}"
-            echo "Mode: Scraping shops older than ${{ steps.strategy.outputs.shop_update_days }} days"
           fi
-          
-          # Add full product scrape flag if needed
-          if [ "${{ steps.strategy.outputs.full_product_scrape }}" == "true" ]; then
-            CMD="$CMD --full-product-scrape"
-            echo "Mode: Full product scrape (all products, not just changed)"
-          fi
-          
-          if [ -n "${{ github.event.inputs.shop_id }}" ]; then
-            CMD="$CMD --shop-id=${{ github.event.inputs.shop_id }}"
-            echo "Filtering to shop(s): ${{ github.event.inputs.shop_id }}"
-          fi
-          
-          echo "Configuration:"
-          echo "  Mode: ${{ steps.strategy.outputs.scrape_type }}"
-          echo "  Max Concurrent: ${{ steps.strategy.outputs.max_concurrent }}"
-          echo "  Batch Size: ${{ steps.strategy.outputs.batch_size }}"
-          echo "  Skip Shops: ${{ steps.strategy.outputs.skip_shops }}"
-          echo "  Shop Update Days: ${{ steps.strategy.outputs.shop_update_days }}"
-          echo "  Full Product Scrape: ${{ steps.strategy.outputs.full_product_scrape }}"
-          echo "  Timeout Minutes: ${{ steps.strategy.outputs.timeout_minutes }}"
-          echo ""
-          echo "Running: $CMD"
-          
-          # Use 15-minute buffer
-          TIMEOUT_SECONDS=$(( (${{ steps.strategy.outputs.timeout_minutes }} - 15) * 60 ))
-          echo "Setting timeout to $TIMEOUT_SECONDS seconds (${{ steps.strategy.outputs.timeout_minutes }} minutes - 15 minutes buffer)"
-          
-          timeout $TIMEOUT_SECONDS $CMD
-          
+          timeout $(( ${{ steps.strategy.outputs.timeout_minutes }} * 60 )) $CMD
           EXIT_CODE=$?
-          echo "exit_code=$EXIT_CODE" >> $GITHUB_OUTPUT
-          
-          if [ $EXIT_CODE -eq 124 ]; then
-            echo "WARNING: Scraper timed out after $TIMEOUT_SECONDS seconds"
-            echo "Try increasing the timeout_minutes parameter"
-            echo "Continuing workflow despite timeout..."
-          elif [ $EXIT_CODE -ne 0 ]; then
+          if [ $EXIT_CODE -ne 0 ]; then
             echo "ERROR: Scraper failed with exit code $EXIT_CODE"
             exit $EXIT_CODE
-          else
-            echo "SUCCESS: Scraper completed within timeout"
           fi
-          
-      - name: Run database setup (once per week)
-        if: success() && steps.strategy.outputs.scrape_type == 'weekly_full'
+
+      - name: Run maintenance (monthly only)
+        if: steps.strategy.outputs.scrape_type == 'monthly'
         env:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_SECRET_KEY: ${{ secrets.SUPABASE_SECRET_KEY }}
         run: |
           cd scraping
-          echo "Running database setup (weekly)..."
-          uv run python run.py --mode=db --setup-db
-          
+          echo "Running database maintenance..."
+          uv run python run.py --mode=db --maintenance
+
       - name: Upload artifacts
         if: always()
         uses: actions/upload-artifact@v4
