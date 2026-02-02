@@ -697,78 +697,138 @@ export function HomePage() {
   // ============================================================================
   
   useEffect(() => {
-    async function fetchInitialData() {
-      try {
-        // Try cache first
-        const cached = localStorage.getItem(FILTER_OPTIONS_CACHE_KEY);
-        if (cached) {
-          try {
-            const parsed = JSON.parse(cached);
-            if (Date.now() - parsed.timestamp < FILTER_OPTIONS_TTL) {
-              setShopList(parsed.shops || []);
-              setAllSizeData(parsed.sizes || []);
-              setAllGroupedTypes(parsed.types || []);
-              setAllTopLevelCategories(parsed.categories || []);
-              setAllGenderAges(parsed.genders || []);
-              return;
-            }
-          } catch (parseError) {
-            console.error('Failed to parse cached filter options:', parseError);
+  let cancelled = false;
+
+  async function fetchInitialData() {
+    try {
+      // ==============================
+      // 1. Try localStorage cache
+      // ==============================
+      const cached = localStorage.getItem(FILTER_OPTIONS_CACHE_KEY);
+      if (cached) {
+        try {
+          const parsed = JSON.parse(cached);
+          if (Date.now() - parsed.timestamp < FILTER_OPTIONS_TTL) {
+            if (cancelled) return;
+
+            setShopList(parsed.shops ?? []);
+            setAllSizeData(parsed.sizes ?? []);
+            setAllGroupedTypes(parsed.types ?? []);
+            setAllTopLevelCategories(parsed.categories ?? []);
+            setAllGenderAges(parsed.genders ?? []);
+            return;
           }
+        } catch (err) {
+          console.warn('Filter cache invalid, refetching');
         }
-        
-        // Fetch fresh data
-        const supabase = getSupabase();
-        
-        const [shopsResult, sizesResult, typesResult, categoriesResult, gendersResult] = await Promise.all([
-          fetchWithCache<{id: number; shop_name: string}>('shops', async () => {
-            const { data } = await supabase.from('shops').select('id, shop_name').order('shop_name');
-            return data || [];
-          }),
-          fetchWithCache<{size_group: string}>('sizes', async () => {
-            const { data } = await supabase.from('product_sizes').select('size_group').order('size_group');
-            const uniqueSizes = Array.from(new Set(data?.map(d => d.size_group) || [])).filter(Boolean);
-            return uniqueSizes.map(sg => ({ size_group: sg }));
-          }),
-          fetchWithCache<{grouped_product_type: string}>('types', async () => {
-            const { data } = await supabase.from('products').select('grouped_product_type').order('grouped_product_type');
-            const uniqueTypes = Array.from(new Set(data?.map(d => d.grouped_product_type) || [])).filter(Boolean);
-            return uniqueTypes.map(t => ({ grouped_product_type: t }));
-          }),
-          fetchWithCache<{top_level_category: string}>('categories', async () => {
-            const { data } = await supabase.from('products').select('top_level_category').order('top_level_category');
-            const uniqueCategories = Array.from(new Set(data?.map(d => d.top_level_category) || [])).filter(Boolean);
-            return uniqueCategories.map(c => ({ top_level_category: c }));
-          }),
-          fetchWithCache<{gender_age: string}>('genders', async () => {
-            const { data } = await supabase.from('products').select('gender_age').order('gender_age');
-            const uniqueGenders = Array.from(new Set(data?.map(d => d.gender_age) || [])).filter(Boolean);
-            return uniqueGenders.map(g => ({ gender_age: g }));
-          })
-        ]);
-        
-        setShopList(shopsResult);
-        setAllSizeData(sizesResult);
-        setAllGroupedTypes(typesResult);
-        setAllTopLevelCategories(categoriesResult);
-        setAllGenderAges(gendersResult);
-        
-        // Cache the results
-        safeLocalStorageSet(FILTER_OPTIONS_CACHE_KEY, JSON.stringify({
+      }
+
+      // ==============================
+      // 2. Fetch fresh data
+      // ==============================
+      const supabase = getSupabase();
+
+      const [
+        shopsResult,
+        sizesResult,
+        typesResult,
+        categoriesResult,
+        gendersResult
+      ] = await Promise.all([
+        // ------------------------------
+        // Shops (real table)
+        // ------------------------------
+        fetchWithCache<{ id: number; shop_name: string }>('shops', async () => {
+          const { data, error } = await supabase
+            .from('shops')
+            .select('id, shop_name')
+            .order('shop_name');
+
+          if (error) throw error;
+          return data ?? [];
+        }),
+
+        // ------------------------------
+        // Sizes (VIEW → RPC)
+        // ------------------------------
+        fetchWithCache<{ size_group: string }>('sizes', async () => {
+          const { data, error } = await supabase
+            .rpc('get_distinct_size_groups');
+
+          if (error) throw error;
+          return data ?? [];
+        }),
+
+        // ------------------------------
+        // Grouped types (VIEW → RPC)
+        // ------------------------------
+        fetchWithCache<{ grouped_product_type: string }>('types', async () => {
+          const { data, error } = await supabase
+            .rpc('get_distinct_grouped_types');
+
+          if (error) throw error;
+          return data ?? [];
+        }),
+
+        // ------------------------------
+        // Top-level categories (VIEW → RPC)
+        // ------------------------------
+        fetchWithCache<{ top_level_category: string }>('categories', async () => {
+          const { data, error } = await supabase
+            .rpc('get_distinct_top_level_categories');
+
+          if (error) throw error;
+          return data ?? [];
+        }),
+
+        // ------------------------------
+        // Gender / age (VIEW → RPC)
+        // ------------------------------
+        fetchWithCache<{ gender_age: string }>('genders', async () => {
+          const { data, error } = await supabase
+            .rpc('get_distinct_gender_ages');
+
+          if (error) throw error;
+          return data ?? [];
+        })
+      ]);
+
+      if (cancelled) return;
+
+      // ==============================
+      // 3. Update state
+      // ==============================
+      setShopList(shopsResult);
+      setAllSizeData(sizesResult);
+      setAllGroupedTypes(typesResult);
+      setAllTopLevelCategories(categoriesResult);
+      setAllGenderAges(gendersResult);
+
+      // ==============================
+      // 4. Cache results
+      // ==============================
+      safeLocalStorageSet(
+        FILTER_OPTIONS_CACHE_KEY,
+        JSON.stringify({
           timestamp: Date.now(),
           shops: shopsResult,
           sizes: sizesResult,
           types: typesResult,
           categories: categoriesResult,
           genders: gendersResult
-        }));
-        
-      } catch (error) {
-        console.error('Error fetching initial data:', error);
-      }
+        })
+      );
+    } catch (error) {
+      console.error('Error fetching filter options:', error);
     }
-    fetchInitialData();
-  }, [fetchWithCache]);
+  }
+
+  fetchInitialData();
+
+  return () => {
+    cancelled = true;
+  };
+}, [fetchWithCache]);
 
   // ============================================================================
   // EFFECT - Monitor Filter Changes and Trigger Fetch (FIXED)
