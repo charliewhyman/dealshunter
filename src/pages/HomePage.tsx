@@ -25,7 +25,7 @@ const MAX_CACHE_ENTRIES = 10;
 const FILTER_OPTIONS_CACHE_KEY = 'filter_options_cache';
 const FILTER_OPTIONS_TTL = 24 * 60 * 60 * 1000; // 24 hours
 
-type SortOrder = 'price_asc' | 'price_desc' | 'discount_desc' | 'newest';
+type SortOrder = 'price_asc' | 'price_desc' | 'discount_desc';
 
 // ============================================================================
 // UTILITY FUNCTIONS
@@ -515,12 +515,6 @@ export function HomePage() {
             p_cursor_discount: null,
             p_cursor_created_at: null
           };
-        case 'newest':
-          return {
-            ...baseParams,
-            p_cursor_id: null,
-            p_cursor_created_at: null
-          };
         default:
           return baseParams;
       }
@@ -548,12 +542,6 @@ export function HomePage() {
             p_cursor_discount: lastProduct.max_discount_percentage || 0,
             p_cursor_created_at: lastProduct.created_at
           };
-        case 'newest':
-          return {
-            ...baseParams,
-            p_cursor_id: lastProduct.id,
-            p_cursor_created_at: lastProduct.created_at
-          };
         default:
           return baseParams;
       }
@@ -565,7 +553,6 @@ export function HomePage() {
       case 'price_asc': return 'get_products_price_asc';
       case 'price_desc': return 'get_products_price_desc';
       case 'discount_desc': return 'get_products_discount_desc';
-      case 'newest': return 'get_products_newest';
       default: return 'get_products_discount_desc';
     }
   }, []);
@@ -1199,7 +1186,6 @@ export function HomePage() {
     { value: 'discount_desc', label: 'Best Discount' },
     { value: 'price_asc', label: 'Price: Low to High' },
     { value: 'price_desc', label: 'Price: High to Low' },
-    { value: 'newest', label: 'Newest First' }
   ];
 
   const activeFilterCount = [
