@@ -448,56 +448,87 @@ export function HomePage() {
   }, [CACHE_TTL]);
 
   const buildRpcParams = useCallback((filters: FilterOptions, lastProduct: ProductWithDetails | null, sortOrder: SortOrder) => {
-    const baseParams = {
-      p_shop_ids: filters.selectedShopName.map(id => parseInt(id)).filter(id => !isNaN(id) && id > 0),
-      p_size_groups: filters.selectedSizeGroups.filter(s => s.trim()),
-      p_grouped_types: filters.selectedGroupedTypes.filter(s => s.trim()),
-      p_top_level_categories: filters.selectedTopLevelCategories.filter(s => s.trim()),
-      p_gender_ages: filters.selectedGenderAges.filter(s => s.trim()),
-      p_on_sale_only: filters.onSaleOnly,
-      p_min_price: filters.selectedPriceRange[0],
-      p_max_price: filters.selectedPriceRange[1],
-      p_search_query: filters.searchQuery?.trim() || null,
-      p_limit: ITEMS_PER_PAGE + 1 // Fetch one extra to check if there's more
-    };
+  const baseParams = {
+    p_shop_ids: filters.selectedShopName.map(id => parseInt(id)).filter(id => !isNaN(id) && id > 0),
+    p_size_groups: filters.selectedSizeGroups.filter(s => s.trim()),
+    p_grouped_types: filters.selectedGroupedTypes.filter(s => s.trim()),
+    p_top_level_categories: filters.selectedTopLevelCategories.filter(s => s.trim()),
+    p_gender_ages: filters.selectedGenderAges.filter(s => s.trim()),
+    p_on_sale_only: filters.onSaleOnly,
+    p_min_price: filters.selectedPriceRange[0],
+    p_max_price: filters.selectedPriceRange[1],
+    p_search_query: filters.searchQuery?.trim() || null,
+    p_limit: ITEMS_PER_PAGE + 1
+  };
 
-    // Add cursor parameters if we have a last product
-    if (lastProduct) {
-      switch (sortOrder) {
-        case 'price_asc':
-          return {
-            ...baseParams,
-            p_cursor_id: lastProduct.id,
-            p_cursor_price: lastProduct.min_price,
-            p_cursor_created_at: lastProduct.created_at
-          };
-        case 'price_desc':
-          return {
-            ...baseParams,
-            p_cursor_id: lastProduct.id,
-            p_cursor_price: lastProduct.min_price,
-            p_cursor_created_at: lastProduct.created_at
-          };
-        case 'discount_desc':
-          return {
-            ...baseParams,
-            p_cursor_id: lastProduct.id,
-            p_cursor_discount: lastProduct.max_discount_percentage || 0,
-            p_cursor_created_at: lastProduct.created_at
-          };
-        case 'newest':
-          return {
-            ...baseParams,
-            p_cursor_id: lastProduct.id,
-            p_cursor_created_at: lastProduct.created_at
-          };
-        default:
-          return baseParams;
-      }
+  // For initial load (no last product), provide null cursor parameters
+  if (!lastProduct) {
+    switch (sortOrder) {
+      case 'price_asc':
+        return {
+          ...baseParams,
+          p_cursor_id: null,
+          p_cursor_price: null,
+          p_cursor_created_at: null
+        };
+      case 'price_desc':
+        return {
+          ...baseParams,
+          p_cursor_id: null,
+          p_cursor_price: null,
+          p_cursor_created_at: null
+        };
+      case 'discount_desc':
+        return {
+          ...baseParams,
+          p_cursor_id: null,
+          p_cursor_discount: null,
+          p_cursor_created_at: null
+        };
+      case 'newest':
+        return {
+          ...baseParams,
+          p_cursor_id: null,
+          p_cursor_created_at: null
+        };
+      default:
+        return baseParams;
     }
-
-    return baseParams;
-  }, []);
+  } else {
+    // For subsequent loads, provide actual cursor values
+    switch (sortOrder) {
+      case 'price_asc':
+        return {
+          ...baseParams,
+          p_cursor_id: lastProduct.id,
+          p_cursor_price: lastProduct.min_price,
+          p_cursor_created_at: lastProduct.created_at
+        };
+      case 'price_desc':
+        return {
+          ...baseParams,
+          p_cursor_id: lastProduct.id,
+          p_cursor_price: lastProduct.min_price,
+          p_cursor_created_at: lastProduct.created_at
+        };
+      case 'discount_desc':
+        return {
+          ...baseParams,
+          p_cursor_id: lastProduct.id,
+          p_cursor_discount: lastProduct.max_discount_percentage || 0,
+          p_cursor_created_at: lastProduct.created_at
+        };
+      case 'newest':
+        return {
+          ...baseParams,
+          p_cursor_id: lastProduct.id,
+          p_cursor_created_at: lastProduct.created_at
+        };
+      default:
+        return baseParams;
+    }
+  }
+}, []);
 
   const getRpcFunctionName = useCallback((sortOrder: SortOrder) => {
     switch (sortOrder) {
