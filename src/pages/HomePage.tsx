@@ -251,6 +251,33 @@ export function HomePage() {
   const prevFilterKeyRef = useRef<string>('');
 
   // ============================================================================
+  // DEBUG LOGGING
+  // ============================================================================
+  useEffect(() => {
+    console.log('🔍 Products state updated:', {
+      count: products.length,
+      loading,
+      hasMore,
+      isFilterChanging
+    });
+  }, [products, loading, hasMore, isFilterChanging]);
+
+  useEffect(() => {
+    console.log('🔍 Filter state:', {
+      selectedShopName,
+      selectedSizeGroups,
+      selectedGroupedTypes,
+      selectedTopLevelCategories,
+      selectedGenderAges,
+      onSaleOnly,
+      searchQuery,
+      selectedPriceRange,
+      sortOrder
+    });
+  }, [selectedShopName, selectedSizeGroups, selectedGroupedTypes, selectedTopLevelCategories, 
+      selectedGenderAges, onSaleOnly, searchQuery, selectedPriceRange, sortOrder]);
+
+  // ============================================================================
   // EFFECTS - LocalStorage Sync
   // ============================================================================
   
@@ -389,7 +416,7 @@ export function HomePage() {
   }, [fetchPricingDebounced]);
 
   // ============================================================================
-  // PRICING INTERSECTION OBSERVER (FIXED - No recreation on products change)
+  // PRICING INTERSECTION OBSERVER
   // ============================================================================
   
   useEffect(() => {
@@ -430,7 +457,7 @@ export function HomePage() {
       clearInterval(intervalId);
       io.disconnect();
     };
-  }, [fetchPricingDebounced]); // Don't depend on products!
+  }, [fetchPricingDebounced]);
 
   // ============================================================================
   // DATA FETCHING
@@ -448,87 +475,87 @@ export function HomePage() {
   }, [CACHE_TTL]);
 
   const buildRpcParams = useCallback((filters: FilterOptions, lastProduct: ProductWithDetails | null, sortOrder: SortOrder) => {
-  const baseParams = {
-    p_shop_ids: filters.selectedShopName.map(id => parseInt(id)).filter(id => !isNaN(id) && id > 0),
-    p_size_groups: filters.selectedSizeGroups.filter(s => s.trim()),
-    p_grouped_types: filters.selectedGroupedTypes.filter(s => s.trim()),
-    p_top_level_categories: filters.selectedTopLevelCategories.filter(s => s.trim()),
-    p_gender_ages: filters.selectedGenderAges.filter(s => s.trim()),
-    p_on_sale_only: filters.onSaleOnly,
-    p_min_price: filters.selectedPriceRange[0],
-    p_max_price: filters.selectedPriceRange[1],
-    p_search_query: filters.searchQuery?.trim() || null,
-    p_limit: ITEMS_PER_PAGE + 1
-  };
+    const baseParams = {
+      p_shop_ids: filters.selectedShopName.map(id => parseInt(id)).filter(id => !isNaN(id) && id > 0),
+      p_size_groups: filters.selectedSizeGroups.filter(s => s.trim()),
+      p_grouped_types: filters.selectedGroupedTypes.filter(s => s.trim()),
+      p_top_level_categories: filters.selectedTopLevelCategories.filter(s => s.trim()),
+      p_gender_ages: filters.selectedGenderAges.filter(s => s.trim()),
+      p_on_sale_only: filters.onSaleOnly,
+      p_min_price: filters.selectedPriceRange[0],
+      p_max_price: filters.selectedPriceRange[1],
+      p_search_query: filters.searchQuery?.trim() || null,
+      p_limit: ITEMS_PER_PAGE + 1
+    };
 
-  // For initial load (no last product), provide null cursor parameters
-  if (!lastProduct) {
-    switch (sortOrder) {
-      case 'price_asc':
-        return {
-          ...baseParams,
-          p_cursor_id: null,
-          p_cursor_price: null,
-          p_cursor_created_at: null
-        };
-      case 'price_desc':
-        return {
-          ...baseParams,
-          p_cursor_id: null,
-          p_cursor_price: null,
-          p_cursor_created_at: null
-        };
-      case 'discount_desc':
-        return {
-          ...baseParams,
-          p_cursor_id: null,
-          p_cursor_discount: null,
-          p_cursor_created_at: null
-        };
-      case 'newest':
-        return {
-          ...baseParams,
-          p_cursor_id: null,
-          p_cursor_created_at: null
-        };
-      default:
-        return baseParams;
+    // For initial load (no last product), provide null cursor parameters
+    if (!lastProduct) {
+      switch (sortOrder) {
+        case 'price_asc':
+          return {
+            ...baseParams,
+            p_cursor_id: null,
+            p_cursor_price: null,
+            p_cursor_created_at: null
+          };
+        case 'price_desc':
+          return {
+            ...baseParams,
+            p_cursor_id: null,
+            p_cursor_price: null,
+            p_cursor_created_at: null
+          };
+        case 'discount_desc':
+          return {
+            ...baseParams,
+            p_cursor_id: null,
+            p_cursor_discount: null,
+            p_cursor_created_at: null
+          };
+        case 'newest':
+          return {
+            ...baseParams,
+            p_cursor_id: null,
+            p_cursor_created_at: null
+          };
+        default:
+          return baseParams;
+      }
+    } else {
+      // For subsequent loads, provide actual cursor values
+      switch (sortOrder) {
+        case 'price_asc':
+          return {
+            ...baseParams,
+            p_cursor_id: lastProduct.id,
+            p_cursor_price: lastProduct.min_price,
+            p_cursor_created_at: lastProduct.created_at
+          };
+        case 'price_desc':
+          return {
+            ...baseParams,
+            p_cursor_id: lastProduct.id,
+            p_cursor_price: lastProduct.min_price,
+            p_cursor_created_at: lastProduct.created_at
+          };
+        case 'discount_desc':
+          return {
+            ...baseParams,
+            p_cursor_id: lastProduct.id,
+            p_cursor_discount: lastProduct.max_discount_percentage || 0,
+            p_cursor_created_at: lastProduct.created_at
+          };
+        case 'newest':
+          return {
+            ...baseParams,
+            p_cursor_id: lastProduct.id,
+            p_cursor_created_at: lastProduct.created_at
+          };
+        default:
+          return baseParams;
+      }
     }
-  } else {
-    // For subsequent loads, provide actual cursor values
-    switch (sortOrder) {
-      case 'price_asc':
-        return {
-          ...baseParams,
-          p_cursor_id: lastProduct.id,
-          p_cursor_price: lastProduct.min_price,
-          p_cursor_created_at: lastProduct.created_at
-        };
-      case 'price_desc':
-        return {
-          ...baseParams,
-          p_cursor_id: lastProduct.id,
-          p_cursor_price: lastProduct.min_price,
-          p_cursor_created_at: lastProduct.created_at
-        };
-      case 'discount_desc':
-        return {
-          ...baseParams,
-          p_cursor_id: lastProduct.id,
-          p_cursor_discount: lastProduct.max_discount_percentage || 0,
-          p_cursor_created_at: lastProduct.created_at
-        };
-      case 'newest':
-        return {
-          ...baseParams,
-          p_cursor_id: lastProduct.id,
-          p_cursor_created_at: lastProduct.created_at
-        };
-      default:
-        return baseParams;
-    }
-  }
-}, []);
+  }, []);
 
   const getRpcFunctionName = useCallback((sortOrder: SortOrder) => {
     switch (sortOrder) {
@@ -541,7 +568,7 @@ export function HomePage() {
   }, []);
 
   // ============================================================================
-  // MAIN FETCH FUNCTION (UPDATED for cursor-based pagination)
+  // MAIN FETCH FUNCTION (FIXED)
   // ============================================================================
   
   const fetchFilteredProducts = useCallback(async (
@@ -559,31 +586,42 @@ export function HomePage() {
     
     inFlightRequestsRef.current.add(requestKey);
     
+    console.log('📡 fetchFilteredProducts called:', {
+      lastProductId,
+      sortOrder,
+      isFilterChange,
+      requestKey
+    });
+    
     if (isFilterChange) {
+      // Reset auto-load counter
+      autoLoadCountRef.current = 0;
+      setShowLoadMoreButton(false);
+      
       // Abort any in-flight request
       if (currentRequestRef.current) {
         currentRequestRef.current.abort();
       }
       currentRequestRef.current = null;
       
-      // Reset auto-load counter
-      autoLoadCountRef.current = 0;
-      prefetchCacheRef.current = {};
-      
-      startTransition(() => {
-        setProducts([]);
-        setShowLoadMoreButton(false);
-        setIsFilterChanging(true);
+      // Clear cache for this filter combination
+      const keysToDelete = Object.keys(prefetchCacheRef.current).filter(key => 
+        key.startsWith(`${JSON.stringify(filters)}-`)
+      );
+      keysToDelete.forEach(key => {
+        delete prefetchCacheRef.current[key];
       });
     }
     
-    // Check cache first
-    const cached = prefetchCacheRef.current[requestKey];
-    if (cached) {
-      const hasMoreData = cached.data.length > ITEMS_PER_PAGE;
-      const productsToShow = hasMoreData ? cached.data.slice(0, ITEMS_PER_PAGE) : cached.data;
-      
-      setTimeout(() => {
+    // Check cache first (skip for filter changes)
+    if (!isFilterChange) {
+      const cached = prefetchCacheRef.current[requestKey];
+      if (cached) {
+        const hasMoreData = cached.data.length > ITEMS_PER_PAGE;
+        const productsToShow = hasMoreData ? cached.data.slice(0, ITEMS_PER_PAGE) : cached.data;
+        
+        console.log('📦 Using cache for:', requestKey, 'products:', productsToShow.length);
+        
         startTransition(() => {
           setProducts(prev => isFilterChange ? productsToShow : [...prev, ...productsToShow]);
           setHasMore(hasMoreData);
@@ -592,53 +630,53 @@ export function HomePage() {
           setLoading(false);
           setIsFilterChanging(false);
         });
-      }, 0);
-      
-      isFetchingRef.current = false;
-      observerLockRef.current = false;
-      inFlightRequestsRef.current.delete(requestKey);
-      
-      canLoadMoreRef.current = false;
-      setTimeout(() => {
-        canLoadMoreRef.current = true;
-      }, LOAD_COOLDOWN);
-      
-      if (!isFilterChange && lastProduct) {
-        autoLoadCountRef.current += 1;
-        const newCount = autoLoadCountRef.current;
         
-        startTransition(() => {
-          if (newCount >= MAX_AUTO_LOADS) {
-            setShowLoadMoreButton(true);
-          }
-        });
-      }
-      
-      // Prefetch next page
-      if (hasMoreData && autoLoadCountRef.current < MAX_AUTO_LOADS) {
-        scheduleIdle(async () => {
-          const nextLastProduct = productsToShow[productsToShow.length - 1];
-          const nextKey = `${JSON.stringify(filters)}-${nextLastProduct.id}-${sortOrder}`;
-          if (!prefetchCacheRef.current[nextKey]) {
-            try {
-              const supabase = getSupabase();
-              const rpcFunctionName = getRpcFunctionName(sortOrder);
-              const params = buildRpcParams(filters, nextLastProduct, sortOrder);
-              const { data: nextData } = await supabase.rpc(rpcFunctionName, params);
-              
-              if (Array.isArray(nextData)) {
-                prefetchCacheRef.current[nextKey] = { data: nextData as ProductWithDetails[] };
-                const ids = nextData.slice(0, ITEMS_PER_PAGE).map(p => p.id).filter(Boolean);
-                if (ids.length) fetchBatchPricingFor(ids);
-              }
-            } catch (error) {
-              console.error('Failed to prefetch next page:', error);
+        isFetchingRef.current = false;
+        observerLockRef.current = false;
+        inFlightRequestsRef.current.delete(requestKey);
+        
+        canLoadMoreRef.current = false;
+        setTimeout(() => {
+          canLoadMoreRef.current = true;
+        }, LOAD_COOLDOWN);
+        
+        if (!isFilterChange && lastProduct) {
+          autoLoadCountRef.current += 1;
+          const newCount = autoLoadCountRef.current;
+          
+          startTransition(() => {
+            if (newCount >= MAX_AUTO_LOADS) {
+              setShowLoadMoreButton(true);
             }
-          }
-        });
+          });
+        }
+        
+        // Prefetch next page
+        if (hasMoreData && autoLoadCountRef.current < MAX_AUTO_LOADS) {
+          scheduleIdle(async () => {
+            const nextLastProduct = productsToShow[productsToShow.length - 1];
+            const nextKey = `${JSON.stringify(filters)}-${nextLastProduct.id}-${sortOrder}`;
+            if (!prefetchCacheRef.current[nextKey]) {
+              try {
+                const supabase = getSupabase();
+                const rpcFunctionName = getRpcFunctionName(sortOrder);
+                const params = buildRpcParams(filters, nextLastProduct, sortOrder);
+                const { data: nextData } = await supabase.rpc(rpcFunctionName, params);
+                
+                if (Array.isArray(nextData)) {
+                  prefetchCacheRef.current[nextKey] = { data: nextData as ProductWithDetails[] };
+                  const ids = nextData.slice(0, ITEMS_PER_PAGE).map(p => p.id).filter(Boolean);
+                  if (ids.length) fetchBatchPricingFor(ids);
+                }
+              } catch (error) {
+                console.error('Failed to prefetch next page:', error);
+              }
+            }
+          });
+        }
+        
+        return;
       }
-      
-      return;
     }
     
     // Fetch from database
@@ -646,12 +684,19 @@ export function HomePage() {
     currentRequestRef.current = controller;
     const timeoutId = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
     isFetchingRef.current = true;
-    setLoading(true);
+    
+    if (isFilterChange) {
+      setLoading(true);
+      setIsFilterChanging(true);
+    }
     
     try {
       const supabase = getSupabase();
       const rpcFunctionName = getRpcFunctionName(sortOrder);
       const params = buildRpcParams(filters, lastProduct, sortOrder);
+      
+      console.log('🚀 Calling RPC:', rpcFunctionName, params);
+      
       const { data, error } = await supabase.rpc(rpcFunctionName, params);
       
       clearTimeout(timeoutId);
@@ -662,7 +707,16 @@ export function HomePage() {
       const hasMoreData = newData.length > ITEMS_PER_PAGE;
       const productsToShow = hasMoreData ? newData.slice(0, ITEMS_PER_PAGE) : newData;
       
-      prefetchCacheRef.current[requestKey] = { data: newData };
+      console.log('✅ RPC response:', {
+        total: newData.length,
+        showing: productsToShow.length,
+        hasMore: hasMoreData
+      });
+      
+      // Cache the result (except for initial filter changes)
+      if (!isFilterChange || productsToShow.length > 0) {
+        prefetchCacheRef.current[requestKey] = { data: newData };
+      }
       
       // Prune cache to prevent memory leak
       const cacheKeys = Object.keys(prefetchCacheRef.current);
@@ -673,16 +727,18 @@ export function HomePage() {
         }
       }
       
-      setTimeout(() => {
-        startTransition(() => {
-          setProducts(prev => isFilterChange ? productsToShow : [...prev, ...productsToShow]);
-          setHasMore(hasMoreData);
-          setInitialLoad(false);
-          setError(null);
-          setLoading(false);
-          setIsFilterChanging(false);
-        });
-      }, 0);
+      startTransition(() => {
+        if (isFilterChange) {
+          setProducts(productsToShow);
+        } else {
+          setProducts(prev => [...prev, ...productsToShow]);
+        }
+        setHasMore(hasMoreData);
+        setInitialLoad(false);
+        setError(null);
+        setLoading(false);
+        setIsFilterChanging(false);
+      });
       
       if (productsToShow.length > 0) {
         const ids = productsToShow.map(p => p.id).filter(Boolean);
@@ -733,15 +789,13 @@ export function HomePage() {
       
       console.error('Fetch error in fetchFilteredProducts:', err);
       
-      setTimeout(() => {
-        startTransition(() => {
-          setError('Failed to load products. Please try again.');
-          setHasMore(false);
-          setInitialLoad(false);
-          setLoading(false);
-          setIsFilterChanging(false);
-        });
-      }, 0);
+      startTransition(() => {
+        setError('Failed to load products. Please try again.');
+        setHasMore(false);
+        setInitialLoad(false);
+        setLoading(false);
+        setIsFilterChanging(false);
+      });
     } finally {
       if (!controller.signal.aborted) {
         isFetchingRef.current = false;
@@ -752,7 +806,7 @@ export function HomePage() {
   }, [scheduleIdle, buildRpcParams, getRpcFunctionName, fetchBatchPricingFor]);
 
   // ============================================================================
-  // FETCH INITIAL FILTER OPTIONS (With caching)
+  // FETCH INITIAL FILTER OPTIONS
   // ============================================================================
   
   useEffect(() => {
@@ -890,7 +944,7 @@ export function HomePage() {
 }, [fetchWithCache]);
 
   // ============================================================================
-  // EFFECT - Monitor Filter Changes and Trigger Fetch (UPDATED for cursor)
+  // EFFECT - Monitor Filter Changes and Trigger Fetch (FIXED)
   // ============================================================================
   
   useEffect(() => {
@@ -907,30 +961,53 @@ export function HomePage() {
     
     const currentFilterKey = JSON.stringify(currentFilters);
     
-    if (prevFilterKeyRef.current !== currentFilterKey) {
-      // Reset auto-load counter and state on filter change
-      autoLoadCountRef.current = 0;
-      setShowLoadMoreButton(false);
-      setIsFilterChanging(true);
-      setProducts([]);
-      setHasMore(true);
-      setError(null);
-      
-      if (currentRequestRef.current) {
-        currentRequestRef.current.abort();
-      }
-      currentRequestRef.current = null;
-      
-      // Clear cache to force fresh fetch
-      prefetchCacheRef.current = {};
+    // Skip if this is the same filter key (no actual change)
+    if (prevFilterKeyRef.current === currentFilterKey) {
+      return;
     }
     
+    console.log('🔄 Filter change detected:', {
+      prev: prevFilterKeyRef.current,
+      current: currentFilterKey
+    });
+    
+    // Reset everything for new filter
+    startTransition(() => {
+      setProducts([]);
+      setShowLoadMoreButton(false);
+      setIsFilterChanging(true);
+      setHasMore(true);
+      setError(null);
+      setInitialLoad(false);
+      setLoading(true);
+    });
+    
+    // Cancel any ongoing request
+    if (currentRequestRef.current) {
+      currentRequestRef.current.abort();
+      console.log('Cancelled previous request');
+    }
+    
+    // Reset counters and cache
+    autoLoadCountRef.current = 0;
+    inFlightRequestsRef.current.clear();
+    
+    // Clear cache for old filters
+    if (prevFilterKeyRef.current) {
+      const keysToDelete = Object.keys(prefetchCacheRef.current).filter(key => 
+        key.includes(prevFilterKeyRef.current.split('-')[0])
+      );
+      keysToDelete.forEach(key => {
+        delete prefetchCacheRef.current[key];
+      });
+    }
+    
+    // Store current filter key
     prevFilterKeyRef.current = currentFilterKey;
     
-    // Get the last product for cursor pagination (null for initial load)
-    const lastProduct = products.length > 0 ? products[products.length - 1] : null;
+    // Fetch first page with null cursor
+    fetchFilteredProducts(currentFilters, null, sortOrder, true);
     
-    fetchFilteredProducts(currentFilters, lastProduct, sortOrder, prevFilterKeyRef.current !== currentFilterKey);
   }, [
     selectedShopName,
     selectedSizeGroups,
@@ -940,18 +1017,18 @@ export function HomePage() {
     onSaleOnly,
     searchQuery,
     selectedPriceRange,
-    sortOrder,
-    fetchFilteredProducts
+    sortOrder
+    // REMOVED fetchFilteredProducts from dependencies to prevent loops
   ]);
 
   // ============================================================================
-  // INFINITE SCROLL OBSERVER (UPDATED for cursor)
+  // INFINITE SCROLL OBSERVER (FIXED)
   // ============================================================================
   
   useEffect(() => {
     const target = observerRef.current;
     
-    if (!target || !hasMore || loading || showLoadMoreButton) {
+    if (!target || !hasMore || loading || showLoadMoreButton || isFilterChanging || products.length === 0) {
       return;
     }
     
@@ -966,8 +1043,22 @@ export function HomePage() {
         observerLockRef.current = true;
         canLoadMoreRef.current = false;
         
-        // Trigger fetch with last product as cursor
-        // This is handled by the effect above when products change
+        const lastProduct = products[products.length - 1];
+        const currentFilters: FilterOptions = {
+          selectedShopName,
+          selectedSizeGroups,
+          selectedGroupedTypes,
+          selectedTopLevelCategories,
+          selectedGenderAges,
+          onSaleOnly,
+          searchQuery,
+          selectedPriceRange
+        };
+        
+        console.log('⬇️ Infinite scroll triggered, loading more...');
+        
+        // Load next page
+        fetchFilteredProducts(currentFilters, lastProduct, sortOrder, false);
         
         setTimeout(() => {
           canLoadMoreRef.current = true;
@@ -986,7 +1077,7 @@ export function HomePage() {
       io.disconnect();
       observerLockRef.current = false;
     };
-  }, [hasMore, loading, showLoadMoreButton, products]);
+  }, [hasMore, loading, showLoadMoreButton, isFilterChanging, products.length, sortOrder]);
 
   // ============================================================================
   // EVENT HANDLERS
@@ -1009,12 +1100,26 @@ export function HomePage() {
   };
 
   const handleSortChange = (value: string) => {
+    console.log('🔄 Sort order changed to:', value);
     setSortOrder(value as SortOrder);
   };
 
   const handleLoadMoreClick = () => {
-    if (!loading && hasMore && products.length > 0) {
-      // Load more will be triggered by the effect when products array is used as dependency
+    if (!loading && hasMore && products.length > 0 && !isFilterChanging) {
+      const lastProduct = products[products.length - 1];
+      const currentFilters: FilterOptions = {
+        selectedShopName,
+        selectedSizeGroups,
+        selectedGroupedTypes,
+        selectedTopLevelCategories,
+        selectedGenderAges,
+        onSaleOnly,
+        searchQuery,
+        selectedPriceRange
+      };
+      
+      console.log('🖱️ Load More clicked');
+      fetchFilteredProducts(currentFilters, lastProduct, sortOrder, false);
     }
   };
 
@@ -1023,6 +1128,7 @@ export function HomePage() {
   };
 
   const handleClearAllFilters = () => {
+    console.log('🗑️ Clearing all filters');
     setSelectedShopName([]);
     setSelectedSizeGroups([]);
     setSelectedGroupedTypes([]);
@@ -1387,7 +1493,7 @@ export function HomePage() {
                     <AsyncLucideIcon name="Loader2" className="animate-spin h-8 w-8 text-gray-600 dark:text-gray-300 mb-3" />
                     <p className="text-gray-900 dark:text-gray-100 text-sm">Loading products…</p>
                   </div>
-                ) : products.length === 0 ? (
+                ) : products.length === 0 && !loading ? (
                   <div className="col-span-full flex flex-col items-center justify-center min-h-[200px] py-8">
                     <AsyncLucideIcon name="Search" className="h-12 w-12 text-gray-400 dark:text-gray-600 mb-4" />
                     <p className="text-gray-900 dark:text-gray-100 text-sm font-medium">No products found</p>
@@ -1426,7 +1532,7 @@ export function HomePage() {
               </div>
 
               {/* Loading indicator while auto-loading */}
-              {loading && products.length > 0 && !showLoadMoreButton && (
+              {loading && products.length > 0 && !showLoadMoreButton && !isFilterChanging && (
                 <div className="flex justify-center py-8">
                   <div className="bg-white dark:bg-gray-800 p-3 rounded-lg shadow-lg">
                     <AsyncLucideIcon name="Loader2" className="animate-spin h-6 w-6 text-gray-600 dark:text-gray-300" />
@@ -1435,7 +1541,7 @@ export function HomePage() {
               )}
 
               {/* Load More Button */}
-              {hasMore && !loading && showLoadMoreButton && products.length > 0 && (
+              {hasMore && !loading && showLoadMoreButton && products.length > 0 && !isFilterChanging && (
                 <div className="text-center py-8">
                   <button
                     onClick={handleLoadMoreClick}
@@ -1452,7 +1558,7 @@ export function HomePage() {
               )}
               
               {/* Loading state for Load More button */}
-              {hasMore && loading && showLoadMoreButton && products.length > 0 && (
+              {hasMore && loading && showLoadMoreButton && products.length > 0 && !isFilterChanging && (
                 <div className="text-center py-8">
                   <div className="inline-flex items-center justify-center gap-2 px-6 py-3 bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-400 text-sm font-medium rounded-lg border-2 border-gray-200 dark:border-gray-700">
                     <AsyncLucideIcon name="Loader2" className="animate-spin h-4 w-4" />
@@ -1462,12 +1568,12 @@ export function HomePage() {
               )}
 
               {/* Infinite scroll trigger element */}
-              {!showLoadMoreButton && hasMore && autoLoadCountRef.current < MAX_AUTO_LOADS && (
+              {!showLoadMoreButton && hasMore && autoLoadCountRef.current < MAX_AUTO_LOADS && !isFilterChanging && products.length > 0 && (
                 <div ref={observerRef} className="h-20" />
               )}
 
               {/* End of results */}
-              {!hasMore && products.length > 0 && (
+              {!hasMore && products.length > 0 && !isFilterChanging && (
                 <div className="text-center py-8 border-t border-gray-200 dark:border-gray-800">
                   <div className="inline-flex items-center gap-2 text-gray-600 dark:text-gray-400 text-sm mb-3">
                     <AsyncLucideIcon name="CheckCircle" className="h-5 w-5 text-green-600 dark:text-green-400" />
