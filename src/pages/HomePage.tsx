@@ -944,71 +944,11 @@ export function HomePage() {
 }, [fetchWithCache]);
 
   // ============================================================================
-  // EFFECT - Monitor Filter Changes and Trigger Fetch (FIXED)
-  // ============================================================================
-  
-  useEffect(() => {
-    const currentFilters: FilterOptions = {
-      selectedShopName,
-      selectedSizeGroups,
-      selectedGroupedTypes,
-      selectedTopLevelCategories,
-      selectedGenderAges,
-      onSaleOnly,
-      searchQuery,
-      selectedPriceRange
-    };
-    
-    const currentFilterKey = JSON.stringify(currentFilters);
-    
-    // Skip if this is the same filter key (no actual change)
-    if (prevFilterKeyRef.current === currentFilterKey) {
-      return;
-    }
-    
-    console.log('🔄 Filter change detected:', {
-      prev: prevFilterKeyRef.current,
-      current: currentFilterKey
-    });
-    
-    // Reset everything for new filter
-    startTransition(() => {
-      setProducts([]);
-      setShowLoadMoreButton(false);
-      setIsFilterChanging(true);
-      setHasMore(true);
-      setError(null);
-      setInitialLoad(false);
-      setLoading(true);
-    });
-    
-    // Cancel any ongoing request
-    if (currentRequestRef.current) {
-      currentRequestRef.current.abort();
-      console.log('Cancelled previous request');
-    }
-    
-    // Reset counters and cache
-    autoLoadCountRef.current = 0;
-    inFlightRequestsRef.current.clear();
-    
-    // Clear cache for old filters
-    if (prevFilterKeyRef.current) {
-      const keysToDelete = Object.keys(prefetchCacheRef.current).filter(key => 
-        key.includes(prevFilterKeyRef.current.split('-')[0])
-      );
-      keysToDelete.forEach(key => {
-        delete prefetchCacheRef.current[key];
-      });
-    }
-    
-    // Store current filter key
-    prevFilterKeyRef.current = currentFilterKey;
-    
-    // Fetch first page with null cursor
-    fetchFilteredProducts(currentFilters, null, sortOrder, true);
-    
-  }, [
+// EFFECT - Monitor Filter Changes and Trigger Fetch (UPDATED for sort order)
+// ============================================================================
+
+useEffect(() => {
+  const currentFilters: FilterOptions = {
     selectedShopName,
     selectedSizeGroups,
     selectedGroupedTypes,
@@ -1016,10 +956,62 @@ export function HomePage() {
     selectedGenderAges,
     onSaleOnly,
     searchQuery,
-    selectedPriceRange,
-    sortOrder
-    // REMOVED fetchFilteredProducts from dependencies to prevent loops
-  ]);
+    selectedPriceRange
+  };
+  
+  // Include sortOrder in the filter key
+  const currentFilterKey = JSON.stringify({ ...currentFilters, sortOrder });
+  
+  // Skip if this is the same filter key (no actual change)
+  if (prevFilterKeyRef.current === currentFilterKey) {
+    return;
+  }
+  
+  console.log('🔄 Filter/sort change detected:', {
+    prev: prevFilterKeyRef.current,
+    current: currentFilterKey,
+    changedSortOnly: prevFilterKeyRef.current.includes(JSON.stringify(currentFilters)) && 
+                    !prevFilterKeyRef.current.includes(`"sortOrder":"${sortOrder}"`)
+  });
+  
+  // Reset everything for new filter/sort
+  startTransition(() => {
+    setProducts([]);
+    setShowLoadMoreButton(false);
+    setIsFilterChanging(true);
+    setHasMore(true);
+    setError(null);
+    setInitialLoad(false);
+    setLoading(true);
+  });
+  
+  // Cancel any ongoing request
+  if (currentRequestRef.current) {
+    currentRequestRef.current.abort();
+    console.log('Cancelled previous request');
+  }
+  
+  // Reset counters and cache
+  autoLoadCountRef.current = 0;
+  inFlightRequestsRef.current.clear();
+  
+  // Store current filter key
+  prevFilterKeyRef.current = currentFilterKey;
+  
+  // Fetch first page with null cursor
+  fetchFilteredProducts(currentFilters, null, sortOrder, true);
+  
+}, [
+  selectedShopName,
+  selectedSizeGroups,
+  selectedGroupedTypes,
+  selectedTopLevelCategories,
+  selectedGenderAges,
+  onSaleOnly,
+  searchQuery,
+  selectedPriceRange,
+  sortOrder // Make sure sortOrder is included
+]);
 
   // ============================================================================
   // INFINITE SCROLL OBSERVER (FIXED)
