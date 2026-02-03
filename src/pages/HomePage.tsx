@@ -248,7 +248,6 @@ export function HomePage() {
   const CACHE_TTL = 5 * 60 * 1000;
   const canLoadMoreRef = useRef(true);
   const prevFilterKeyRef = useRef<string>('');
-  const initialProductsLoadedRef = useRef(false);
 
   // ============================================================================
   // PRICE RANGE INPUT HANDLERS
@@ -799,68 +798,7 @@ export function HomePage() {
   }, [scheduleIdle, buildRpcParams, getRpcFunctionName, fetchBatchPricingFor, callRpcWithRetry]);
 
   // ============================================================================
-  // OPTIMIZATION 1: FAST INITIAL PRODUCT LOADING
-  // ============================================================================
-  
-  useEffect(() => {
-    // Only run once on initial mount
-    if (initialProductsLoadedRef.current || products.length > 0 || loading || isFilterChanging) {
-      return;
-    }
-
-    const loadInitialProducts = async () => {
-      try {
-        console.log('Loading fast initial products...');
-        
-        const supabase = getSupabase();
-        const { data, error } = await supabase
-          .from('products_with_details_core')
-          .select('*')
-          .limit(ITEMS_PER_PAGE)
-          .order('max_discount_percentage', { ascending: false });
-
-        if (error) throw error;
-
-        if (data && data.length > 0) {
-          console.log(`Loaded ${data.length} initial products`);
-          
-          startTransition(() => {
-            setProducts(data as ProductWithDetails[]);
-            setInitialLoad(false);
-            setLoading(false);
-            setHasMore(true);
-          });
-          
-          const ids = data.map(p => p.id).filter(Boolean);
-          if (ids.length) {
-            scheduleIdle(() => fetchBatchPricingFor(ids));
-          }
-        } else {
-          startTransition(() => {
-            setInitialLoad(false);
-            setLoading(false);
-          });
-        }
-        
-        initialProductsLoadedRef.current = true;
-        
-      } catch (error) {
-        console.error('Fast initial load failed:', error);
-        initialProductsLoadedRef.current = true;
-        // Don't set error here - let the main product fetch handle it
-      }
-    };
-
-    // Small delay to let other critical things happen first
-    const timer = setTimeout(() => {
-      loadInitialProducts();
-    }, 100);
-
-    return () => clearTimeout(timer);
-  }, [products.length, loading, isFilterChanging, fetchBatchPricingFor, scheduleIdle]);
-
-  // ============================================================================
-  // OPTIMIZATION 2: OPTIMIZED FILTER OPTIONS FETCHING
+  // OPTIMIZED FILTER OPTIONS FETCHING (ONLY OPTIMIZATION KEPT)
   // ============================================================================
   
   useEffect(() => {
@@ -997,7 +935,7 @@ export function HomePage() {
 }, []);
 
   // ============================================================================
-  // EFFECT - Monitor Filter Changes and Trigger Fetch
+  // EFFECT - Monitor Filter Changes and Trigger Fetch (MAIN LOADING)
   // ============================================================================
 
   useEffect(() => {
@@ -1024,7 +962,7 @@ export function HomePage() {
       setIsFilterChanging(true);
       setHasMore(true);
       setError(null);
-      setInitialLoad(false);
+      setInitialLoad(true); // Changed back to true for initial load
       setLoading(true);
     });
     
@@ -1034,7 +972,6 @@ export function HomePage() {
     
     autoLoadCountRef.current = 0;
     inFlightRequestsRef.current.clear();
-    initialProductsLoadedRef.current = false;
     
     prevFilterKeyRef.current = currentFilterKey;
     
