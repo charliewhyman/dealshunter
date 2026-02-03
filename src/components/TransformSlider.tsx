@@ -6,20 +6,44 @@ type TransformSliderProps = {
   max: number;
   step?: number;
   value: [number, number];
-  onFinalChange: (values: number[]) => void;
+  onChange?: (values: [number, number]) => void;
+  onFinalChange?: (values: [number, number]) => void;
+  formatLabel?: (value: number) => string;
 };
 
-export default function TransformSlider({ min, max, step = 1, value, onFinalChange }: TransformSliderProps) {
+export default function TransformSlider({ 
+  min, 
+  max, 
+  step = 1, 
+  value, 
+  onChange,
+  onFinalChange 
+}: TransformSliderProps) {
   const minVal = value[0];
   const maxVal = value[1];
 
   const [internalValues, setInternalValues] = useState<[number, number]>([minVal, maxVal]);
 
   // Keep internal UI values in sync when parent value changes
-  // Depend on the extracted entries so the dependency array is statically checkable.
   useEffect(() => {
     setInternalValues([minVal, maxVal]);
   }, [minVal, maxVal]);
+
+  const handleChange = (vals: number[]) => {
+    const newValues = [vals[0], vals[1]] as [number, number];
+    setInternalValues(newValues);
+    if (onChange) {
+      onChange(newValues);
+    }
+  };
+
+  const handleFinalChange = (vals: number[]) => {
+    const newValues = [vals[0], vals[1]] as [number, number];
+    setInternalValues(newValues);
+    if (onFinalChange) {
+      onFinalChange(newValues);
+    }
+  };
 
   return (
     <div className="w-full px-1">
@@ -28,11 +52,8 @@ export default function TransformSlider({ min, max, step = 1, value, onFinalChan
         min={min}
         max={max}
         values={[internalValues[0], internalValues[1]]}
-        onChange={(vals) => setInternalValues([vals[0], vals[1]])}
-        onFinalChange={(vals) => {
-          setInternalValues([vals[0], vals[1]]);
-          onFinalChange(vals);
-        }}
+        onChange={handleChange}
+        onFinalChange={handleFinalChange}
         renderTrack={({ props, children }) => {
           const { style: trackStyle, ...trackProps } = props;
           return (
@@ -47,9 +68,6 @@ export default function TransformSlider({ min, max, step = 1, value, onFinalChan
                   left: 0,
                   width: '100%',
                   transformOrigin: 'left center',
-                  // Use transform (translateX + scaleX) so updates are
-                  // composited on the GPU instead of causing layout
-                  // recalculations (forced reflow) when the slider moves.
                   transform: `translateX(${((internalValues[0] - min) / (max - min)) * 100}%) scaleX(${((internalValues[1] - internalValues[0]) / (max - min))})`,
                   willChange: 'transform',
                 }}
