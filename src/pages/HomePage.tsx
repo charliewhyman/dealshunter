@@ -1232,17 +1232,6 @@ export function HomePage() {
   return (
     <div className="min-h-screen bg-gray-50 dark:bg-gray-950">
       <Header />
-      
-      {/* Filter changing indicator */}
-      {isFilterChanging && (
-        <div className="fixed top-20 right-4 bg-blue-500 text-white px-4 py-2 rounded-lg shadow-lg z-50 animate-fade-in">
-          <div className="flex items-center gap-2">
-            <AsyncLucideIcon name="Loader2" className="animate-spin h-4 w-4" />
-            <span className="text-sm font-medium">Updating results...</span>
-          </div>
-        </div>
-      )}
-
       <div className="mx-auto px-4 py-6 sm:px-6 lg:px-8 max-w-screen-2xl">
         {/* Search Bar */}
         <div className="mb-6">
