@@ -19,7 +19,7 @@ const INTERSECTION_ROOT_MARGIN = '200px';
 const INTERSECTION_THRESHOLD = 0.1;
 const PRICING_DEBOUNCE_MS = 300;
 const OBSERVER_CHECK_INTERVAL_MS = 500;
-const INITIAL_LOAD_TIMEOUT_MS = 10000; // Reduced from 15s to 10s
+const INITIAL_LOAD_TIMEOUT_MS = 15000;
 const REGULAR_LOAD_TIMEOUT_MS = 30000;
 const MAX_CACHE_ENTRIES = 10;
 const FILTER_OPTIONS_CACHE_KEY = 'filter_options_cache';
@@ -107,7 +107,6 @@ export function HomePage() {
   const autoLoadCountRef = useRef(0);
   const [showLoadMoreButton, setShowLoadMoreButton] = useState(false);
   const [showFilters, setShowFilters] = useState(false);
-  const [initialLoadTimeout, setInitialLoadTimeout] = useState(false);
 
   // ============================================================================
   // STATE - Filter Options (Dropdowns)
@@ -249,7 +248,7 @@ export function HomePage() {
   const CACHE_TTL = 5 * 60 * 1000;
   const canLoadMoreRef = useRef(true);
   const prevFilterKeyRef = useRef<string>('');
-  const initialLoadAttemptedRef = useRef(false);
+  const initialProductsLoadedRef = useRef(false);
 
   // ============================================================================
   // PRICE RANGE INPUT HANDLERS
@@ -548,7 +547,7 @@ export function HomePage() {
     isInitialLoad: boolean,
     retryCount = 0
   ): Promise<any> => {
-    const MAX_RETRIES = isInitialLoad ? 1 : 2; // Reduce retries for initial load
+    const MAX_RETRIES = 2;
     
     try {
       const supabase = getSupabase();
@@ -569,14 +568,12 @@ export function HomePage() {
       return data;
       
     } catch (error: any) {
-      const maybeErr = err as { name?: string; message?: string; code?: string };
-      
       const isTimeout = error?.code === '57014' || 
                        error?.name === 'AbortError' || 
                        error?.message?.includes('timeout') ||
                        error?.message?.includes('aborted');
       
-      if (isTimeout && retryCount < MAX_RETRIES) {
+      if (isTimeout && retryCount < MAX_RETRIES && isInitialLoad) {
         console.log(`RPC timeout on ${rpcFunctionName}, retrying (${retryCount + 1}/${MAX_RETRIES})`);
         
         await new Promise(resolve => 
@@ -591,34 +588,7 @@ export function HomePage() {
   }, []);
 
   // ============================================================================
-  // FAST SIMPLE INITIAL LOAD
-  // ============================================================================
-  
-  const fetchSimpleInitialProducts = useCallback(async (): Promise<ProductWithDetails[]> => {
-    try {
-      console.log('Attempting fast simple initial load...');
-      const supabase = getSupabase();
-      
-      // Simple query without complex filters
-      const { data, error } = await supabase
-        .from('products_with_details_core')
-        .select('*')
-        .eq('is_active', true)
-        .order('created_at', { ascending: false })
-        .limit(ITEMS_PER_PAGE);
-      
-      if (error) throw error;
-      
-      console.log(`Fast simple load successful: ${data?.length || 0} products`);
-      return (data as ProductWithDetails[]) || [];
-    } catch (error) {
-      console.error('Fast simple initial load failed:', error);
-      return [];
-    }
-  }, []);
-
-  // ============================================================================
-  // MAIN FETCH FUNCTION WITH OPTIMIZED INITIAL LOAD
+  // MAIN FETCH FUNCTION
   // ============================================================================
   
   const fetchFilteredProducts = useCallback(async (
@@ -631,21 +601,7 @@ export function HomePage() {
     const requestKey = `${JSON.stringify(filters)}-${lastProductId}-${sortOrder}`;
     const isInitialLoad = !lastProduct && isFilterChange;
     
-    // Check if this is empty initial load (no filters applied)
-    const isEmptyInitialLoad = isInitialLoad && 
-      filters.selectedShopName.length === 0 &&
-      filters.selectedSizeGroups.length === 0 &&
-      filters.selectedGroupedTypes.length === 0 &&
-      filters.selectedTopLevelCategories.length === 0 &&
-      filters.selectedGenderAges.length === 0 &&
-      !filters.onSaleOnly &&
-      filters.searchQuery === '' &&
-      filters.selectedPriceRange[0] === PRICE_RANGE[0] &&
-      filters.selectedPriceRange[1] === PRICE_RANGE[1];
-    
-    // Request deduplication
-    if (inFlightRequestsRef.current.has(requestKey)) {
-      console.log('Skipping duplicate request:', requestKey);
+    if (!isFilterChange && inFlightRequestsRef.current.has(requestKey)) {
       return;
     }
     
@@ -654,7 +610,6 @@ export function HomePage() {
     if (isFilterChange) {
       autoLoadCountRef.current = 0;
       setShowLoadMoreButton(false);
-      setInitialLoadTimeout(false);
       
       if (currentRequestRef.current) {
         currentRequestRef.current.abort();
@@ -669,7 +624,6 @@ export function HomePage() {
       });
     }
     
-    // Check cache first (skip for filter changes)
     if (!isFilterChange) {
       const cached = prefetchCacheRef.current[requestKey];
       if (cached) {
@@ -683,7 +637,6 @@ export function HomePage() {
           setError(null);
           setLoading(false);
           setIsFilterChanging(false);
-          setInitialLoadTimeout(false);
         });
         
         isFetchingRef.current = false;
@@ -740,81 +693,10 @@ export function HomePage() {
       setIsFilterChanging(true);
     }
     
-    // For empty initial load that's timing out, try simple load first
-    if (isEmptyInitialLoad && !initialLoadAttemptedRef.current) {
-      initialLoadAttemptedRef.current = true;
-      
-      try {
-        console.log('Trying simple initial load for empty filters...');
-        const simpleProducts = await fetchSimpleInitialProducts();
-        
-        if (simpleProducts.length > 0) {
-          console.log(`Showing ${simpleProducts.length} simple products`);
-          
-          startTransition(() => {
-            setProducts(simpleProducts);
-            setInitialLoad(false);
-            setLoading(false);
-            setInitialLoadTimeout(false);
-          });
-          
-          // Fetch pricing for simple products
-          const ids = simpleProducts.map(p => p.id).filter(Boolean);
-          if (ids.length) {
-            scheduleIdle(() => fetchBatchPricingFor(ids));
-          }
-          
-          // Now fetch the proper RPC results in the background
-          scheduleIdle(async () => {
-            try {
-              console.log('Fetching proper RPC results in background...');
-              const rpcFunctionName = getRpcFunctionName(sortOrder);
-              const params = buildRpcParams(filters, null, sortOrder);
-              const data = await callRpcWithRetry(rpcFunctionName, params, isInitialLoad);
-              
-              const newData = (data as ProductWithDetails[]) || [];
-              const hasMoreData = newData.length > ITEMS_PER_PAGE;
-              const productsToShow = hasMoreData ? newData.slice(0, ITEMS_PER_PAGE) : newData;
-              
-              if (productsToShow.length > 0) {
-                console.log(`Replacing with ${productsToShow.length} proper RPC products`);
-                
-                startTransition(() => {
-                  setProducts(productsToShow);
-                  setHasMore(hasMoreData);
-                  setError(null);
-                });
-                
-                // Update pricing for new products
-                const newIds = productsToShow.map(p => p.id).filter(Boolean);
-                if (newIds.length) {
-                  fetchBatchPricingFor(newIds);
-                }
-                
-                // Cache the RPC results
-                prefetchCacheRef.current[requestKey] = { data: newData };
-              }
-            } catch (error) {
-              console.error('Background RPC fetch failed:', error);
-              // Keep showing the simple products
-            }
-          });
-          
-          inFlightRequestsRef.current.delete(requestKey);
-          isFetchingRef.current = false;
-          return;
-        }
-      } catch (error) {
-        console.error('Simple initial load failed, falling back to RPC:', error);
-      }
-    }
-    
-    // Regular RPC fetch
     try {
       const rpcFunctionName = getRpcFunctionName(sortOrder);
       const params = buildRpcParams(filters, lastProduct, sortOrder);
       
-      console.log(`Fetching ${isInitialLoad ? 'initial' : 'more'} products via RPC...`);
       const data = await callRpcWithRetry(rpcFunctionName, params, isInitialLoad);
       
       const newData = (data as ProductWithDetails[]) || [];
@@ -844,7 +726,6 @@ export function HomePage() {
         setError(null);
         setLoading(false);
         setIsFilterChanging(false);
-        setInitialLoadTimeout(false);
       });
       
       if (productsToShow.length > 0) {
@@ -915,10 +796,71 @@ export function HomePage() {
         inFlightRequestsRef.current.delete(requestKey);
       }
     }
-  }, [scheduleIdle, buildRpcParams, getRpcFunctionName, fetchBatchPricingFor, callRpcWithRetry, PRICE_RANGE, fetchSimpleInitialProducts]);
+  }, [scheduleIdle, buildRpcParams, getRpcFunctionName, fetchBatchPricingFor, callRpcWithRetry]);
 
   // ============================================================================
-  // OPTIMIZED FILTER OPTIONS FETCHING
+  // OPTIMIZATION 1: FAST INITIAL PRODUCT LOADING
+  // ============================================================================
+  
+  useEffect(() => {
+    // Only run once on initial mount
+    if (initialProductsLoadedRef.current || products.length > 0 || loading || isFilterChanging) {
+      return;
+    }
+
+    const loadInitialProducts = async () => {
+      try {
+        console.log('Loading fast initial products...');
+        
+        const supabase = getSupabase();
+        const { data, error } = await supabase
+          .from('products_with_details_core')
+          .select('*')
+          .limit(ITEMS_PER_PAGE)
+          .order('max_discount_percentage', { ascending: false });
+
+        if (error) throw error;
+
+        if (data && data.length > 0) {
+          console.log(`Loaded ${data.length} initial products`);
+          
+          startTransition(() => {
+            setProducts(data as ProductWithDetails[]);
+            setInitialLoad(false);
+            setLoading(false);
+            setHasMore(true);
+          });
+          
+          const ids = data.map(p => p.id).filter(Boolean);
+          if (ids.length) {
+            scheduleIdle(() => fetchBatchPricingFor(ids));
+          }
+        } else {
+          startTransition(() => {
+            setInitialLoad(false);
+            setLoading(false);
+          });
+        }
+        
+        initialProductsLoadedRef.current = true;
+        
+      } catch (error) {
+        console.error('Fast initial load failed:', error);
+        initialProductsLoadedRef.current = true;
+        // Don't set error here - let the main product fetch handle it
+      }
+    };
+
+    // Small delay to let other critical things happen first
+    const timer = setTimeout(() => {
+      loadInitialProducts();
+    }, 100);
+
+    return () => clearTimeout(timer);
+  }, [products.length, loading, isFilterChanging, fetchBatchPricingFor, scheduleIdle]);
+
+  // ============================================================================
+  // OPTIMIZATION 2: OPTIMIZED FILTER OPTIONS FETCHING
   // ============================================================================
   
   useEffect(() => {
@@ -927,24 +869,31 @@ export function HomePage() {
 
   async function fetchInitialData() {
     try {
-      // Show immediate loading state
+      // ==============================
+      // 1. Show immediate loading state
+      // ==============================
       if (isMounted) {
-        setShopList([]);
-        setAllSizeData([]);
+        // Set empty arrays to trigger skeleton loading
+        if (shopList.length === 0) setShopList([]);
+        if (allSizeData.length === 0) setAllSizeData([]);
       }
 
       const supabase = getSupabase();
       
-      // Phase 1: Fetch critical filters first (shops and sizes)
+      // ==============================
+      // 2. Phase 1: Fetch critical filters first (shops and sizes)
+      // ==============================
       console.log('Fetching critical filter options...');
       
       const [shopsResult, sizesResult] = await Promise.all([
+        // Shops (fast, small table)
         supabase
           .from('shops')
           .select('id, shop_name')
           .order('shop_name')
           .limit(100),
           
+        // Sizes (fast RPC)
         supabase
           .rpc('get_distinct_size_groups')
           .then(({ data, error }) => {
@@ -959,10 +908,13 @@ export function HomePage() {
         console.log('Critical filters loaded');
       }
 
-      // Phase 2: Fetch remaining options in parallel
+      // ==============================
+      // 3. Phase 2: Fetch remaining options in parallel
+      // ==============================
       console.log('Fetching remaining filter options...');
       
       const [typesResult, categoriesResult, gendersResult] = await Promise.all([
+        // Grouped types
         supabase
           .rpc('get_distinct_grouped_types')
           .then(({ data, error }) => {
@@ -970,6 +922,7 @@ export function HomePage() {
             return data || [];
           }),
           
+        // Categories
         supabase
           .rpc('get_distinct_top_level_categories')
           .then(({ data, error }) => {
@@ -977,6 +930,7 @@ export function HomePage() {
             return data || [];
           }),
           
+        // Gender/age
         supabase
           .rpc('get_distinct_gender_ages')
           .then(({ data, error }) => {
@@ -992,7 +946,9 @@ export function HomePage() {
         console.log('All filters loaded');
       }
 
-      // Cache results
+      // ==============================
+      // 4. Cache results
+      // ==============================
       safeLocalStorageSet(
         FILTER_OPTIONS_CACHE_KEY,
         JSON.stringify({
@@ -1028,7 +984,7 @@ export function HomePage() {
     }
   }
 
-  // Small delay to prioritize product loading
+  // Add a small delay to prioritize product loading first
   const timer = setTimeout(() => {
     fetchInitialData();
   }, 300);
@@ -1062,17 +1018,14 @@ export function HomePage() {
       return;
     }
     
-    console.log('Filter/sort changed, fetching products...');
-    
     startTransition(() => {
       setProducts([]);
       setShowLoadMoreButton(false);
       setIsFilterChanging(true);
       setHasMore(true);
       setError(null);
-      setInitialLoad(true);
+      setInitialLoad(false);
       setLoading(true);
-      setInitialLoadTimeout(false);
     });
     
     if (currentRequestRef.current) {
@@ -1081,22 +1034,7 @@ export function HomePage() {
     
     autoLoadCountRef.current = 0;
     inFlightRequestsRef.current.clear();
-    
-    // Reset initial load flag for empty filters
-    const isEmptyFilters = 
-      currentFilters.selectedShopName.length === 0 &&
-      currentFilters.selectedSizeGroups.length === 0 &&
-      currentFilters.selectedGroupedTypes.length === 0 &&
-      currentFilters.selectedTopLevelCategories.length === 0 &&
-      currentFilters.selectedGenderAges.length === 0 &&
-      !currentFilters.onSaleOnly &&
-      currentFilters.searchQuery === '' &&
-      currentFilters.selectedPriceRange[0] === PRICE_RANGE[0] &&
-      currentFilters.selectedPriceRange[1] === PRICE_RANGE[1];
-    
-    if (isEmptyFilters) {
-      initialLoadAttemptedRef.current = false;
-    }
+    initialProductsLoadedRef.current = false;
     
     prevFilterKeyRef.current = currentFilterKey;
     
@@ -1113,22 +1051,6 @@ export function HomePage() {
     selectedPriceRange,
     sortOrder
   ]);
-
-  // ============================================================================
-  // INITIAL LOAD TIMEOUT HANDLER
-  // ============================================================================
-  
-  useEffect(() => {
-    if (initialLoad && loading && products.length === 0) {
-      const timeout = setTimeout(() => {
-        setInitialLoadTimeout(true);
-      }, 3000); // Show timeout message after 3 seconds
-      
-      return () => clearTimeout(timeout);
-    } else {
-      setInitialLoadTimeout(false);
-    }
-  }, [initialLoad, loading, products.length]);
 
   // ============================================================================
   // INFINITE SCROLL OBSERVER
@@ -1241,27 +1163,6 @@ export function HomePage() {
     setSelectedPriceRange([...PRICE_RANGE]);
     setSearchQuery('');
     navigate('/', { replace: true });
-  };
-
-  const handleRetryInitialLoad = () => {
-    setError(null);
-    setInitialLoad(true);
-    setLoading(true);
-    setInitialLoadTimeout(false);
-    
-    const currentFilters: FilterOptions = {
-      selectedShopName,
-      selectedSizeGroups,
-      selectedGroupedTypes,
-      selectedTopLevelCategories,
-      selectedGenderAges,
-      onSaleOnly,
-      searchQuery,
-      selectedPriceRange
-    };
-    
-    initialLoadAttemptedRef.current = false;
-    fetchFilteredProducts(currentFilters, null, sortOrder, true);
   };
 
   // ============================================================================
@@ -1647,29 +1548,6 @@ export function HomePage() {
               </div>
             </div>
 
-            {/* Initial Load Timeout Warning */}
-            {initialLoadTimeout && !error && (
-              <div className="mb-4 p-4 bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800 rounded-lg">
-                <div className="flex items-start gap-3">
-                  <AsyncLucideIcon name="Clock" className="h-5 w-5 text-yellow-600 dark:text-yellow-400 mt-0.5 flex-shrink-0" />
-                  <div className="flex-1">
-                    <p className="text-yellow-700 dark:text-yellow-300 text-sm font-medium">
-                      Loading is taking longer than expected
-                    </p>
-                    <p className="text-yellow-600 dark:text-yellow-400 text-sm mt-1">
-                      The server is experiencing high load. Products will appear shortly.
-                    </p>
-                    <button 
-                      onClick={handleRetryInitialLoad} 
-                      className="mt-3 text-yellow-600 dark:text-yellow-400 hover:underline text-sm font-medium"
-                    >
-                      Try loading again
-                    </button>
-                  </div>
-                </div>
-              </div>
-            )}
-
             {/* Error State */}
             {error && (
               <div className="mb-4 p-4 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg">
@@ -1683,7 +1561,11 @@ export function HomePage() {
                         : 'Please check your connection and try again.'}
                     </p>
                     <button 
-                      onClick={handleRetryInitialLoad} 
+                      onClick={() => { 
+                        setError(null); 
+                        setProducts([]); 
+                        setInitialLoad(true); 
+                      }} 
                       className="mt-3 text-red-600 dark:text-red-400 hover:underline text-sm font-medium"
                     >
                       Try again
