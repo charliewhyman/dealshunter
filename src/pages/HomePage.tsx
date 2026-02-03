@@ -199,9 +199,11 @@ export function HomePage() {
     }
   });
 
-  const PRICE_RANGE = useMemo<[number, number]>(() => [15, 1000], []);
+  // Update price range constants
   const ABS_MIN_PRICE = 0;
-  const ABS_MAX_PRICE = 100000;
+  const ABS_MAX_PRICE = 500; // Reduced from 100000 to 500
+  
+  const PRICE_RANGE = useMemo<[number, number]>(() => [15, 200], []); // Default range 15-200
   
   const [selectedPriceRange, setSelectedPriceRange] = useState<[number, number]>(() => {
     try {
@@ -249,7 +251,34 @@ export function HomePage() {
   const CACHE_TTL = 5 * 60 * 1000;
   const canLoadMoreRef = useRef(true);
   const prevFilterKeyRef = useRef<string>('');
+
+  // ============================================================================
+  // PRICE RANGE INPUT HANDLERS
+  // ============================================================================
   
+  const handleMinPriceChange = useCallback((e: ChangeEvent<HTMLInputElement>) => {
+    const value = parseFloat(e.target.value);
+    if (!isNaN(value) && value >= ABS_MIN_PRICE && value <= ABS_MAX_PRICE) {
+      const newMin = Math.min(value, selectedPriceRange[1]);
+      setSelectedPriceRange([newMin, selectedPriceRange[1]]);
+    }
+  }, [selectedPriceRange]);
+
+  const handleMaxPriceChange = useCallback((e: ChangeEvent<HTMLInputElement>) => {
+    const value = parseFloat(e.target.value);
+    if (!isNaN(value) && value >= ABS_MIN_PRICE && value <= ABS_MAX_PRICE) {
+      const newMax = Math.max(value, selectedPriceRange[0]);
+      setSelectedPriceRange([selectedPriceRange[0], newMax]);
+    }
+  }, [selectedPriceRange]);
+
+  const handlePriceInputBlur = useCallback(() => {
+    // Ensure min <= max
+    if (selectedPriceRange[0] > selectedPriceRange[1]) {
+      setSelectedPriceRange([selectedPriceRange[1], selectedPriceRange[1]]);
+    }
+  }, [selectedPriceRange]);
+
   // ============================================================================
   // EFFECTS - LocalStorage Sync
   // ============================================================================
@@ -559,6 +588,13 @@ export function HomePage() {
     
     inFlightRequestsRef.current.add(requestKey);
     
+    console.log('📡 fetchFilteredProducts called:', {
+      lastProductId,
+      sortOrder,
+      isFilterChange,
+      requestKey
+    });
+    
     if (isFilterChange) {
       // Reset auto-load counter
       autoLoadCountRef.current = 0;
@@ -585,7 +621,9 @@ export function HomePage() {
       if (cached) {
         const hasMoreData = cached.data.length > ITEMS_PER_PAGE;
         const productsToShow = hasMoreData ? cached.data.slice(0, ITEMS_PER_PAGE) : cached.data;
-                
+        
+        console.log('📦 Using cache for:', requestKey, 'products:', productsToShow.length);
+        
         startTransition(() => {
           setProducts(prev => isFilterChange ? productsToShow : [...prev, ...productsToShow]);
           setHasMore(hasMoreData);
@@ -658,7 +696,9 @@ export function HomePage() {
       const supabase = getSupabase();
       const rpcFunctionName = getRpcFunctionName(sortOrder);
       const params = buildRpcParams(filters, lastProduct, sortOrder);
-            
+      
+      console.log('🚀 Calling RPC:', rpcFunctionName, params);
+      
       const { data, error } = await supabase.rpc(rpcFunctionName, params);
       
       clearTimeout(timeoutId);
@@ -668,6 +708,12 @@ export function HomePage() {
       const newData = (data as ProductWithDetails[]) || [];
       const hasMoreData = newData.length > ITEMS_PER_PAGE;
       const productsToShow = hasMoreData ? newData.slice(0, ITEMS_PER_PAGE) : newData;
+      
+      console.log('✅ RPC response:', {
+        total: newData.length,
+        showing: productsToShow.length,
+        hasMore: hasMoreData
+      });
       
       // Cache the result (except for initial filter changes)
       if (!isFilterChange || productsToShow.length > 0) {
@@ -923,6 +969,13 @@ useEffect(() => {
     return;
   }
   
+  console.log('🔄 Filter/sort change detected:', {
+    prev: prevFilterKeyRef.current,
+    current: currentFilterKey,
+    changedSortOnly: prevFilterKeyRef.current.includes(JSON.stringify(currentFilters)) && 
+                    !prevFilterKeyRef.current.includes(`"sortOrder":"${sortOrder}"`)
+  });
+  
   // Reset everything for new filter/sort
   startTransition(() => {
     setProducts([]);
@@ -937,6 +990,7 @@ useEffect(() => {
   // Cancel any ongoing request
   if (currentRequestRef.current) {
     currentRequestRef.current.abort();
+    console.log('Cancelled previous request');
   }
   
   // Reset counters and cache
@@ -994,7 +1048,9 @@ useEffect(() => {
           searchQuery,
           selectedPriceRange
         };
-                
+        
+        console.log('⬇️ Infinite scroll triggered, loading more...');
+        
         // Load next page
         fetchFilteredProducts(currentFilters, lastProduct, sortOrder, false);
         
@@ -1038,14 +1094,9 @@ useEffect(() => {
   };
 
   const handleSortChange = (value: string) => {
+    console.log('🔄 Sort order changed to:', value);
     setSortOrder(value as SortOrder);
   };
-
-  const handlePriceRangeChange = useCallback((value: number | [number, number]) => {
-  if (Array.isArray(value) && value.length === 2) {
-    setSelectedPriceRange(value as [number, number]);
-  }
-}, []);
 
   const handleLoadMoreClick = () => {
     if (!loading && hasMore && products.length > 0 && !isFilterChanging) {
@@ -1061,6 +1112,7 @@ useEffect(() => {
         selectedPriceRange
       };
       
+      console.log('🖱️ Load More clicked');
       fetchFilteredProducts(currentFilters, lastProduct, sortOrder, false);
     }
   };
@@ -1070,6 +1122,7 @@ useEffect(() => {
   };
 
   const handleClearAllFilters = () => {
+    console.log('🗑️ Clearing all filters');
     setSelectedShopName([]);
     setSelectedSizeGroups([]);
     setSelectedGroupedTypes([]);
@@ -1287,17 +1340,78 @@ useEffect(() => {
                     />
                   </div>
 
+                  {/* Price Range Filter - Updated */}
                   <div>
                     <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
                       Price Range
                     </label>
-                    <TransformSlider
-                      min={ABS_MIN_PRICE}
-                      max={ABS_MAX_PRICE}
-                      value={selectedPriceRange}
-                      onChange={handlePriceRangeChange}
-                      formatLabel={(val) => `£${val}`}
-                    />
+                    <div className="space-y-3">
+                      {/* Price Input Boxes */}
+                      <div className="flex items-center justify-between gap-3">
+                        <div className="flex-1">
+                          <label className="sr-only">Minimum price</label>
+                          <div className="relative">
+                            <div className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500 dark:text-gray-400">
+                              $
+                            </div>
+                            <input
+                              type="number"
+                              min={ABS_MIN_PRICE}
+                              max={ABS_MAX_PRICE}
+                              step="1"
+                              value={selectedPriceRange[0]}
+                              onChange={handleMinPriceChange}
+                              onBlur={handlePriceInputBlur}
+                              className="w-full pl-8 pr-3 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100"
+                              placeholder="Min"
+                              aria-label="Minimum price"
+                            />
+                          </div>
+                        </div>
+                        <span className="text-gray-500 dark:text-gray-400">to</span>
+                        <div className="flex-1">
+                          <label className="sr-only">Maximum price</label>
+                          <div className="relative">
+                            <div className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500 dark:text-gray-400">
+                              $
+                            </div>
+                            <input
+                              type="number"
+                              min={ABS_MIN_PRICE}
+                              max={ABS_MAX_PRICE}
+                              step="1"
+                              value={selectedPriceRange[1]}
+                              onChange={handleMaxPriceChange}
+                              onBlur={handlePriceInputBlur}
+                              className="w-full pl-8 pr-3 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100"
+                              placeholder="Max"
+                              aria-label="Maximum price"
+                            />
+                          </div>
+                        </div>
+                      </div>
+                      
+                      {/* Slider */}
+                      <TransformSlider
+                        min={ABS_MIN_PRICE}
+                        max={ABS_MAX_PRICE}
+                        value={selectedPriceRange}
+                        onFinalChange={(values) => {
+                          if (Array.isArray(values) && values.length === 2) {
+                            setSelectedPriceRange([values[0], values[1]]);
+                          }
+                        }}
+                      />
+                      
+                      {/* Price Range Labels */}
+                      <div className="flex justify-between text-xs text-gray-500 dark:text-gray-400">
+                        <span>${ABS_MIN_PRICE}</span>
+                        <span>${ABS_MAX_PRICE}</span>
+                      </div>
+                    </div>
+                    <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                      Most products are under ${ABS_MAX_PRICE}. For higher prices, use the input boxes above.
+                    </p>
                   </div>
 
                   <div className="pt-2">
@@ -1360,7 +1474,7 @@ useEffect(() => {
                       )}
                       {(selectedPriceRange[0] !== PRICE_RANGE[0] || selectedPriceRange[1] !== PRICE_RANGE[1]) && (
                         <div className="inline-flex items-center gap-1 px-2 py-1 bg-blue-100 dark:bg-blue-900/30 text-blue-800 dark:text-blue-300 rounded text-xs">
-                          £{selectedPriceRange[0]} - £{selectedPriceRange[1]}
+                          ${selectedPriceRange[0]} - ${selectedPriceRange[1]}
                           <button onClick={() => setSelectedPriceRange([...PRICE_RANGE])} className="ml-0.5 text-blue-600 hover:text-blue-800 dark:text-blue-400 dark:hover:text-blue-200">
                             <AsyncLucideIcon name="X" className="h-2.5 w-2.5 sm:h-3 sm:w-3" />
                           </button>
