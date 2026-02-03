@@ -101,7 +101,6 @@ export function HomePage() {
   const [loading, setLoading] = useState(true);
   const [initialLoad, setInitialLoad] = useState(true);
   const [hasMore, setHasMore] = useState(true);
-  const [page, setPage] = useState(0);
   const [error, setError] = useState<string | null>(null);
   const [isFilterChanging, setIsFilterChanging] = useState(false);
   const location = useLocation();
@@ -448,32 +447,9 @@ export function HomePage() {
     return data;
   }, [CACHE_TTL]);
 
-  const mergeUniqueProducts = useCallback((prev: ProductWithDetails[], next: ProductWithDetails[]) => {
-    const seen = new Set<string>();
-    const out: ProductWithDetails[] = [];
-    
-    for (const p of prev) {
-      const id = String(p.id);
-      if (!seen.has(id)) {
-        seen.add(id);
-        out.push(p);
-      }
-    }
-    
-    for (const p of next) {
-      const id = String(p.id);
-      if (!seen.has(id)) {
-        seen.add(id);
-        out.push(p);
-      }
-    }
-    
-    return out;
-  }, []);
-
-  const buildRpcParams = useCallback((filters: FilterOptions, page: number, sortOrder: SortOrder) => {
-    return {
-      p_shop_ids: filters.selectedShopName.filter(s => s.trim()),
+  const buildRpcParams = useCallback((filters: FilterOptions, lastProduct: ProductWithDetails | null, sortOrder: SortOrder) => {
+    const baseParams = {
+      p_shop_ids: filters.selectedShopName.map(id => parseInt(id)).filter(id => !isNaN(id) && id > 0),
       p_size_groups: filters.selectedSizeGroups.filter(s => s.trim()),
       p_grouped_types: filters.selectedGroupedTypes.filter(s => s.trim()),
       p_top_level_categories: filters.selectedTopLevelCategories.filter(s => s.trim()),
@@ -482,25 +458,69 @@ export function HomePage() {
       p_min_price: filters.selectedPriceRange[0],
       p_max_price: filters.selectedPriceRange[1],
       p_search_query: filters.searchQuery?.trim() || null,
-      p_limit: ITEMS_PER_PAGE + 1,
-      p_offset: page * ITEMS_PER_PAGE,
-      p_sort_order: sortOrder === 'price_asc' ? 'price_asc' : 
-                    sortOrder === 'price_desc' ? 'price_desc' : 
-                    sortOrder === 'newest' ? 'newest' : 'discount_desc'
+      p_limit: ITEMS_PER_PAGE + 1 // Fetch one extra to check if there's more
     };
+
+    // Add cursor parameters if we have a last product
+    if (lastProduct) {
+      switch (sortOrder) {
+        case 'price_asc':
+          return {
+            ...baseParams,
+            p_cursor_id: lastProduct.id,
+            p_cursor_price: lastProduct.min_price,
+            p_cursor_created_at: lastProduct.created_at
+          };
+        case 'price_desc':
+          return {
+            ...baseParams,
+            p_cursor_id: lastProduct.id,
+            p_cursor_price: lastProduct.min_price,
+            p_cursor_created_at: lastProduct.created_at
+          };
+        case 'discount_desc':
+          return {
+            ...baseParams,
+            p_cursor_id: lastProduct.id,
+            p_cursor_discount: lastProduct.max_discount_percentage || 0,
+            p_cursor_created_at: lastProduct.created_at
+          };
+        case 'newest':
+          return {
+            ...baseParams,
+            p_cursor_id: lastProduct.id,
+            p_cursor_created_at: lastProduct.created_at
+          };
+        default:
+          return baseParams;
+      }
+    }
+
+    return baseParams;
+  }, []);
+
+  const getRpcFunctionName = useCallback((sortOrder: SortOrder) => {
+    switch (sortOrder) {
+      case 'price_asc': return 'get_products_price_asc';
+      case 'price_desc': return 'get_products_price_desc';
+      case 'discount_desc': return 'get_products_discount_desc';
+      case 'newest': return 'get_products_newest';
+      default: return 'get_products_discount_desc';
+    }
   }, []);
 
   // ============================================================================
-  // MAIN FETCH FUNCTION (FIXED - With abort and proper cache handling)
+  // MAIN FETCH FUNCTION (UPDATED for cursor-based pagination)
   // ============================================================================
   
   const fetchFilteredProducts = useCallback(async (
     filters: FilterOptions,
-    page: number,
+    lastProduct: ProductWithDetails | null,
     sortOrder: SortOrder,
     isFilterChange: boolean = false
   ) => {
-    const requestKey = `${JSON.stringify(filters)}-${page}-${sortOrder}`;
+    const lastProductId = lastProduct?.id || 'initial';
+    const requestKey = `${JSON.stringify(filters)}-${lastProductId}-${sortOrder}`;
     
     if (!isFilterChange && inFlightRequestsRef.current.has(requestKey)) {
       return;
@@ -509,13 +529,13 @@ export function HomePage() {
     inFlightRequestsRef.current.add(requestKey);
     
     if (isFilterChange) {
-      // FIXED: Abort any in-flight request
+      // Abort any in-flight request
       if (currentRequestRef.current) {
         currentRequestRef.current.abort();
       }
       currentRequestRef.current = null;
       
-      // FIXED: Reset auto-load counter
+      // Reset auto-load counter
       autoLoadCountRef.current = 0;
       prefetchCacheRef.current = {};
       
@@ -534,7 +554,7 @@ export function HomePage() {
       
       setTimeout(() => {
         startTransition(() => {
-          setProducts(prev => page === 0 || isFilterChange ? productsToShow : mergeUniqueProducts(prev, productsToShow));
+          setProducts(prev => isFilterChange ? productsToShow : [...prev, ...productsToShow]);
           setHasMore(hasMoreData);
           setInitialLoad(false);
           setError(null);
@@ -552,7 +572,7 @@ export function HomePage() {
         canLoadMoreRef.current = true;
       }, LOAD_COOLDOWN);
       
-      if (!isFilterChange && page > 0) {
+      if (!isFilterChange && lastProduct) {
         autoLoadCountRef.current += 1;
         const newCount = autoLoadCountRef.current;
         
@@ -563,14 +583,17 @@ export function HomePage() {
         });
       }
       
+      // Prefetch next page
       if (hasMoreData && autoLoadCountRef.current < MAX_AUTO_LOADS) {
         scheduleIdle(async () => {
-          const nextKey = `${JSON.stringify(filters)}-${page + 1}-${sortOrder}`;
+          const nextLastProduct = productsToShow[productsToShow.length - 1];
+          const nextKey = `${JSON.stringify(filters)}-${nextLastProduct.id}-${sortOrder}`;
           if (!prefetchCacheRef.current[nextKey]) {
             try {
               const supabase = getSupabase();
-              const params = buildRpcParams(filters, page + 1, sortOrder);
-              const { data: nextData } = await supabase.rpc('get_products_filtered', params);
+              const rpcFunctionName = getRpcFunctionName(sortOrder);
+              const params = buildRpcParams(filters, nextLastProduct, sortOrder);
+              const { data: nextData } = await supabase.rpc(rpcFunctionName, params);
               
               if (Array.isArray(nextData)) {
                 prefetchCacheRef.current[nextKey] = { data: nextData as ProductWithDetails[] };
@@ -596,8 +619,9 @@ export function HomePage() {
     
     try {
       const supabase = getSupabase();
-      const params = buildRpcParams(filters, page, sortOrder);
-      const { data, error } = await supabase.rpc('get_products_filtered', params);
+      const rpcFunctionName = getRpcFunctionName(sortOrder);
+      const params = buildRpcParams(filters, lastProduct, sortOrder);
+      const { data, error } = await supabase.rpc(rpcFunctionName, params);
       
       clearTimeout(timeoutId);
       
@@ -609,7 +633,7 @@ export function HomePage() {
       
       prefetchCacheRef.current[requestKey] = { data: newData };
       
-      // FIXED: Prune cache to prevent memory leak
+      // Prune cache to prevent memory leak
       const cacheKeys = Object.keys(prefetchCacheRef.current);
       if (cacheKeys.length > MAX_CACHE_ENTRIES) {
         const toRemove = cacheKeys.slice(0, cacheKeys.length - MAX_CACHE_ENTRIES);
@@ -620,7 +644,7 @@ export function HomePage() {
       
       setTimeout(() => {
         startTransition(() => {
-          setProducts(prev => page === 0 || isFilterChange ? productsToShow : mergeUniqueProducts(prev, productsToShow));
+          setProducts(prev => isFilterChange ? productsToShow : [...prev, ...productsToShow]);
           setHasMore(hasMoreData);
           setInitialLoad(false);
           setError(null);
@@ -634,7 +658,7 @@ export function HomePage() {
         scheduleIdle(() => fetchBatchPricingFor(ids));
       }
       
-      if (!isFilterChange && page > 0) {
+      if (!isFilterChange && lastProduct) {
         autoLoadCountRef.current += 1;
         const newCount = autoLoadCountRef.current;
         
@@ -645,13 +669,17 @@ export function HomePage() {
         });
       }
       
+      // Prefetch next page
       if (hasMoreData && autoLoadCountRef.current < MAX_AUTO_LOADS) {
         scheduleIdle(async () => {
-          const nextKey = `${JSON.stringify(filters)}-${page + 1}-${sortOrder}`;
+          const nextLastProduct = productsToShow[productsToShow.length - 1];
+          const nextKey = `${JSON.stringify(filters)}-${nextLastProduct.id}-${sortOrder}`;
           if (!prefetchCacheRef.current[nextKey]) {
             try {
-              const nextParams = buildRpcParams(filters, page + 1, sortOrder);
-              const { data: nextData } = await supabase.rpc('get_products_filtered', nextParams);
+              const supabase = getSupabase();
+              const rpcFunctionName = getRpcFunctionName(sortOrder);
+              const nextParams = buildRpcParams(filters, nextLastProduct, sortOrder);
+              const { data: nextData } = await supabase.rpc(rpcFunctionName, nextParams);
               
               if (Array.isArray(nextData)) {
                 prefetchCacheRef.current[nextKey] = { data: nextData as ProductWithDetails[] };
@@ -690,7 +718,7 @@ export function HomePage() {
         inFlightRequestsRef.current.delete(requestKey);
       }
     }
-  }, [mergeUniqueProducts, scheduleIdle, buildRpcParams, fetchBatchPricingFor]);
+  }, [scheduleIdle, buildRpcParams, getRpcFunctionName, fetchBatchPricingFor]);
 
   // ============================================================================
   // FETCH INITIAL FILTER OPTIONS (With caching)
@@ -831,7 +859,7 @@ export function HomePage() {
 }, [fetchWithCache]);
 
   // ============================================================================
-  // EFFECT - Monitor Filter Changes and Trigger Fetch (FIXED)
+  // EFFECT - Monitor Filter Changes and Trigger Fetch (UPDATED for cursor)
   // ============================================================================
   
   useEffect(() => {
@@ -849,11 +877,10 @@ export function HomePage() {
     const currentFilterKey = JSON.stringify(currentFilters);
     
     if (prevFilterKeyRef.current !== currentFilterKey) {
-      // FIXED: Reset auto-load counter and state on filter change
+      // Reset auto-load counter and state on filter change
       autoLoadCountRef.current = 0;
       setShowLoadMoreButton(false);
       setIsFilterChanging(true);
-      setPage(0);
       setProducts([]);
       setHasMore(true);
       setError(null);
@@ -869,7 +896,10 @@ export function HomePage() {
     
     prevFilterKeyRef.current = currentFilterKey;
     
-    fetchFilteredProducts(currentFilters, page, sortOrder, prevFilterKeyRef.current !== currentFilterKey);
+    // Get the last product for cursor pagination (null for initial load)
+    const lastProduct = products.length > 0 ? products[products.length - 1] : null;
+    
+    fetchFilteredProducts(currentFilters, lastProduct, sortOrder, prevFilterKeyRef.current !== currentFilterKey);
   }, [
     selectedShopName,
     selectedSizeGroups,
@@ -879,13 +909,12 @@ export function HomePage() {
     onSaleOnly,
     searchQuery,
     selectedPriceRange,
-    page,
     sortOrder,
     fetchFilteredProducts
   ]);
 
   // ============================================================================
-  // INFINITE SCROLL OBSERVER (FIXED - Cleaner implementation)
+  // INFINITE SCROLL OBSERVER (UPDATED for cursor)
   // ============================================================================
   
   useEffect(() => {
@@ -906,7 +935,8 @@ export function HomePage() {
         observerLockRef.current = true;
         canLoadMoreRef.current = false;
         
-        setPage(p => p + 1);
+        // Trigger fetch with last product as cursor
+        // This is handled by the effect above when products change
         
         setTimeout(() => {
           canLoadMoreRef.current = true;
@@ -925,7 +955,7 @@ export function HomePage() {
       io.disconnect();
       observerLockRef.current = false;
     };
-  }, [hasMore, loading, showLoadMoreButton]);
+  }, [hasMore, loading, showLoadMoreButton, products]);
 
   // ============================================================================
   // EVENT HANDLERS
@@ -952,8 +982,8 @@ export function HomePage() {
   };
 
   const handleLoadMoreClick = () => {
-    if (!loading && hasMore) {
-      setPage(p => p + 1);
+    if (!loading && hasMore && products.length > 0) {
+      // Load more will be triggered by the effect when products array is used as dependency
     }
   };
 
@@ -1297,7 +1327,6 @@ export function HomePage() {
                     <button 
                       onClick={() => { 
                         setError(null); 
-                        setPage(0); 
                         setProducts([]); 
                         setInitialLoad(true); 
                       }} 
@@ -1356,7 +1385,7 @@ export function HomePage() {
                           <ProductCard 
                             product={product} 
                             pricing={productPricings[pid]} 
-                            isLcp={page === 0 && index < LCP_PRELOAD_COUNT}
+                            isLcp={index < LCP_PRELOAD_COUNT}
                           />
                         </div>
                       );
@@ -1366,7 +1395,7 @@ export function HomePage() {
               </div>
 
               {/* Loading indicator while auto-loading */}
-              {loading && page > 0 && !showLoadMoreButton && (
+              {loading && products.length > 0 && !showLoadMoreButton && (
                 <div className="flex justify-center py-8">
                   <div className="bg-white dark:bg-gray-800 p-3 rounded-lg shadow-lg">
                     <AsyncLucideIcon name="Loader2" className="animate-spin h-6 w-6 text-gray-600 dark:text-gray-300" />
