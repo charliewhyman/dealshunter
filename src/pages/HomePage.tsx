@@ -588,13 +588,6 @@ export function HomePage() {
     
     inFlightRequestsRef.current.add(requestKey);
     
-    console.log('📡 fetchFilteredProducts called:', {
-      lastProductId,
-      sortOrder,
-      isFilterChange,
-      requestKey
-    });
-    
     if (isFilterChange) {
       // Reset auto-load counter
       autoLoadCountRef.current = 0;
@@ -621,9 +614,7 @@ export function HomePage() {
       if (cached) {
         const hasMoreData = cached.data.length > ITEMS_PER_PAGE;
         const productsToShow = hasMoreData ? cached.data.slice(0, ITEMS_PER_PAGE) : cached.data;
-        
-        console.log('📦 Using cache for:', requestKey, 'products:', productsToShow.length);
-        
+                
         startTransition(() => {
           setProducts(prev => isFilterChange ? productsToShow : [...prev, ...productsToShow]);
           setHasMore(hasMoreData);
@@ -696,9 +687,7 @@ export function HomePage() {
       const supabase = getSupabase();
       const rpcFunctionName = getRpcFunctionName(sortOrder);
       const params = buildRpcParams(filters, lastProduct, sortOrder);
-      
-      console.log('🚀 Calling RPC:', rpcFunctionName, params);
-      
+            
       const { data, error } = await supabase.rpc(rpcFunctionName, params);
       
       clearTimeout(timeoutId);
@@ -708,13 +697,7 @@ export function HomePage() {
       const newData = (data as ProductWithDetails[]) || [];
       const hasMoreData = newData.length > ITEMS_PER_PAGE;
       const productsToShow = hasMoreData ? newData.slice(0, ITEMS_PER_PAGE) : newData;
-      
-      console.log('✅ RPC response:', {
-        total: newData.length,
-        showing: productsToShow.length,
-        hasMore: hasMoreData
-      });
-      
+
       // Cache the result (except for initial filter changes)
       if (!isFilterChange || productsToShow.length > 0) {
         prefetchCacheRef.current[requestKey] = { data: newData };
@@ -969,13 +952,6 @@ useEffect(() => {
     return;
   }
   
-  console.log('🔄 Filter/sort change detected:', {
-    prev: prevFilterKeyRef.current,
-    current: currentFilterKey,
-    changedSortOnly: prevFilterKeyRef.current.includes(JSON.stringify(currentFilters)) && 
-                    !prevFilterKeyRef.current.includes(`"sortOrder":"${sortOrder}"`)
-  });
-  
   // Reset everything for new filter/sort
   startTransition(() => {
     setProducts([]);
@@ -990,7 +966,6 @@ useEffect(() => {
   // Cancel any ongoing request
   if (currentRequestRef.current) {
     currentRequestRef.current.abort();
-    console.log('Cancelled previous request');
   }
   
   // Reset counters and cache
@@ -1048,9 +1023,7 @@ useEffect(() => {
           searchQuery,
           selectedPriceRange
         };
-        
-        console.log('⬇️ Infinite scroll triggered, loading more...');
-        
+                
         // Load next page
         fetchFilteredProducts(currentFilters, lastProduct, sortOrder, false);
         
@@ -1094,7 +1067,6 @@ useEffect(() => {
   };
 
   const handleSortChange = (value: string) => {
-    console.log('🔄 Sort order changed to:', value);
     setSortOrder(value as SortOrder);
   };
 
@@ -1112,7 +1084,6 @@ useEffect(() => {
         selectedPriceRange
       };
       
-      console.log('🖱️ Load More clicked');
       fetchFilteredProducts(currentFilters, lastProduct, sortOrder, false);
     }
   };
@@ -1122,7 +1093,6 @@ useEffect(() => {
   };
 
   const handleClearAllFilters = () => {
-    console.log('🗑️ Clearing all filters');
     setSelectedShopName([]);
     setSelectedSizeGroups([]);
     setSelectedGroupedTypes([]);
@@ -1409,9 +1379,6 @@ useEffect(() => {
                         <span>${ABS_MAX_PRICE}</span>
                       </div>
                     </div>
-                    <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
-                      Most products are under ${ABS_MAX_PRICE}. For higher prices, use the input boxes above.
-                    </p>
                   </div>
 
                   <div className="pt-2">
