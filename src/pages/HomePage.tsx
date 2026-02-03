@@ -19,7 +19,8 @@ const INTERSECTION_ROOT_MARGIN = '200px';
 const INTERSECTION_THRESHOLD = 0.1;
 const PRICING_DEBOUNCE_MS = 300;
 const OBSERVER_CHECK_INTERVAL_MS = 500;
-const REQUEST_TIMEOUT_MS = 30000;
+const INITIAL_LOAD_TIMEOUT_MS = 15000; // Increased for initial load
+const REGULAR_LOAD_TIMEOUT_MS = 30000;
 const MAX_CACHE_ENTRIES = 10;
 const FILTER_OPTIONS_CACHE_KEY = 'filter_options_cache';
 const FILTER_OPTIONS_TTL = 24 * 60 * 60 * 1000; // 24 hours
@@ -570,7 +571,61 @@ export function HomePage() {
   }, []);
 
   // ============================================================================
-  // MAIN FETCH FUNCTION (FIXED)
+  // ENHANCED FETCH WITH RETRY LOGIC
+  // ============================================================================
+
+  const callRpcWithRetry = useCallback(async (
+    rpcFunctionName: string,
+    params: any,
+    isInitialLoad: boolean,
+    retryCount = 0
+  ): Promise<any> => {
+    const MAX_RETRIES = 2;
+    
+    try {
+      const supabase = getSupabase();
+      const timeout = isInitialLoad ? INITIAL_LOAD_TIMEOUT_MS : REGULAR_LOAD_TIMEOUT_MS;
+      
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), timeout);
+      
+      // Store current request for potential cancellation
+      currentRequestRef.current = controller;
+      
+      const { data, error } = await supabase.rpc(rpcFunctionName, params, {
+        signal: controller.signal
+      });
+      
+      clearTimeout(timeoutId);
+      
+      if (error) throw error;
+      return data;
+      
+    } catch (error: any) {
+      // Check if it's a timeout or connection error
+      const isTimeout = error?.code === '57014' || 
+                       error?.name === 'AbortError' || 
+                       error?.message?.includes('timeout') ||
+                       error?.message?.includes('aborted');
+      
+      if (isTimeout && retryCount < MAX_RETRIES && isInitialLoad) {
+        console.log(`RPC timeout on ${rpcFunctionName}, retrying (${retryCount + 1}/${MAX_RETRIES})`);
+        
+        // Exponential backoff
+        await new Promise(resolve => 
+          setTimeout(resolve, Math.pow(2, retryCount) * 1000)
+        );
+        
+        return callRpcWithRetry(rpcFunctionName, params, isInitialLoad, retryCount + 1);
+      }
+      
+      // If not a timeout or max retries reached, rethrow
+      throw error;
+    }
+  }, []);
+
+  // ============================================================================
+  // MAIN FETCH FUNCTION (UPDATED WITH RETRY)
   // ============================================================================
   
   const fetchFilteredProducts = useCallback(async (
@@ -581,6 +636,7 @@ export function HomePage() {
   ) => {
     const lastProductId = lastProduct?.id || 'initial';
     const requestKey = `${JSON.stringify(filters)}-${lastProductId}-${sortOrder}`;
+    const isInitialLoad = !lastProduct && isFilterChange;
     
     if (!isFilterChange && inFlightRequestsRef.current.has(requestKey)) {
       return;
@@ -672,10 +728,7 @@ export function HomePage() {
       }
     }
     
-    // Fetch from database
-    const controller = new AbortController();
-    currentRequestRef.current = controller;
-    const timeoutId = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+    // Fetch from database with retry logic
     isFetchingRef.current = true;
     
     if (isFilterChange) {
@@ -684,15 +737,11 @@ export function HomePage() {
     }
     
     try {
-      const supabase = getSupabase();
       const rpcFunctionName = getRpcFunctionName(sortOrder);
       const params = buildRpcParams(filters, lastProduct, sortOrder);
-            
-      const { data, error } = await supabase.rpc(rpcFunctionName, params);
       
-      clearTimeout(timeoutId);
-      
-      if (error) throw error;
+      // Use enhanced RPC call with retry
+      const data = await callRpcWithRetry(rpcFunctionName, params, isInitialLoad);
       
       const newData = (data as ProductWithDetails[]) || [];
       const hasMoreData = newData.length > ITEMS_PER_PAGE;
@@ -766,7 +815,8 @@ export function HomePage() {
       }
 
     } catch (err) {
-      const maybeErr = err as { name?: string; message?: string };
+      const maybeErr = err as { name?: string; message?: string; code?: string };
+      
       if (maybeErr.name === 'AbortError' || maybeErr.message?.includes('AbortError')) {
         console.warn('Request was aborted:', maybeErr);
         return;
@@ -774,21 +824,58 @@ export function HomePage() {
       
       console.error('Fetch error in fetchFilteredProducts:', err);
       
+      let errorMessage = 'Failed to load products. Please try again.';
+      if (maybeErr.code === '57014') {
+        errorMessage = 'Request timed out. The server might be experiencing high load. Please try again.';
+      }
+      
       startTransition(() => {
-        setError('Failed to load products. Please try again.');
+        setError(errorMessage);
         setHasMore(false);
         setInitialLoad(false);
         setLoading(false);
         setIsFilterChanging(false);
       });
     } finally {
-      if (!controller.signal.aborted) {
+      if (!currentRequestRef.current?.signal.aborted) {
         isFetchingRef.current = false;
         observerLockRef.current = false;
         inFlightRequestsRef.current.delete(requestKey);
       }
     }
-  }, [scheduleIdle, buildRpcParams, getRpcFunctionName, fetchBatchPricingFor]);
+  }, [scheduleIdle, buildRpcParams, getRpcFunctionName, fetchBatchPricingFor, callRpcWithRetry]);
+
+  // ============================================================================
+  // PRE-WARM CONNECTION ON APP START
+  // ============================================================================
+
+  useEffect(() => {
+    // Pre-warm Supabase connection on component mount
+    const prewarmConnection = async () => {
+      try {
+        const supabase = getSupabase();
+        
+        // Make a tiny, fast query to establish connection
+        // Using a simple count query or health check
+        await supabase
+          .from('products_with_details_core')
+          .select('id', { count: 'exact', head: true })
+          .limit(1);
+        
+        console.log('Supabase connection pre-warmed');
+      } catch (error) {
+        // Silent fail - just establishing connection
+        console.log('Pre-warm attempt completed (may have failed silently)');
+      }
+    };
+
+    // Small delay to not block initial render
+    const timer = setTimeout(() => {
+      prewarmConnection();
+    }, 500);
+
+    return () => clearTimeout(timer);
+  }, []);
 
   // ============================================================================
   // FETCH INITIAL FILTER OPTIONS
@@ -929,11 +1016,56 @@ export function HomePage() {
 }, [fetchWithCache]);
 
   // ============================================================================
-// EFFECT - Monitor Filter Changes and Trigger Fetch (UPDATED for sort order)
-// ============================================================================
+  // EFFECT - Monitor Filter Changes and Trigger Fetch
+  // ============================================================================
 
-useEffect(() => {
-  const currentFilters: FilterOptions = {
+  useEffect(() => {
+    const currentFilters: FilterOptions = {
+      selectedShopName,
+      selectedSizeGroups,
+      selectedGroupedTypes,
+      selectedTopLevelCategories,
+      selectedGenderAges,
+      onSaleOnly,
+      searchQuery,
+      selectedPriceRange
+    };
+    
+    // Include sortOrder in the filter key
+    const currentFilterKey = JSON.stringify({ ...currentFilters, sortOrder });
+    
+    // Skip if this is the same filter key (no actual change)
+    if (prevFilterKeyRef.current === currentFilterKey) {
+      return;
+    }
+    
+    // Reset everything for new filter/sort
+    startTransition(() => {
+      setProducts([]);
+      setShowLoadMoreButton(false);
+      setIsFilterChanging(true);
+      setHasMore(true);
+      setError(null);
+      setInitialLoad(false);
+      setLoading(true);
+    });
+    
+    // Cancel any ongoing request
+    if (currentRequestRef.current) {
+      currentRequestRef.current.abort();
+    }
+    
+    // Reset counters and cache
+    autoLoadCountRef.current = 0;
+    inFlightRequestsRef.current.clear();
+    
+    // Store current filter key
+    prevFilterKeyRef.current = currentFilterKey;
+    
+    // Fetch first page with null cursor
+    fetchFilteredProducts(currentFilters, null, sortOrder, true);
+    
+  }, [
     selectedShopName,
     selectedSizeGroups,
     selectedGroupedTypes,
@@ -941,57 +1073,12 @@ useEffect(() => {
     selectedGenderAges,
     onSaleOnly,
     searchQuery,
-    selectedPriceRange
-  };
-  
-  // Include sortOrder in the filter key
-  const currentFilterKey = JSON.stringify({ ...currentFilters, sortOrder });
-  
-  // Skip if this is the same filter key (no actual change)
-  if (prevFilterKeyRef.current === currentFilterKey) {
-    return;
-  }
-  
-  // Reset everything for new filter/sort
-  startTransition(() => {
-    setProducts([]);
-    setShowLoadMoreButton(false);
-    setIsFilterChanging(true);
-    setHasMore(true);
-    setError(null);
-    setInitialLoad(false);
-    setLoading(true);
-  });
-  
-  // Cancel any ongoing request
-  if (currentRequestRef.current) {
-    currentRequestRef.current.abort();
-  }
-  
-  // Reset counters and cache
-  autoLoadCountRef.current = 0;
-  inFlightRequestsRef.current.clear();
-  
-  // Store current filter key
-  prevFilterKeyRef.current = currentFilterKey;
-  
-  // Fetch first page with null cursor
-  fetchFilteredProducts(currentFilters, null, sortOrder, true);
-  
-}, [
-  selectedShopName,
-  selectedSizeGroups,
-  selectedGroupedTypes,
-  selectedTopLevelCategories,
-  selectedGenderAges,
-  onSaleOnly,
-  searchQuery,
-  selectedPriceRange,
-  sortOrder // Make sure sortOrder is included
-]);
+    selectedPriceRange,
+    sortOrder
+  ]);
 
   // ============================================================================
-  // INFINITE SCROLL OBSERVER (FIXED)
+  // INFINITE SCROLL OBSERVER
   // ============================================================================
   
   useEffect(() => {
@@ -1481,8 +1568,12 @@ useEffect(() => {
                 <div className="flex items-start gap-3">
                   <AsyncLucideIcon name="AlertCircle" className="h-5 w-5 text-red-600 dark:text-red-400 mt-0.5 flex-shrink-0" />
                   <div className="flex-1">
-                    <p className="text-red-700 dark:text-red-300 text-sm font-medium">Failed to load products</p>
-                    <p className="text-red-600 dark:text-red-400 text-sm mt-1">Please check your connection and try again.</p>
+                    <p className="text-red-700 dark:text-red-300 text-sm font-medium">{error}</p>
+                    <p className="text-red-600 dark:text-red-400 text-sm mt-1">
+                      {error.includes('timed out') 
+                        ? 'The server might be experiencing high load. Please try again.' 
+                        : 'Please check your connection and try again.'}
+                    </p>
                     <button 
                       onClick={() => { 
                         setError(null); 
