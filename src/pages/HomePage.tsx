@@ -249,34 +249,7 @@ export function HomePage() {
   const CACHE_TTL = 5 * 60 * 1000;
   const canLoadMoreRef = useRef(true);
   const prevFilterKeyRef = useRef<string>('');
-
-  // ============================================================================
-  // DEBUG LOGGING
-  // ============================================================================
-  useEffect(() => {
-    console.log('🔍 Products state updated:', {
-      count: products.length,
-      loading,
-      hasMore,
-      isFilterChanging
-    });
-  }, [products, loading, hasMore, isFilterChanging]);
-
-  useEffect(() => {
-    console.log('🔍 Filter state:', {
-      selectedShopName,
-      selectedSizeGroups,
-      selectedGroupedTypes,
-      selectedTopLevelCategories,
-      selectedGenderAges,
-      onSaleOnly,
-      searchQuery,
-      selectedPriceRange,
-      sortOrder
-    });
-  }, [selectedShopName, selectedSizeGroups, selectedGroupedTypes, selectedTopLevelCategories, 
-      selectedGenderAges, onSaleOnly, searchQuery, selectedPriceRange, sortOrder]);
-
+  
   // ============================================================================
   // EFFECTS - LocalStorage Sync
   // ============================================================================
@@ -586,13 +559,6 @@ export function HomePage() {
     
     inFlightRequestsRef.current.add(requestKey);
     
-    console.log('📡 fetchFilteredProducts called:', {
-      lastProductId,
-      sortOrder,
-      isFilterChange,
-      requestKey
-    });
-    
     if (isFilterChange) {
       // Reset auto-load counter
       autoLoadCountRef.current = 0;
@@ -619,9 +585,7 @@ export function HomePage() {
       if (cached) {
         const hasMoreData = cached.data.length > ITEMS_PER_PAGE;
         const productsToShow = hasMoreData ? cached.data.slice(0, ITEMS_PER_PAGE) : cached.data;
-        
-        console.log('📦 Using cache for:', requestKey, 'products:', productsToShow.length);
-        
+                
         startTransition(() => {
           setProducts(prev => isFilterChange ? productsToShow : [...prev, ...productsToShow]);
           setHasMore(hasMoreData);
@@ -694,9 +658,7 @@ export function HomePage() {
       const supabase = getSupabase();
       const rpcFunctionName = getRpcFunctionName(sortOrder);
       const params = buildRpcParams(filters, lastProduct, sortOrder);
-      
-      console.log('🚀 Calling RPC:', rpcFunctionName, params);
-      
+            
       const { data, error } = await supabase.rpc(rpcFunctionName, params);
       
       clearTimeout(timeoutId);
@@ -706,12 +668,6 @@ export function HomePage() {
       const newData = (data as ProductWithDetails[]) || [];
       const hasMoreData = newData.length > ITEMS_PER_PAGE;
       const productsToShow = hasMoreData ? newData.slice(0, ITEMS_PER_PAGE) : newData;
-      
-      console.log('✅ RPC response:', {
-        total: newData.length,
-        showing: productsToShow.length,
-        hasMore: hasMoreData
-      });
       
       // Cache the result (except for initial filter changes)
       if (!isFilterChange || productsToShow.length > 0) {
@@ -967,13 +923,6 @@ useEffect(() => {
     return;
   }
   
-  console.log('🔄 Filter/sort change detected:', {
-    prev: prevFilterKeyRef.current,
-    current: currentFilterKey,
-    changedSortOnly: prevFilterKeyRef.current.includes(JSON.stringify(currentFilters)) && 
-                    !prevFilterKeyRef.current.includes(`"sortOrder":"${sortOrder}"`)
-  });
-  
   // Reset everything for new filter/sort
   startTransition(() => {
     setProducts([]);
@@ -988,7 +937,6 @@ useEffect(() => {
   // Cancel any ongoing request
   if (currentRequestRef.current) {
     currentRequestRef.current.abort();
-    console.log('Cancelled previous request');
   }
   
   // Reset counters and cache
@@ -1046,9 +994,7 @@ useEffect(() => {
           searchQuery,
           selectedPriceRange
         };
-        
-        console.log('⬇️ Infinite scroll triggered, loading more...');
-        
+                
         // Load next page
         fetchFilteredProducts(currentFilters, lastProduct, sortOrder, false);
         
@@ -1092,9 +1038,14 @@ useEffect(() => {
   };
 
   const handleSortChange = (value: string) => {
-    console.log('🔄 Sort order changed to:', value);
     setSortOrder(value as SortOrder);
   };
+
+  const handlePriceRangeChange = useCallback((value: number | [number, number]) => {
+  if (Array.isArray(value) && value.length === 2) {
+    setSelectedPriceRange(value as [number, number]);
+  }
+}, []);
 
   const handleLoadMoreClick = () => {
     if (!loading && hasMore && products.length > 0 && !isFilterChanging) {
@@ -1110,7 +1061,6 @@ useEffect(() => {
         selectedPriceRange
       };
       
-      console.log('🖱️ Load More clicked');
       fetchFilteredProducts(currentFilters, lastProduct, sortOrder, false);
     }
   };
@@ -1120,7 +1070,6 @@ useEffect(() => {
   };
 
   const handleClearAllFilters = () => {
-    console.log('🗑️ Clearing all filters');
     setSelectedShopName([]);
     setSelectedSizeGroups([]);
     setSelectedGroupedTypes([]);
@@ -1346,7 +1295,7 @@ useEffect(() => {
                       min={ABS_MIN_PRICE}
                       max={ABS_MAX_PRICE}
                       value={selectedPriceRange}
-                      onChange={setSelectedPriceRange}
+                      onChange={handlePriceRangeChange}
                       formatLabel={(val) => `£${val}`}
                     />
                   </div>
