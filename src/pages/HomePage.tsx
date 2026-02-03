@@ -127,7 +127,7 @@ export function HomePage() {
   const [sortOrder, setSortOrder] = useState<SortOrder>(() => {
     try {
       const stored = localStorage.getItem('sortOrder');
-      if (stored === 'price_asc' || stored === 'price_desc' || stored === 'discount_desc' || stored === 'newest') 
+      if (stored === 'price_asc' || stored === 'price_desc' || stored === 'discount_desc') 
         return stored as SortOrder;
     } catch (error) {
       console.error('Failed to retrieve sortOrder from localStorage:', error);
