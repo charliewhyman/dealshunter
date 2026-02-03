@@ -1203,10 +1203,12 @@ export function HomePage() {
     label: shop.shop_name
   }));
 
-  const sizeOptions = Array.from(new Set(allSizeData.map(s => s.size_group)))
-    .filter(Boolean)
-    .sort()
-    .map(sg => ({ value: sg, label: sg }));
+  // Fixed code (preserve database order)
+  const sizeOptions = allSizeData
+      .map(item => item.size_group)
+      .filter(Boolean)
+      .filter((value, index, self) => self.indexOf(value) === index) // Remove duplicates
+      .map(sg => ({ value: sg, label: sg }));
 
   const typeOptions = Array.from(new Set(allGroupedTypes.map(t => t.grouped_product_type)))
     .filter(Boolean)
