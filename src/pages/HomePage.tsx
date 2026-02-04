@@ -19,11 +19,11 @@ const INTERSECTION_ROOT_MARGIN = '200px';
 const INTERSECTION_THRESHOLD = 0.1;
 const PRICING_DEBOUNCE_MS = 300;
 const OBSERVER_CHECK_INTERVAL_MS = 500;
-const INITIAL_LOAD_TIMEOUT_MS = 15000;
+const INITIAL_LOAD_TIMEOUT_MS = 15000; // Increased for initial load
 const REGULAR_LOAD_TIMEOUT_MS = 30000;
 const MAX_CACHE_ENTRIES = 10;
 const FILTER_OPTIONS_CACHE_KEY = 'filter_options_cache';
-const FILTER_OPTIONS_TTL = 24 * 60 * 60 * 1000;
+const FILTER_OPTIONS_TTL = 24 * 60 * 60 * 1000; // 24 hours
 
 type SortOrder = 'price_asc' | 'price_desc' | 'discount_desc';
 
@@ -31,6 +31,7 @@ type SortOrder = 'price_asc' | 'price_desc' | 'discount_desc';
 // UTILITY FUNCTIONS
 // ============================================================================
 
+// Debounce utility
 function createDebounced<Args extends unknown[]>(fn: (...args: Args) => void, wait: number) {
   let timer: number | undefined;
   const debounced = ((...args: Args) => {
@@ -41,6 +42,7 @@ function createDebounced<Args extends unknown[]>(fn: (...args: Args) => void, wa
   return debounced;
 }
 
+// Safe localStorage operations
 const safeLocalStorageSet = (key: string, value: string) => {
   try {
     localStorage.setItem(key, value);
@@ -50,6 +52,7 @@ const safeLocalStorageSet = (key: string, value: string) => {
          error.name === 'NS_ERROR_DOM_QUOTA_REACHED')) {
       console.warn('LocalStorage quota exceeded, clearing non-essential data');
       
+      // Keep only essential keys
       const essentialKeys = [
         'sortOrder', 'searchQuery', 'selectedShopName', 'selectedSizeGroups',
         'selectedGroupedTypes', 'selectedTopLevelCategories', 'selectedGenderAges',
@@ -63,6 +66,7 @@ const safeLocalStorageSet = (key: string, value: string) => {
         }
       }
       
+      // Retry
       try {
         localStorage.setItem(key, value);
       } catch (retryError) {
@@ -198,9 +202,9 @@ export function HomePage() {
 
   // Update price range constants
   const ABS_MIN_PRICE = 0;
-  const ABS_MAX_PRICE = 500;
+  const ABS_MAX_PRICE = 500; // Reduced from 100000 to 500
   
-  const PRICE_RANGE = useMemo<[number, number]>(() => [15, 200], []);
+  const PRICE_RANGE = useMemo<[number, number]>(() => [15, 200], []); // Default range 15-200
   
   const [selectedPriceRange, setSelectedPriceRange] = useState<[number, number]>(() => {
     try {
@@ -248,7 +252,6 @@ export function HomePage() {
   const CACHE_TTL = 5 * 60 * 1000;
   const canLoadMoreRef = useRef(true);
   const prevFilterKeyRef = useRef<string>('');
-  const initialProductsLoadedRef = useRef(false);
 
   // ============================================================================
   // PRICE RANGE INPUT HANDLERS
@@ -271,6 +274,7 @@ export function HomePage() {
   }, [selectedPriceRange]);
 
   const handlePriceInputBlur = useCallback(() => {
+    // Ensure min <= max
     if (selectedPriceRange[0] > selectedPriceRange[1]) {
       setSelectedPriceRange([selectedPriceRange[1], selectedPriceRange[1]]);
     }
@@ -280,49 +284,60 @@ export function HomePage() {
   // EFFECTS - LocalStorage Sync
   // ============================================================================
   
+  // Sync sortOrder to localStorage
   useEffect(() => {
     safeLocalStorageSet('sortOrder', sortOrder);
   }, [sortOrder]);
 
+  // Sync searchQuery to localStorage
   useEffect(() => {
     safeLocalStorageSet('searchQuery', searchQuery);
   }, [searchQuery]);
 
+  // Sync selectedShopName to localStorage
   useEffect(() => {
     safeLocalStorageSet('selectedShopName', JSON.stringify(selectedShopName));
   }, [selectedShopName]);
 
+  // Sync selectedSizeGroups to localStorage
   useEffect(() => {
     safeLocalStorageSet('selectedSizeGroups', JSON.stringify(selectedSizeGroups));
   }, [selectedSizeGroups]);
 
+  // Sync selectedGroupedTypes to localStorage
   useEffect(() => {
     safeLocalStorageSet('selectedGroupedTypes', JSON.stringify(selectedGroupedTypes));
   }, [selectedGroupedTypes]);
 
+  // Sync selectedTopLevelCategories to localStorage
   useEffect(() => {
     safeLocalStorageSet('selectedTopLevelCategories', JSON.stringify(selectedTopLevelCategories));
   }, [selectedTopLevelCategories]);
 
+  // Sync selectedGenderAges to localStorage
   useEffect(() => {
     safeLocalStorageSet('selectedGenderAges', JSON.stringify(selectedGenderAges));
   }, [selectedGenderAges]);
 
+  // Sync onSaleOnly to localStorage
   useEffect(() => {
     safeLocalStorageSet('onSaleOnly', JSON.stringify(onSaleOnly));
   }, [onSaleOnly]);
 
+  // Sync selectedPriceRange to localStorage
   useEffect(() => {
     safeLocalStorageSet('selectedPriceRange', JSON.stringify(selectedPriceRange));
   }, [selectedPriceRange]);
 
+  // Sync URL search parameter
   useEffect(() => {
     const urlSearch = searchParams.get('search');
     
+    // Only update if URL param exists and differs from current state
     if (urlSearch !== null && urlSearch !== searchQuery) {
       setSearchQuery(urlSearch);
     }
-  }, [searchParams]);
+  }, [searchParams]); // Don't include searchQuery to avoid loops
 
   // ============================================================================
   // UTILITY FUNCTIONS
@@ -394,6 +409,7 @@ export function HomePage() {
     }, PRICING_DEBOUNCE_MS)
   ).current;
 
+  // Clean up debounced function on unmount
   useEffect(() => {
     return () => {
       if (fetchPricingDebounced.cancel) {
@@ -422,6 +438,7 @@ export function HomePage() {
       { rootMargin: INTERSECTION_ROOT_MARGIN, threshold: INTERSECTION_THRESHOLD }
     );
     
+    // Initial observation
     const observeCurrentCards = () => {
       for (const el of cardRefs.current.values()) {
         try { 
@@ -434,6 +451,7 @@ export function HomePage() {
     
     observeCurrentCards();
     
+    // Set up periodic re-observation for new cards
     const intervalId = setInterval(() => {
       observeCurrentCards();
     }, OBSERVER_CHECK_INTERVAL_MS);
@@ -473,6 +491,7 @@ export function HomePage() {
       p_limit: ITEMS_PER_PAGE + 1
     };
 
+    // For initial load (no last product), provide null cursor parameters
     if (!lastProduct) {
       switch (sortOrder) {
         case 'price_asc':
@@ -500,6 +519,7 @@ export function HomePage() {
           return baseParams;
       }
     } else {
+      // For subsequent loads, provide actual cursor values
       switch (sortOrder) {
         case 'price_asc':
           return {
@@ -556,6 +576,7 @@ export function HomePage() {
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), timeout);
       
+      // Store current request for potential cancellation
       currentRequestRef.current = controller;
       
       const { data, error } = await supabase.rpc(rpcFunctionName, params, {
@@ -568,6 +589,7 @@ export function HomePage() {
       return data;
       
     } catch (error: any) {
+      // Check if it's a timeout or connection error
       const isTimeout = error?.code === '57014' || 
                        error?.name === 'AbortError' || 
                        error?.message?.includes('timeout') ||
@@ -576,6 +598,7 @@ export function HomePage() {
       if (isTimeout && retryCount < MAX_RETRIES && isInitialLoad) {
         console.log(`RPC timeout on ${rpcFunctionName}, retrying (${retryCount + 1}/${MAX_RETRIES})`);
         
+        // Exponential backoff
         await new Promise(resolve => 
           setTimeout(resolve, Math.pow(2, retryCount) * 1000)
         );
@@ -583,12 +606,13 @@ export function HomePage() {
         return callRpcWithRetry(rpcFunctionName, params, isInitialLoad, retryCount + 1);
       }
       
+      // If not a timeout or max retries reached, rethrow
       throw error;
     }
   }, []);
 
   // ============================================================================
-  // MAIN FETCH FUNCTION
+  // MAIN FETCH FUNCTION (UPDATED WITH RETRY)
   // ============================================================================
   
   const fetchFilteredProducts = useCallback(async (
@@ -608,14 +632,17 @@ export function HomePage() {
     inFlightRequestsRef.current.add(requestKey);
     
     if (isFilterChange) {
+      // Reset auto-load counter
       autoLoadCountRef.current = 0;
       setShowLoadMoreButton(false);
       
+      // Abort any in-flight request
       if (currentRequestRef.current) {
         currentRequestRef.current.abort();
       }
       currentRequestRef.current = null;
       
+      // Clear cache for this filter combination
       const keysToDelete = Object.keys(prefetchCacheRef.current).filter(key => 
         key.startsWith(`${JSON.stringify(filters)}-`)
       );
@@ -624,6 +651,7 @@ export function HomePage() {
       });
     }
     
+    // Check cache first (skip for filter changes)
     if (!isFilterChange) {
       const cached = prefetchCacheRef.current[requestKey];
       if (cached) {
@@ -659,6 +687,7 @@ export function HomePage() {
           });
         }
         
+        // Prefetch next page
         if (hasMoreData && autoLoadCountRef.current < MAX_AUTO_LOADS) {
           scheduleIdle(async () => {
             const nextLastProduct = productsToShow[productsToShow.length - 1];
@@ -686,6 +715,7 @@ export function HomePage() {
       }
     }
     
+    // Fetch from database with retry logic
     isFetchingRef.current = true;
     
     if (isFilterChange) {
@@ -697,16 +727,19 @@ export function HomePage() {
       const rpcFunctionName = getRpcFunctionName(sortOrder);
       const params = buildRpcParams(filters, lastProduct, sortOrder);
       
+      // Use enhanced RPC call with retry
       const data = await callRpcWithRetry(rpcFunctionName, params, isInitialLoad);
       
       const newData = (data as ProductWithDetails[]) || [];
       const hasMoreData = newData.length > ITEMS_PER_PAGE;
       const productsToShow = hasMoreData ? newData.slice(0, ITEMS_PER_PAGE) : newData;
 
+      // Cache the result (except for initial filter changes)
       if (!isFilterChange || productsToShow.length > 0) {
         prefetchCacheRef.current[requestKey] = { data: newData };
       }
       
+      // Prune cache to prevent memory leak
       const cacheKeys = Object.keys(prefetchCacheRef.current);
       if (cacheKeys.length > MAX_CACHE_ENTRIES) {
         const toRemove = cacheKeys.slice(0, cacheKeys.length - MAX_CACHE_ENTRIES);
@@ -744,6 +777,7 @@ export function HomePage() {
         });
       }
       
+      // Prefetch next page
       if (hasMoreData && autoLoadCountRef.current < MAX_AUTO_LOADS) {
         scheduleIdle(async () => {
           const nextLastProduct = productsToShow[productsToShow.length - 1];
@@ -799,152 +833,148 @@ export function HomePage() {
   }, [scheduleIdle, buildRpcParams, getRpcFunctionName, fetchBatchPricingFor, callRpcWithRetry]);
 
   // ============================================================================
-  // OPTIMIZATION 1: FAST INITIAL PRODUCT LOADING
+  // PRE-WARM CONNECTION ON APP START
   // ============================================================================
-  
+
   useEffect(() => {
-    // Only run once on initial mount
-    if (initialProductsLoadedRef.current || products.length > 0 || loading || isFilterChanging) {
-      return;
-    }
-
-    const loadInitialProducts = async () => {
+    // Pre-warm Supabase connection on component mount
+    const prewarmConnection = async () => {
       try {
-        console.log('Loading fast initial products...');
-        
         const supabase = getSupabase();
-        const { data, error } = await supabase
+        
+        // Make a tiny, fast query to establish connection
+        // Using a simple count query or health check
+        await supabase
           .from('products_with_details_core')
-          .select('*')
-          .limit(ITEMS_PER_PAGE)
-          .order('max_discount_percentage', { ascending: false });
-
-        if (error) throw error;
-
-        if (data && data.length > 0) {
-          console.log(`Loaded ${data.length} initial products`);
-          
-          startTransition(() => {
-            setProducts(data as ProductWithDetails[]);
-            setInitialLoad(false);
-            setLoading(false);
-            setHasMore(true);
-          });
-          
-          const ids = data.map(p => p.id).filter(Boolean);
-          if (ids.length) {
-            scheduleIdle(() => fetchBatchPricingFor(ids));
-          }
-        } else {
-          startTransition(() => {
-            setInitialLoad(false);
-            setLoading(false);
-          });
-        }
+          .select('id', { count: 'exact', head: true })
+          .limit(1);
         
-        initialProductsLoadedRef.current = true;
-        
+        console.log('Supabase connection pre-warmed');
       } catch (error) {
-        console.error('Fast initial load failed:', error);
-        initialProductsLoadedRef.current = true;
-        // Don't set error here - let the main product fetch handle it
+        // Silent fail - just establishing connection
+        console.log('Pre-warm attempt completed (may have failed silently)');
       }
     };
 
-    // Small delay to let other critical things happen first
+    // Small delay to not block initial render
     const timer = setTimeout(() => {
-      loadInitialProducts();
-    }, 100);
+      prewarmConnection();
+    }, 500);
 
     return () => clearTimeout(timer);
-  }, [products.length, loading, isFilterChanging, fetchBatchPricingFor, scheduleIdle]);
+  }, []);
 
   // ============================================================================
-  // OPTIMIZATION 2: OPTIMIZED FILTER OPTIONS FETCHING
+  // FETCH INITIAL FILTER OPTIONS
   // ============================================================================
   
   useEffect(() => {
-  let isMounted = true;
   let cancelled = false;
 
   async function fetchInitialData() {
     try {
       // ==============================
-      // 1. Show immediate loading state
+      // 1. Try localStorage cache
       // ==============================
-      if (isMounted) {
-        // Set empty arrays to trigger skeleton loading
-        if (shopList.length === 0) setShopList([]);
-        if (allSizeData.length === 0) setAllSizeData([]);
+      const cached = localStorage.getItem(FILTER_OPTIONS_CACHE_KEY);
+      if (cached) {
+        try {
+          const parsed = JSON.parse(cached);
+          if (Date.now() - parsed.timestamp < FILTER_OPTIONS_TTL) {
+            if (cancelled) return;
+
+            setShopList(parsed.shops ?? []);
+            setAllSizeData(parsed.sizes ?? []);
+            setAllGroupedTypes(parsed.types ?? []);
+            setAllTopLevelCategories(parsed.categories ?? []);
+            setAllGenderAges(parsed.genders ?? []);
+            return;
+          }
+        } catch (err) {
+          console.warn('Filter cache invalid, refetching');
+        }
       }
 
+      // ==============================
+      // 2. Fetch fresh data
+      // ==============================
       const supabase = getSupabase();
-      
-      // ==============================
-      // 2. Phase 1: Fetch critical filters first (shops and sizes)
-      // ==============================
-      console.log('Fetching critical filter options...');
-      
-      const [shopsResult, sizesResult] = await Promise.all([
-        // Shops (fast, small table)
-        supabase
-          .from('shops')
-          .select('id, shop_name')
-          .order('shop_name')
-          .limit(100),
-          
-        // Sizes (fast RPC)
-        supabase
-          .rpc('get_distinct_size_groups')
-          .then(({ data, error }) => {
-            if (error) throw error;
-            return data || [];
-          })
+
+      const [
+        shopsResult,
+        sizesResult,
+        typesResult,
+        categoriesResult,
+        gendersResult
+      ] = await Promise.all([
+        // ------------------------------
+        // Shops (real table)
+        // ------------------------------
+        fetchWithCache<{ id: number; shop_name: string }>('shops', async () => {
+          const { data, error } = await supabase
+            .from('shops')
+            .select('id, shop_name')
+            .order('shop_name');
+
+          if (error) throw error;
+          return data ?? [];
+        }),
+
+        // ------------------------------
+        // Sizes (VIEW → RPC)
+        // ------------------------------
+        fetchWithCache<{ size_group: string }>('sizes', async () => {
+          const { data, error } = await supabase
+            .rpc('get_distinct_size_groups');
+
+          if (error) throw error;
+          return data ?? [];
+        }),
+
+        // ------------------------------
+        // Grouped types (VIEW → RPC)
+        // ------------------------------
+        fetchWithCache<{ grouped_product_type: string }>('types', async () => {
+          const { data, error } = await supabase
+            .rpc('get_distinct_grouped_types');
+
+          if (error) throw error;
+          return data ?? [];
+        }),
+
+        // ------------------------------
+        // Top-level categories (VIEW → RPC)
+        // ------------------------------
+        fetchWithCache<{ top_level_category: string }>('categories', async () => {
+          const { data, error } = await supabase
+            .rpc('get_distinct_top_level_categories');
+
+          if (error) throw error;
+          return data ?? [];
+        }),
+
+        // ------------------------------
+        // Gender / age (VIEW → RPC)
+        // ------------------------------
+        fetchWithCache<{ gender_age: string }>('genders', async () => {
+          const { data, error } = await supabase
+            .rpc('get_distinct_gender_ages');
+
+          if (error) throw error;
+          return data ?? [];
+        })
       ]);
 
-      if (!cancelled && isMounted) {
-        setShopList(shopsResult.data || []);
-        setAllSizeData(sizesResult || []);
-        console.log('Critical filters loaded');
-      }
+      if (cancelled) return;
 
       // ==============================
-      // 3. Phase 2: Fetch remaining options in parallel
+      // 3. Update state
       // ==============================
-      console.log('Fetching remaining filter options...');
-      
-      const [typesResult, categoriesResult, gendersResult] = await Promise.all([
-        // Grouped types
-        supabase
-          .rpc('get_distinct_grouped_types')
-          .then(({ data, error }) => {
-            if (error) throw error;
-            return data || [];
-          }),
-          
-        // Categories
-        supabase
-          .rpc('get_distinct_top_level_categories')
-          .then(({ data, error }) => {
-            if (error) throw error;
-            return data || [];
-          }),
-          
-        // Gender/age
-        supabase
-          .rpc('get_distinct_gender_ages')
-          .then(({ data, error }) => {
-            if (error) throw error;
-            return data || [];
-          })
-      ]);
-
-      if (!cancelled && isMounted) {
-        setAllGroupedTypes(typesResult);
-        setAllTopLevelCategories(categoriesResult);
-        setAllGenderAges(gendersResult);
-        console.log('All filters loaded');
-      }
+      setShopList(shopsResult);
+      setAllSizeData(sizesResult);
+      setAllGroupedTypes(typesResult);
+      setAllTopLevelCategories(categoriesResult);
+      setAllGenderAges(gendersResult);
 
       // ==============================
       // 4. Cache results
@@ -953,48 +983,24 @@ export function HomePage() {
         FILTER_OPTIONS_CACHE_KEY,
         JSON.stringify({
           timestamp: Date.now(),
-          shops: shopsResult.data || [],
-          sizes: sizesResult || [],
+          shops: shopsResult,
+          sizes: sizesResult,
           types: typesResult,
           categories: categoriesResult,
           genders: gendersResult
         })
       );
-
     } catch (error) {
       console.error('Error fetching filter options:', error);
-      
-      // Try to load from cache even if stale
-      if (!cancelled && isMounted) {
-        try {
-          const cached = localStorage.getItem(FILTER_OPTIONS_CACHE_KEY);
-          if (cached) {
-            const parsed = JSON.parse(cached);
-            setShopList(parsed.shops || []);
-            setAllSizeData(parsed.sizes || []);
-            setAllGroupedTypes(parsed.types || []);
-            setAllTopLevelCategories(parsed.categories || []);
-            setAllGenderAges(parsed.genders || []);
-            console.log('Loaded filter options from cache');
-          }
-        } catch (cacheError) {
-          console.warn('Failed to load from cache:', cacheError);
-        }
-      }
     }
   }
 
-  // Add a small delay to prioritize product loading first
-  const timer = setTimeout(() => {
-    fetchInitialData();
-  }, 300);
+  fetchInitialData();
 
   return () => {
     cancelled = true;
-    isMounted = false;
-    clearTimeout(timer);
   };
-}, []);
+}, [fetchWithCache]);
 
   // ============================================================================
   // EFFECT - Monitor Filter Changes and Trigger Fetch
@@ -1012,12 +1018,15 @@ export function HomePage() {
       selectedPriceRange
     };
     
+    // Include sortOrder in the filter key
     const currentFilterKey = JSON.stringify({ ...currentFilters, sortOrder });
     
+    // Skip if this is the same filter key (no actual change)
     if (prevFilterKeyRef.current === currentFilterKey) {
       return;
     }
     
+    // Reset everything for new filter/sort
     startTransition(() => {
       setProducts([]);
       setShowLoadMoreButton(false);
@@ -1028,16 +1037,19 @@ export function HomePage() {
       setLoading(true);
     });
     
+    // Cancel any ongoing request
     if (currentRequestRef.current) {
       currentRequestRef.current.abort();
     }
     
+    // Reset counters and cache
     autoLoadCountRef.current = 0;
     inFlightRequestsRef.current.clear();
-    initialProductsLoadedRef.current = false;
     
+    // Store current filter key
     prevFilterKeyRef.current = currentFilterKey;
     
+    // Fetch first page with null cursor
     fetchFilteredProducts(currentFilters, null, sortOrder, true);
     
   }, [
@@ -1086,6 +1098,7 @@ export function HomePage() {
           selectedPriceRange
         };
                 
+        // Load next page
         fetchFilteredProducts(currentFilters, lastProduct, sortOrder, false);
         
         setTimeout(() => {
@@ -1190,28 +1203,26 @@ export function HomePage() {
     label: shop.shop_name
   }));
 
+  // Fixed code (preserve database order)
   const sizeOptions = allSizeData
-    .map(item => item.size_group)
-    .filter(Boolean)
-    .filter((value, index, self) => self.indexOf(value) === index)
-    .map(sg => ({ value: sg, label: sg }));
+      .map(item => item.size_group)
+      .filter(Boolean)
+      .filter((value, index, self) => self.indexOf(value) === index) // Remove duplicates
+      .map(sg => ({ value: sg, label: sg }));
 
-  const typeOptions = allGroupedTypes
-    .map(item => item.grouped_product_type)
+  const typeOptions = Array.from(new Set(allGroupedTypes.map(t => t.grouped_product_type)))
     .filter(Boolean)
-    .filter((value, index, self) => self.indexOf(value) === index)
+    .sort()
     .map(t => ({ value: t, label: t }));
 
-  const categoryOptions = allTopLevelCategories
-    .map(item => item.top_level_category)
+  const categoryOptions = Array.from(new Set(allTopLevelCategories.map(c => c.top_level_category)))
     .filter(Boolean)
-    .filter((value, index, self) => self.indexOf(value) === index)
+    .sort()
     .map(c => ({ value: c, label: c }));
 
-  const genderOptions = allGenderAges
-    .map(item => item.gender_age)
+  const genderOptions = Array.from(new Set(allGenderAges.map(g => g.gender_age)))
     .filter(Boolean)
-    .filter((value, index, self) => self.indexOf(value) === index)
+    .sort()
     .map(g => ({ value: g, label: g }));
 
   const isFetchingEmpty = loading && products.length === 0 && !initialLoad;
@@ -1301,89 +1312,69 @@ export function HomePage() {
                   )}
                 </div>
 
-                {/* Filter Dropdowns with Skeleton Loading */}
+                {/* Filter Dropdowns */}
                 <div className="space-y-3">
                   <div>
                     <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">
                       Shop
                     </label>
-                    {shopList.length === 0 ? (
-                      <div className="h-10 bg-gray-200 dark:bg-gray-800 rounded animate-pulse"></div>
-                    ) : (
-                      <MultiSelectDropdown
-                        options={shopOptions}
-                        selected={selectedShopName}
-                        onChange={setSelectedShopName}
-                        placeholder="All shops"
-                      />
-                    )}
+                    <MultiSelectDropdown
+                      options={shopOptions}
+                      selected={selectedShopName}
+                      onChange={setSelectedShopName}
+                      placeholder="All shops"
+                    />
                   </div>
 
                   <div>
                     <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">
                       Size
                     </label>
-                    {allSizeData.length === 0 ? (
-                      <div className="h-10 bg-gray-200 dark:bg-gray-800 rounded animate-pulse"></div>
-                    ) : (
-                      <MultiSelectDropdown
-                        options={sizeOptions}
-                        selected={selectedSizeGroups}
-                        onChange={setSelectedSizeGroups}
-                        placeholder="All sizes"
-                      />
-                    )}
+                    <MultiSelectDropdown
+                      options={sizeOptions}
+                      selected={selectedSizeGroups}
+                      onChange={setSelectedSizeGroups}
+                      placeholder="All sizes"
+                    />
                   </div>
 
                   <div>
                     <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">
                       Type
                     </label>
-                    {allGroupedTypes.length === 0 ? (
-                      <div className="h-10 bg-gray-200 dark:bg-gray-800 rounded animate-pulse"></div>
-                    ) : (
-                      <MultiSelectDropdown
-                        options={typeOptions}
-                        selected={selectedGroupedTypes}
-                        onChange={setSelectedGroupedTypes}
-                        placeholder="All types"
-                      />
-                    )}
+                    <MultiSelectDropdown
+                      options={typeOptions}
+                      selected={selectedGroupedTypes}
+                      onChange={setSelectedGroupedTypes}
+                      placeholder="All types"
+                    />
                   </div>
 
                   <div>
                     <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">
                       Category
                     </label>
-                    {allTopLevelCategories.length === 0 ? (
-                      <div className="h-10 bg-gray-200 dark:bg-gray-800 rounded animate-pulse"></div>
-                    ) : (
-                      <MultiSelectDropdown
-                        options={categoryOptions}
-                        selected={selectedTopLevelCategories}
-                        onChange={setSelectedTopLevelCategories}
-                        placeholder="All categories"
-                      />
-                    )}
+                    <MultiSelectDropdown
+                      options={categoryOptions}
+                      selected={selectedTopLevelCategories}
+                      onChange={setSelectedTopLevelCategories}
+                      placeholder="All categories"
+                    />
                   </div>
 
                   <div>
                     <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">
                       Gender/Age
                     </label>
-                    {allGenderAges.length === 0 ? (
-                      <div className="h-10 bg-gray-200 dark:bg-gray-800 rounded animate-pulse"></div>
-                    ) : (
-                      <MultiSelectDropdown
-                        options={genderOptions}
-                        selected={selectedGenderAges}
-                        onChange={setSelectedGenderAges}
-                        placeholder="All"
-                      />
-                    )}
+                    <MultiSelectDropdown
+                      options={genderOptions}
+                      selected={selectedGenderAges}
+                      onChange={setSelectedGenderAges}
+                      placeholder="All"
+                    />
                   </div>
 
-                  {/* Price Range Filter */}
+                  {/* Price Range Filter - Updated */}
                   <div>
                     <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
                       Price Range
@@ -1585,7 +1576,7 @@ export function HomePage() {
               </div>
 
               <div className="grid grid-cols-2 gap-2 sm:gap-3 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5" data-grid-container>
-                {initialLoad && products.length === 0 ? (
+                {initialLoad ? (
                   <ProductGridSkeleton count={10} />
                 ) : isFetchingEmpty ? (
                   <div className="col-span-full flex flex-col items-center justify-center min-h-[200px]">
