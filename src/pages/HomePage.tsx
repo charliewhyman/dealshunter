@@ -561,55 +561,81 @@ export function HomePage() {
   // ENHANCED FETCH WITH RETRY LOGIC
   // ============================================================================
 
-  const callRpcWithRetry = useCallback(async (
+  const callRpcWithRetry = useCallback(
+  async (
     rpcFunctionName: string,
     params: any,
     isInitialLoad: boolean,
     retryCount = 0
   ): Promise<any> => {
     const MAX_RETRIES = 2;
-    
+
+    const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
+
     try {
       const supabase = getSupabase();
-      const timeout = isInitialLoad ? INITIAL_LOAD_TIMEOUT_MS : REGULAR_LOAD_TIMEOUT_MS;
-      
+      const timeout = isInitialLoad
+        ? INITIAL_LOAD_TIMEOUT_MS
+        : REGULAR_LOAD_TIMEOUT_MS;
+
       const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), timeout);
-      
-      // Store current request for potential cancellation
       currentRequestRef.current = controller;
-      
+
+      const timeoutId = setTimeout(() => controller.abort(), timeout);
+
+      // 🔥 Prewarm the RPC on first load attempt
+      if (isInitialLoad && retryCount === 0) {
+        try {
+          // Fire-and-forget, lightweight call
+          await supabase.rpc(rpcFunctionName, { p_limit: 1 }).catch(() => {});
+          // Give compute a short moment to finish metadata caching
+          await sleep(1000);
+        } catch {
+          // ignore prewarm errors
+        }
+      }
+
       const { data, error } = await supabase.rpc(rpcFunctionName, params, {
-        signal: controller.signal
+        signal: controller.signal,
       });
-      
+
       clearTimeout(timeoutId);
-      
+
       if (error) throw error;
       return data;
-      
     } catch (error: any) {
-      // Check if it's a timeout or connection error
-      const isTimeout = error?.code === '57014' || 
-                       error?.name === 'AbortError' || 
-                       error?.message?.includes('timeout') ||
-                       error?.message?.includes('aborted');
-      
+      const message = error?.message || "";
+
+      const isTimeout =
+        error?.code === "57014" || // Postgres statement_timeout
+        error?.name === "AbortError" ||
+        message.includes("timeout") ||
+        message.includes("aborted");
+
       if (isTimeout && retryCount < MAX_RETRIES && isInitialLoad) {
-        console.log(`RPC timeout on ${rpcFunctionName}, retrying (${retryCount + 1}/${MAX_RETRIES})`);
-        
-        // Exponential backoff
-        await new Promise(resolve => 
-          setTimeout(resolve, Math.pow(2, retryCount) * 1000)
+        console.log(
+          `RPC cold start / timeout on ${rpcFunctionName}, retrying (${
+            retryCount + 1
+          }/${MAX_RETRIES})`
         );
-        
-        return callRpcWithRetry(rpcFunctionName, params, isInitialLoad, retryCount + 1);
+
+        // exponential backoff with extra time for cold start
+        await sleep(2000 * Math.pow(2, retryCount));
+
+        return callRpcWithRetry(
+          rpcFunctionName,
+          params,
+          isInitialLoad,
+          retryCount + 1
+        );
       }
-      
-      // If not a timeout or max retries reached, rethrow
+
       throw error;
     }
-  }, []);
+  },
+  []
+);
+
 
   // ============================================================================
   // MAIN FETCH FUNCTION (UPDATED WITH RETRY)
