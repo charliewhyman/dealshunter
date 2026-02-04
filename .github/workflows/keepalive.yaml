@@ -1,0 +1,45 @@
+name: Supabase Keepalive
+
+on:
+  schedule:
+    - cron: "*/5 * * * *" # every 5 minutes
+  workflow_dispatch:
+
+jobs:
+  warm:
+    runs-on: ubuntu-latest
+    env:
+      SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+      SUPABASE_SECRET_KEY: ${{ secrets.SUPABASE_SECRET_KEY }}
+      ENVIRONMENT: production
+
+    steps:
+      - name: Call Supabase RPC for keepalive
+        run: |
+          echo "Warming Supabase RPC ($ENVIRONMENT)..."
+
+          RESPONSE=$(curl -s -o /dev/null -w "%{http_code}" -X POST "${SUPABASE_URL}/rest/v1/rpc/get_products_discount_desc" \
+            -H "apikey: ${SUPABASE_SECRET_KEY}" \
+            -H "Authorization: Bearer ${SUPABASE_SECRET_KEY}" \
+            -H "Content-Type: application/json" \
+            -d '{
+              "p_shop_ids": [],
+              "p_size_groups": [],
+              "p_grouped_types": [],
+              "p_top_level_categories": [],
+              "p_gender_ages": [],
+              "p_on_sale_only": false,
+              "p_min_price": 0,
+              "p_max_price": 999999,
+              "p_search_query": null,
+              "p_limit": 1,
+              "p_cursor_id": null,
+              "p_cursor_discount": null,
+              "p_cursor_created_at": null
+            }')
+
+          if [ "$RESPONSE" -eq 200 ] || [ "$RESPONSE" -eq 204 ]; then
+            echo "Supabase keepalive successful"
+          else
+            echo "Supabase keepalive failed with HTTP code $RESPONSE"
+          fi
