@@ -19,7 +19,6 @@ const INTERSECTION_ROOT_MARGIN = '200px';
 const INTERSECTION_THRESHOLD = 0.1;
 const PRICING_DEBOUNCE_MS = 300;
 const OBSERVER_CHECK_INTERVAL_MS = 500;
-const INITIAL_LOAD_TIMEOUT_MS = 15000; // Increased for initial load
 const REGULAR_LOAD_TIMEOUT_MS = 30000;
 const MAX_CACHE_ENTRIES = 10;
 const FILTER_OPTIONS_CACHE_KEY = 'filter_options_cache';
@@ -116,10 +115,10 @@ export function HomePage() {
   // STATE - Filter Options (Dropdowns)
   // ============================================================================
   const [shopList, setShopList] = useState<Array<{id: number; shop_name: string}>>([]);
-  const [allSizeData, setAllSizeData] = useState<{size_group: string}[]>([]);
-  const [allGroupedTypes, setAllGroupedTypes] = useState<Array<{grouped_product_type: string}>>([]);
-  const [allTopLevelCategories, setAllTopLevelCategories] = useState<Array<{top_level_category: string}>>([]);
-  const [allGenderAges, setAllGenderAges] = useState<Array<{gender_age: string}>>([]);
+  const [allSizeData, setAllSizeData] = useState<{size_group: string | null}[]>([]);
+  const [allGroupedTypes, setAllGroupedTypes] = useState<Array<{grouped_product_type: string | null}>>([]);
+  const [allTopLevelCategories, setAllTopLevelCategories] = useState<Array<{top_level_category: string | null}>>([]);
+  const [allGenderAges, setAllGenderAges] = useState<Array<{gender_age: string | null}>>([]);
 
   // ============================================================================
   // STATE - User Selections (with localStorage)
@@ -477,179 +476,105 @@ export function HomePage() {
     return data;
   }, [CACHE_TTL]);
 
-  const buildRpcParams = useCallback((filters: FilterOptions, lastProduct: ProductWithDetails | null, sortOrder: SortOrder) => {
-    const baseParams = {
-      p_shop_ids: filters.selectedShopName.map(id => parseInt(id)).filter(id => !isNaN(id) && id > 0),
-      p_size_groups: filters.selectedSizeGroups.filter(s => s.trim()),
-      p_grouped_types: filters.selectedGroupedTypes.filter(s => s.trim()),
-      p_top_level_categories: filters.selectedTopLevelCategories.filter(s => s.trim()),
-      p_gender_ages: filters.selectedGenderAges.filter(s => s.trim()),
-      p_on_sale_only: filters.onSaleOnly,
-      p_min_price: filters.selectedPriceRange[0],
-      p_max_price: filters.selectedPriceRange[1],
-      p_search_query: filters.searchQuery?.trim() || null,
-      p_limit: ITEMS_PER_PAGE + 1
-    };
+  const buildQuery = useCallback((supabase: ReturnType<typeof getSupabase>, filters: FilterOptions, sortOrder: SortOrder) => {
+    let query = supabase.from('products_with_details_core').select('*');
 
-    // For initial load (no last product), provide null cursor parameters
-    if (!lastProduct) {
-      switch (sortOrder) {
-        case 'price_asc':
-          return {
-            ...baseParams,
-            p_cursor_id: null,
-            p_cursor_price: null,
-            p_cursor_created_at: null
-          };
-        case 'price_desc':
-          return {
-            ...baseParams,
-            p_cursor_id: null,
-            p_cursor_price: null,
-            p_cursor_created_at: null
-          };
-        case 'discount_desc':
-          return {
-            ...baseParams,
-            p_cursor_id: null,
-            p_cursor_discount: null,
-            p_cursor_created_at: null
-          };
-        default:
-          return baseParams;
-      }
-    } else {
-      // For subsequent loads, provide actual cursor values
-      switch (sortOrder) {
-        case 'price_asc':
-          return {
-            ...baseParams,
-            p_cursor_id: lastProduct.id,
-            p_cursor_price: lastProduct.min_price,
-            p_cursor_created_at: lastProduct.created_at
-          };
-        case 'price_desc':
-          return {
-            ...baseParams,
-            p_cursor_id: lastProduct.id,
-            p_cursor_price: lastProduct.min_price,
-            p_cursor_created_at: lastProduct.created_at
-          };
-        case 'discount_desc':
-          return {
-            ...baseParams,
-            p_cursor_id: lastProduct.id,
-            p_cursor_discount: lastProduct.max_discount_percentage || 0,
-            p_cursor_created_at: lastProduct.created_at
-          };
-        default:
-          return baseParams;
-      }
+    // Shops
+    const shopIds = filters.selectedShopName.map(id => parseInt(id)).filter(id => !isNaN(id) && id > 0);
+    if (shopIds.length > 0) {
+      query = query.in('shop_id', shopIds);
     }
-  }, []);
 
-  const getRpcFunctionName = useCallback((sortOrder: SortOrder) => {
+    // Size Groups
+    // The column is text[], so we use overlaps to check if any selected size is in the product's size_groups
+    const sizeGroups = filters.selectedSizeGroups.filter(s => s.trim());
+    if (sizeGroups.length > 0) {
+      query = query.overlaps('size_groups', sizeGroups);
+    }
+
+    // Grouped Types
+    const types = filters.selectedGroupedTypes.filter(s => s.trim());
+    if (types.length > 0) {
+      query = query.in('grouped_product_type', types);
+    }
+
+    // Categories
+    const categories = filters.selectedTopLevelCategories.filter(s => s.trim());
+    if (categories.length > 0) {
+      query = query.in('top_level_category', categories);
+    }
+
+    // Gender/Age
+    const genders = filters.selectedGenderAges.filter(s => s.trim());
+    if (genders.length > 0) {
+      query = query.in('gender_age', genders);
+    }
+
+    // On Sale
+    if (filters.onSaleOnly) {
+      query = query.eq('on_sale', true);
+    }
+
+    // Price Range
+    if (filters.selectedPriceRange[0] > ABS_MIN_PRICE) {
+      query = query.gte('min_price', filters.selectedPriceRange[0]);
+    }
+    if (filters.selectedPriceRange[1] < ABS_MAX_PRICE) {
+      query = query.lte('min_price', filters.selectedPriceRange[1]);
+    }
+
+    // Search
+    if (filters.searchQuery?.trim()) {
+      query = query.textSearch('fts', filters.searchQuery.trim());
+    }
+
+    // Default filters to match previous RPC logic:
+    // Exclude Insurance and Shipping, ensure In Stock and Not Archived
+    query = query
+      .neq('product_type', 'Insurance')
+      .neq('product_type', 'Shipping')
+      .eq('in_stock', true)
+      .eq('is_archived', false);
+
+    // Sort
     switch (sortOrder) {
-      case 'price_asc': return 'get_products_price_asc';
-      case 'price_desc': return 'get_products_price_desc';
-      case 'discount_desc': return 'get_products_discount_desc';
-      default: return 'get_products_discount_desc';
+      case 'price_asc':
+        // Primary sort: Price ASC
+        // Tie breaker: ID DESC
+        query = query.order('min_price', { ascending: true })
+                     .order('id', { ascending: false });
+        break;
+      case 'price_desc':
+        // Primary sort: Price DESC
+        // Tie breaker: ID DESC
+        query = query.order('min_price', { ascending: false })
+                     .order('id', { ascending: false });
+        break;
+      case 'discount_desc':
+      default:
+        // Primary sort: Discount DESC (nulls last)
+        // Secondary: Created At DESC
+        // Tie breaker: ID DESC
+        query = query.order('max_discount_percentage', { ascending: false, nullsFirst: false })
+                     .order('created_at', { ascending: false })
+                     .order('id', { ascending: false });
+        break;
     }
-  }, []);
+
+    return query;
+  }, [ABS_MIN_PRICE, ABS_MAX_PRICE]);
 
   // ============================================================================
-  // ENHANCED FETCH WITH RETRY LOGIC
-  // ============================================================================
-
-  const callRpcWithRetry = useCallback(
-  async (
-    rpcFunctionName: string,
-    params: any,
-    isInitialLoad: boolean,
-    retryCount = 0
-  ): Promise<any> => {
-    const MAX_RETRIES = 2;
-
-    const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
-
-    try {
-      const supabase = getSupabase();
-      const timeout = isInitialLoad
-        ? INITIAL_LOAD_TIMEOUT_MS
-        : REGULAR_LOAD_TIMEOUT_MS;
-
-      const controller = new AbortController();
-      currentRequestRef.current = controller;
-
-      const timeoutId = setTimeout(() => controller.abort(), timeout);
-
-      // 🔥 Prewarm the RPC on first load attempt
-      if (isInitialLoad && retryCount === 0) {
-        try {
-          // Fire-and-forget, lightweight call
-          await supabase.rpc(rpcFunctionName, { p_limit: 1 }).catch(() => {});
-          // Give compute a short moment to finish metadata caching
-          await sleep(1000);
-        } catch {
-          // ignore prewarm errors
-        }
-      }
-
-      const { data, error } = await supabase.rpc(rpcFunctionName, params, {
-        signal: controller.signal,
-      });
-
-      clearTimeout(timeoutId);
-
-      if (error) throw error;
-      return data;
-    } catch (error: any) {
-      const message = error?.message || "";
-
-      const isTimeout =
-        error?.code === "57014" || // Postgres statement_timeout
-        error?.name === "AbortError" ||
-        message.includes("timeout") ||
-        message.includes("aborted");
-
-      if (isTimeout && retryCount < MAX_RETRIES && isInitialLoad) {
-        console.log(
-          `RPC cold start / timeout on ${rpcFunctionName}, retrying (${
-            retryCount + 1
-          }/${MAX_RETRIES})`
-        );
-
-        // exponential backoff with extra time for cold start
-        await sleep(2000 * Math.pow(2, retryCount));
-
-        return callRpcWithRetry(
-          rpcFunctionName,
-          params,
-          isInitialLoad,
-          retryCount + 1
-        );
-      }
-
-      throw error;
-    }
-  },
-  []
-);
-
-
-  // ============================================================================
-  // MAIN FETCH FUNCTION (UPDATED WITH RETRY)
+  // MAIN FETCH FUNCTION
   // ============================================================================
   
   const fetchFilteredProducts = useCallback(async (
     filters: FilterOptions,
-    lastProduct: ProductWithDetails | null,
+    offset: number,
     sortOrder: SortOrder,
     isFilterChange: boolean = false
   ) => {
-    const lastProductId = lastProduct?.id || 'initial';
-    const requestKey = `${JSON.stringify(filters)}-${lastProductId}-${sortOrder}`;
-    const isInitialLoad = !lastProduct && isFilterChange;
+    const requestKey = `${JSON.stringify(filters)}-${offset}-${sortOrder}`;
     
     if (!isFilterChange && inFlightRequestsRef.current.has(requestKey)) {
       return;
@@ -702,7 +627,7 @@ export function HomePage() {
           canLoadMoreRef.current = true;
         }, LOAD_COOLDOWN);
         
-        if (!isFilterChange && lastProduct) {
+        if (!isFilterChange) {
           autoLoadCountRef.current += 1;
           const newCount = autoLoadCountRef.current;
           
@@ -716,17 +641,19 @@ export function HomePage() {
         // Prefetch next page
         if (hasMoreData && autoLoadCountRef.current < MAX_AUTO_LOADS) {
           scheduleIdle(async () => {
-            const nextLastProduct = productsToShow[productsToShow.length - 1];
-            const nextKey = `${JSON.stringify(filters)}-${nextLastProduct.id}-${sortOrder}`;
+            const nextOffset = offset + ITEMS_PER_PAGE;
+            const nextKey = `${JSON.stringify(filters)}-${nextOffset}-${sortOrder}`;
             if (!prefetchCacheRef.current[nextKey]) {
               try {
                 const supabase = getSupabase();
-                const rpcFunctionName = getRpcFunctionName(sortOrder);
-                const params = buildRpcParams(filters, nextLastProduct, sortOrder);
-                const { data: nextData } = await supabase.rpc(rpcFunctionName, params);
+                const query = buildQuery(supabase, filters, sortOrder);
+                const from = nextOffset;
+                const to = nextOffset + ITEMS_PER_PAGE; // fetch one extra
+                
+                const { data: nextData } = await query.range(from, to);
                 
                 if (Array.isArray(nextData)) {
-                  prefetchCacheRef.current[nextKey] = { data: nextData as ProductWithDetails[] };
+                  prefetchCacheRef.current[nextKey] = { data: nextData as unknown as ProductWithDetails[] };
                   const ids = nextData.slice(0, ITEMS_PER_PAGE).map(p => p.id).filter(Boolean);
                   if (ids.length) fetchBatchPricingFor(ids);
                 }
@@ -741,7 +668,7 @@ export function HomePage() {
       }
     }
     
-    // Fetch from database with retry logic
+    // Fetch from database
     isFetchingRef.current = true;
     
     if (isFilterChange) {
@@ -750,13 +677,24 @@ export function HomePage() {
     }
     
     try {
-      const rpcFunctionName = getRpcFunctionName(sortOrder);
-      const params = buildRpcParams(filters, lastProduct, sortOrder);
+      const supabase = getSupabase();
+      // Set up AbortController
+      const controller = new AbortController();
+      currentRequestRef.current = controller;
       
-      // Use enhanced RPC call with retry
-      const data = await callRpcWithRetry(rpcFunctionName, params, isInitialLoad);
+      const timeoutId = setTimeout(() => controller.abort(), REGULAR_LOAD_TIMEOUT_MS);
       
-      const newData = (data as ProductWithDetails[]) || [];
+      const query = buildQuery(supabase, filters, sortOrder);
+      const from = offset;
+      const to = offset + ITEMS_PER_PAGE; // inclusive range, so simple limit + offset logic checks one more item
+      
+      const { data, error } = await query.range(from, to).abortSignal(controller.signal);
+      
+      clearTimeout(timeoutId);
+      
+      if (error) throw error;
+      
+      const newData = (data as unknown as ProductWithDetails[]) || [];
       const hasMoreData = newData.length > ITEMS_PER_PAGE;
       const productsToShow = hasMoreData ? newData.slice(0, ITEMS_PER_PAGE) : newData;
 
@@ -792,7 +730,7 @@ export function HomePage() {
         scheduleIdle(() => fetchBatchPricingFor(ids));
       }
       
-      if (!isFilterChange && lastProduct) {
+      if (!isFilterChange) {
         autoLoadCountRef.current += 1;
         const newCount = autoLoadCountRef.current;
         
@@ -806,17 +744,19 @@ export function HomePage() {
       // Prefetch next page
       if (hasMoreData && autoLoadCountRef.current < MAX_AUTO_LOADS) {
         scheduleIdle(async () => {
-          const nextLastProduct = productsToShow[productsToShow.length - 1];
-          const nextKey = `${JSON.stringify(filters)}-${nextLastProduct.id}-${sortOrder}`;
+          const nextOffset = offset + ITEMS_PER_PAGE;
+          const nextKey = `${JSON.stringify(filters)}-${nextOffset}-${sortOrder}`;
           if (!prefetchCacheRef.current[nextKey]) {
             try {
               const supabase = getSupabase();
-              const rpcFunctionName = getRpcFunctionName(sortOrder);
-              const nextParams = buildRpcParams(filters, nextLastProduct, sortOrder);
-              const { data: nextData } = await supabase.rpc(rpcFunctionName, nextParams);
+              const query = buildQuery(supabase, filters, sortOrder);
+              const from = nextOffset;
+              const to = nextOffset + ITEMS_PER_PAGE; 
+              
+              const { data: nextData } = await query.range(from, to);
               
               if (Array.isArray(nextData)) {
-                prefetchCacheRef.current[nextKey] = { data: nextData as ProductWithDetails[] };
+                prefetchCacheRef.current[nextKey] = { data: nextData as unknown as ProductWithDetails[] };
                 const nextIds = nextData.slice(0, ITEMS_PER_PAGE).map(p => p.id).filter(Boolean);
                 if (nextIds.length) fetchBatchPricingFor(nextIds);
               }
@@ -856,7 +796,7 @@ export function HomePage() {
         inFlightRequestsRef.current.delete(requestKey);
       }
     }
-  }, [scheduleIdle, buildRpcParams, getRpcFunctionName, fetchBatchPricingFor, callRpcWithRetry]);
+  }, [scheduleIdle, buildQuery, fetchBatchPricingFor]);
 
   // ============================================================================
   // PRE-WARM CONNECTION ON APP START
@@ -943,48 +883,53 @@ export function HomePage() {
             .order('shop_name');
 
           if (error) throw error;
-          return data ?? [];
+          // Filter out any shops with null names to satisfy the type definition
+          return (data ?? []).filter((s): s is { id: number; shop_name: string } => s.shop_name !== null);
         }),
 
         // ------------------------------
-        // Sizes (VIEW → RPC)
+        // Sizes (View)
         // ------------------------------
-        fetchWithCache<{ size_group: string }>('sizes', async () => {
+        fetchWithCache<{ size_group: string | null }>('sizes', async () => {
           const { data, error } = await supabase
-            .rpc('get_distinct_size_groups');
+            .from('distinct_size_groups')
+            .select('size_group');
 
           if (error) throw error;
           return data ?? [];
         }),
 
         // ------------------------------
-        // Grouped types (VIEW → RPC)
+        // Grouped types (View)
         // ------------------------------
-        fetchWithCache<{ grouped_product_type: string }>('types', async () => {
+        fetchWithCache<{ grouped_product_type: string | null }>('types', async () => {
           const { data, error } = await supabase
-            .rpc('get_distinct_grouped_types');
+            .from('distinct_grouped_types')
+            .select('grouped_product_type');
 
           if (error) throw error;
           return data ?? [];
         }),
 
         // ------------------------------
-        // Top-level categories (VIEW → RPC)
+        // Top-level categories (View)
         // ------------------------------
-        fetchWithCache<{ top_level_category: string }>('categories', async () => {
+        fetchWithCache<{ top_level_category: string | null }>('categories', async () => {
           const { data, error } = await supabase
-            .rpc('get_distinct_top_level_categories');
+            .from('distinct_top_level_categories')
+            .select('top_level_category');
 
           if (error) throw error;
           return data ?? [];
         }),
 
         // ------------------------------
-        // Gender / age (VIEW → RPC)
+        // Gender / age (View)
         // ------------------------------
-        fetchWithCache<{ gender_age: string }>('genders', async () => {
+        fetchWithCache<{ gender_age: string | null }>('genders', async () => {
           const { data, error } = await supabase
-            .rpc('get_distinct_gender_ages');
+            .from('distinct_gender_ages')
+            .select('gender_age');
 
           if (error) throw error;
           return data ?? [];
@@ -1032,18 +977,27 @@ export function HomePage() {
   // EFFECT - Monitor Filter Changes and Trigger Fetch
   // ============================================================================
 
+  const currentFilters: FilterOptions = useMemo(() => ({
+    selectedShopName,
+    selectedSizeGroups,
+    selectedGroupedTypes,
+    selectedTopLevelCategories,
+    selectedGenderAges,
+    onSaleOnly,
+    searchQuery,
+    selectedPriceRange
+  }), [
+    selectedShopName,
+    selectedSizeGroups,
+    selectedGroupedTypes,
+    selectedTopLevelCategories,
+    selectedGenderAges,
+    onSaleOnly,
+    searchQuery,
+    selectedPriceRange
+  ]);
+
   useEffect(() => {
-    const currentFilters: FilterOptions = {
-      selectedShopName,
-      selectedSizeGroups,
-      selectedGroupedTypes,
-      selectedTopLevelCategories,
-      selectedGenderAges,
-      onSaleOnly,
-      searchQuery,
-      selectedPriceRange
-    };
-    
     // Include sortOrder in the filter key
     const currentFilterKey = JSON.stringify({ ...currentFilters, sortOrder });
     
@@ -1075,20 +1029,10 @@ export function HomePage() {
     // Store current filter key
     prevFilterKeyRef.current = currentFilterKey;
     
-    // Fetch first page with null cursor
-    fetchFilteredProducts(currentFilters, null, sortOrder, true);
+    // Fetch first page
+    fetchFilteredProducts(currentFilters, 0, sortOrder, true);
     
-  }, [
-    selectedShopName,
-    selectedSizeGroups,
-    selectedGroupedTypes,
-    selectedTopLevelCategories,
-    selectedGenderAges,
-    onSaleOnly,
-    searchQuery,
-    selectedPriceRange,
-    sortOrder
-  ]);
+  }, [currentFilters, sortOrder, fetchFilteredProducts]);
 
   // ============================================================================
   // INFINITE SCROLL OBSERVER
@@ -1112,20 +1056,8 @@ export function HomePage() {
         observerLockRef.current = true;
         canLoadMoreRef.current = false;
         
-        const lastProduct = products[products.length - 1];
-        const currentFilters: FilterOptions = {
-          selectedShopName,
-          selectedSizeGroups,
-          selectedGroupedTypes,
-          selectedTopLevelCategories,
-          selectedGenderAges,
-          onSaleOnly,
-          searchQuery,
-          selectedPriceRange
-        };
-                
         // Load next page
-        fetchFilteredProducts(currentFilters, lastProduct, sortOrder, false);
+        fetchFilteredProducts(currentFilters, products.length, sortOrder, false);
         
         setTimeout(() => {
           canLoadMoreRef.current = true;
@@ -1144,12 +1076,16 @@ export function HomePage() {
       io.disconnect();
       observerLockRef.current = false;
     };
-  }, [hasMore, loading, showLoadMoreButton, isFilterChanging, products.length, sortOrder]);
+  }, [hasMore, loading, showLoadMoreButton, isFilterChanging, products.length, sortOrder, currentFilters, fetchFilteredProducts]);
 
   // ============================================================================
   // EVENT HANDLERS
   // ============================================================================
   
+  const handleSearchChange = (e: ChangeEvent<HTMLInputElement>) => {
+    setSearchQuery(e.target.value);
+  };
+
   const handleSearchSubmit = (e: FormEvent) => {
     e.preventDefault();
     const trimmedQuery = searchQuery.trim();
@@ -1161,30 +1097,13 @@ export function HomePage() {
     }
   };
 
-  const handleClearSearch = () => {
-    setSearchQuery('');
-    navigate('/', { replace: true });
-  };
-
   const handleSortChange = (value: string) => {
     setSortOrder(value as SortOrder);
   };
 
   const handleLoadMoreClick = () => {
     if (!loading && hasMore && products.length > 0 && !isFilterChanging) {
-      const lastProduct = products[products.length - 1];
-      const currentFilters: FilterOptions = {
-        selectedShopName,
-        selectedSizeGroups,
-        selectedGroupedTypes,
-        selectedTopLevelCategories,
-        selectedGenderAges,
-        onSaleOnly,
-        searchQuery,
-        selectedPriceRange
-      };
-      
-      fetchFilteredProducts(currentFilters, lastProduct, sortOrder, false);
+      fetchFilteredProducts(currentFilters, products.length, sortOrder, false);
     }
   };
 
@@ -1232,22 +1151,22 @@ export function HomePage() {
   // Fixed code (preserve database order)
   const sizeOptions = allSizeData
       .map(item => item.size_group)
-      .filter(Boolean)
+      .filter((s): s is string => !!s)
       .filter((value, index, self) => self.indexOf(value) === index) // Remove duplicates
       .map(sg => ({ value: sg, label: sg }));
 
   const typeOptions = Array.from(new Set(allGroupedTypes.map(t => t.grouped_product_type)))
-    .filter(Boolean)
+    .filter((t): t is string => !!t)
     .sort()
     .map(t => ({ value: t, label: t }));
 
   const categoryOptions = Array.from(new Set(allTopLevelCategories.map(c => c.top_level_category)))
-    .filter(Boolean)
+    .filter((c): c is string => !!c)
     .sort()
     .map(c => ({ value: c, label: c }));
 
   const genderOptions = Array.from(new Set(allGenderAges.map(g => g.gender_age)))
-    .filter(Boolean)
+    .filter((g): g is string => !!g)
     .sort()
     .map(g => ({ value: g, label: g }));
 
@@ -1259,42 +1178,12 @@ export function HomePage() {
   
   return (
     <div className="min-h-screen bg-gray-50 dark:bg-gray-950">
-      <Header />
+      <Header 
+        searchQuery={searchQuery}
+        handleSearchChange={handleSearchChange}
+        handleSearchSubmit={handleSearchSubmit}
+      />
       <div className="mx-auto px-4 py-6 sm:px-6 lg:px-8 max-w-screen-2xl">
-        {/* Search Bar */}
-        <div className="mb-6">
-          <form onSubmit={handleSearchSubmit} className="relative max-w-2xl mx-auto">
-            <div className="relative">
-              <input
-                type="text"
-                value={searchQuery}
-                onChange={(e: ChangeEvent<HTMLInputElement>) => setSearchQuery(e.target.value)}
-                placeholder="Search products..."
-                className="w-full px-4 py-3 pr-24 text-sm border border-gray-300 dark:border-gray-700 rounded-lg focus:ring-2 focus:ring-blue-500 dark:focus:ring-blue-400 focus:border-transparent bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100 placeholder-gray-500 dark:placeholder-gray-400"
-              />
-              <div className="absolute right-2 top-1/2 -translate-y-1/2 flex items-center gap-1">
-                {searchQuery && (
-                  <button
-                    type="button"
-                    onClick={handleClearSearch}
-                    className="p-1.5 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 rounded-md hover:bg-gray-100 dark:hover:bg-gray-800"
-                    aria-label="Clear search"
-                  >
-                    <AsyncLucideIcon name="X" className="h-4 w-4" />
-                  </button>
-                )}
-                <button
-                  type="submit"
-                  className="p-1.5 bg-blue-600 hover:bg-blue-700 dark:bg-blue-500 dark:hover:bg-blue-600 text-white rounded-md transition-colors"
-                  aria-label="Search"
-                >
-                  <AsyncLucideIcon name="Search" className="h-4 w-4" />
-                </button>
-              </div>
-            </div>
-          </form>
-        </div>
-
         <div className="flex flex-col lg:flex-row gap-6">
           {/* Filters Sidebar */}
           <div className="w-full lg:w-64 flex-shrink-0">
@@ -1582,6 +1471,21 @@ export function HomePage() {
                         setError(null); 
                         setProducts([]); 
                         setInitialLoad(true); 
+                        fetchFilteredProducts(
+                          { 
+                            selectedShopName, 
+                            selectedSizeGroups, 
+                            selectedGroupedTypes, 
+                            selectedTopLevelCategories, 
+                            selectedGenderAges, 
+                            onSaleOnly, 
+                            searchQuery, 
+                            selectedPriceRange 
+                          },
+                          0,
+                          sortOrder,
+                          true
+                        );
                       }} 
                       className="mt-3 text-red-600 dark:text-red-400 hover:underline text-sm font-medium"
                     >
