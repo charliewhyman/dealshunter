@@ -1176,10 +1176,11 @@ class ProductUploader(BaseUploader):
         
         for attempt in range(1, max_retries + 1):
             try:
-                success = self.supabase.bulk_upsert(
+                success = self.db.bulk_upsert(
                     table_name=table_name,
                     data=data,
-                    on_conflict=on_conflict
+                    on_conflict=on_conflict,
+                    retries=1 # DB client has its own retries, we handle outer timeout retries here
                 )
                 if success and attempt == 1:
                     self.logger.debug(f"✅ {operation_name} succeeded")
@@ -1256,7 +1257,7 @@ class ProductUploader(BaseUploader):
         
         for attempt in range(1, max_retries + 1):
             try:
-                success = self.supabase.bulk_delete(table_name, ids)
+                success = self.db.bulk_delete(table_name, ids)
                 if success:
                     self.logger.debug(f"✅ {operation_name} succeeded")
                     return True
@@ -1289,15 +1290,15 @@ class ProductUploader(BaseUploader):
         
         for attempt in range(1, max_retries + 1):
             try:
-                # Use direct client for single delete
-                result = self.supabase.client.table(table_name).delete().eq('id', record_id).execute()
-                
-                # Check for errors
-                if hasattr(result, 'error'):
-                    self.logger.debug(f"Delete error for {record_id}: {result}")
-                    return False
-                
-                return True
+                # Use direct query for single delete
+                def do_delete(conn):
+                    with conn.cursor() as cur:
+                        cur.execute(f'DELETE FROM "{table_name}" WHERE "id" = %s', (record_id,))
+                        return True
+                        
+                result = self.db.safe_execute(do_delete, f"Single delete {record_id}")
+                return bool(result)
+
             except Exception as e:
                 if self._is_timeout_error(e):
                     if attempt < max_retries:
@@ -1315,7 +1316,7 @@ class ProductUploader(BaseUploader):
         """Execute a query with timeout retry handling."""
         for attempt in range(1, max_retries + 1):
             try:
-                return self.supabase.safe_execute(query_func, description, max_retries=1)
+                return self.db.safe_execute(query_func, description, max_retries=1)
             except Exception as e:
                 if self._is_timeout_error(e) and attempt < max_retries:
                     delay = min(2.0 * (attempt - 1), 10.0)
@@ -1520,13 +1521,16 @@ class ProductUploader(BaseUploader):
             self.logger.debug(f"Starting cleanup for shop {shop_id}...")
             
             # Get all product IDs for this shop from database
-            def get_existing_products(client):
-                query = client.table("products_with_details_core").select("id")
-                if shop_id:
-                    query = query.eq("shop_id", shop_id)
-                # Limit to avoid huge queries
-                query = query.limit(10000)
-                return query.execute()
+            def get_existing_products(conn):
+                with conn.cursor() as cur:
+                    sql = 'SELECT "id" FROM "products_with_details_core"'
+                    params = []
+                    if shop_id:
+                        sql += ' WHERE "shop_id" = %s'
+                        params.append(shop_id)
+                    sql += ' LIMIT 10000'
+                    cur.execute(sql, params)
+                    return cur.fetchall()
             
             result = self._safe_execute_query(
                 get_existing_products,

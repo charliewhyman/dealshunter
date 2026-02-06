@@ -291,32 +291,6 @@ def run_complete_pipeline(args):
     print("\nComplete pipeline finished")
     return results
 
-def setup_database_structure(args):
-    """Set up the new database structure and populate initial data."""
-    print("\nSetting up new database structure...")
-    try:
-        sup = SupabaseClient()
-        
-        def do_setup(client):
-            return client.rpc('populate_initial_data').execute()
-        
-        rpc_result = sup.safe_execute(do_setup, 'Setup database structure', max_retries=3)
-        
-        if rpc_result and hasattr(rpc_result, 'data'):
-            print("Database structure setup complete")
-            # Save result file
-            out = settings.DATA_DIR / f"setup_database_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json"
-            with open(out, 'w', encoding='utf-8') as fh:
-                json.dump({'status': 'success', 'data': rpc_result.data}, fh, indent=2, ensure_ascii=False)
-            print(f"Setup result saved to: {out}")
-            return True
-        else:
-            print("Failed to setup database structure")
-            return False
-            
-    except Exception as e:
-        print(f"Error setting up database: {e}")
-        return False
 
 def run_database_refresh(args):
     """Run database refresh RPC (Kept for backward compatibility but will not be called)."""

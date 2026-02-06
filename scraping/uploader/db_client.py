@@ -1,11 +1,11 @@
 """
-PostgreSQL client using psycopg 3 (replacing Supabase client).
+PostgreSQL client using psycopg 3
 """
 import os
 import time
 import random
 import logging
-from typing import Optional, Callable, Any, List, Dict, Union
+from typing import Optional, Callable, Any, List, Dict, Union, Tuple
 from psycopg import connect, Connection, Cursor
 from psycopg.rows import dict_row
 from psycopg.errors import UniqueViolation, OperationalError
