@@ -477,6 +477,7 @@ export type Database = {
           published_at_external: string | null
           shop_id: number | null
           shop_name: string | null
+          size_groups: string[] | null
           subcategory: string | null
           tags: string[] | null
           title: string | null

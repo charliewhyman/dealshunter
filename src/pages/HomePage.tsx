@@ -1,7 +1,7 @@
 import { ChangeEvent, FormEvent, useCallback, useEffect, useRef, useState, useMemo, startTransition } from 'react';
 import { ProductWithDetails } from '../types';
 import { db } from '../lib/db';
-import { sql } from 'kysely';
+
 import AsyncLucideIcon from '../components/AsyncLucideIcon';
 import { ProductCard } from '../components/ProductCard';
 import { Header } from '../components/Header';
@@ -494,10 +494,8 @@ export function HomePage() {
     // Size Groups
     const sizeGroups = filters.selectedSizeGroups.filter(s => s.trim());
     if (sizeGroups.length > 0) {
-      // Overlaps using raw SQL for postgres array
-      // query.where('size_groups', '&&', sizes) is typical Kysely syntax for arrays if supported
-      // Using sql template for array overlap
-      query = query.where(sql`size_groups && ${sizeGroups}`);
+      // Overlaps using Kysely array operator
+      query = query.where('size_groups', '&&', sizeGroups);
     }
 
     // Grouped Types
@@ -533,7 +531,7 @@ export function HomePage() {
 
     // Search
     if (filters.searchQuery?.trim()) {
-      query = query.where(sql`fts @@ websearch_to_tsquery('english', ${filters.searchQuery.trim()})`);
+      query = query.where((eb) => eb('fts', '@@', eb.fn('websearch_to_tsquery', [eb.val('english'), eb.val(filters.searchQuery.trim())])));
     }
 
     // Default filters
