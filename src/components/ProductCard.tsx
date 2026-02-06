@@ -10,7 +10,6 @@ interface ProductCardProps {
   pricing?: {
     variantPrice: number | null;
     compareAtPrice: number | null;
-    offerPrice: number | null;
   };
   isLcp?: boolean;
 }
@@ -21,7 +20,6 @@ function ProductCardComponent({ product, pricing, isLcp }: ProductCardProps) {
   const pricingFromHook = useProductPricing(product.id, !pricing);
   const variantPrice = pricing?.variantPrice ?? pricingFromHook.variantPrice;
   const compareAtPrice = pricing?.compareAtPrice ?? pricingFromHook.compareAtPrice;
-  const offerPrice = pricing?.offerPrice ?? pricingFromHook.offerPrice;
 
   const imagesArray = useMemo(() => {
     if (Array.isArray(product.images)) return product.images;
@@ -170,19 +168,19 @@ function ProductCardComponent({ product, pricing, isLcp }: ProductCardProps) {
 
   const discountPercentage = useMemo(() => {
     if (typeof compareAtPrice === 'number' && compareAtPrice > 0) {
-      const price = offerPrice ?? variantPrice ?? 0;
+      const price = variantPrice ?? 0;
       if (price > 0) return Math.round(((compareAtPrice - price) / compareAtPrice) * 100);
     }
     if (typeof product.max_discount_percentage === 'number' && product.max_discount_percentage > 0) {
       return Math.round(product.max_discount_percentage);
     }
     return 0;
-  }, [compareAtPrice, variantPrice, offerPrice, product.max_discount_percentage]);
+  }, [compareAtPrice, variantPrice, product.max_discount_percentage]);
 
   const hasDiscount = useMemo(() => {
-    if (compareAtPrice && compareAtPrice > (offerPrice ?? variantPrice ?? 0)) return true;
+    if (compareAtPrice && compareAtPrice > (variantPrice ?? 0)) return true;
     return typeof product.max_discount_percentage === 'number' && product.max_discount_percentage > 0;
-  }, [compareAtPrice, variantPrice, offerPrice, product.max_discount_percentage]);
+  }, [compareAtPrice, variantPrice, product.max_discount_percentage]);
 
   const availableVariantsCount = useMemo(
     () => processedVariants.filter(v => v.available).length,
@@ -289,9 +287,9 @@ function ProductCardComponent({ product, pricing, isLcp }: ProductCardProps) {
         <div className="min-h-6 flex items-center">
           <div className="flex items-baseline gap-1 w-full overflow-hidden">
             <span className="text-sm sm:text-base md:text-lg font-bold text-gray-900 dark:text-gray-100 whitespace-nowrap overflow-hidden text-ellipsis">
-              ${offerPrice?.toFixed(2) ?? variantPrice?.toFixed(2) ?? product.min_price?.toFixed(2) ?? '0.00'}
+              ${variantPrice?.toFixed(2) ?? (product.min_price != null ? Number(product.min_price).toFixed(2) : '0.00')}
             </span>
-            {compareAtPrice && compareAtPrice > ((offerPrice ?? variantPrice) ?? 0) && (
+            {compareAtPrice && compareAtPrice > (variantPrice ?? 0) && (
               <span className="text-xs text-gray-500 dark:text-gray-400 line-through whitespace-nowrap shrink-0">
                 ${compareAtPrice.toFixed(2)}
               </span>

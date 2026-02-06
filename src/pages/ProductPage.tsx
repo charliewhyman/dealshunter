@@ -1,6 +1,6 @@
 import { ChangeEvent, FormEvent, useEffect, useMemo, useState, useRef } from 'react';
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
-import { getSupabase } from '../lib/supabase';
+import { db } from '../lib/db';
 import { ProductWithDetails } from '../types';
 import AsyncLucideIcon from '../components/AsyncLucideIcon';
 import { useProductPricing } from '../hooks/useProductPricing';
@@ -14,7 +14,7 @@ function ProductPage() {
   const [loading, setLoading] = useState(true);
   const [imgLoaded, setImgLoaded] = useState(false);
   const [showFullDescription, setShowFullDescription] = useState(false);
-  const { variantPrice, compareAtPrice, offerPrice } = useProductPricing(productId || '');
+  const { variantPrice, compareAtPrice } = useProductPricing(productId || '');
   const navigate = useNavigate();
 
   // Read search query from URL
@@ -47,17 +47,16 @@ function ProductPage() {
 
   useEffect(() => {
     const fetchProductData = async () => {
+      if (!productId) return;
       try {
         setLoading(true);
-        const supabase = await getSupabase();
-        const { data: productData, error: productError } = await supabase
-          .from('products_with_details_core')
-          .select('*')
-          .eq('id', productId)
-          .single();
+        const productData = await db
+          .selectFrom('products_with_details_core')
+          .selectAll()
+          .where('id', '=', productId)
+          .executeTakeFirst();
 
-        if (productError) throw productError;
-        setProduct(productData as ProductWithDetails);
+        setProduct((productData as unknown as ProductWithDetails) || null);
       } catch (error) {
         console.error('Error fetching product:', error);
         setProduct(null);
@@ -66,7 +65,7 @@ function ProductPage() {
       }
     };
 
-    if (productId) fetchProductData();
+    fetchProductData();
   }, [productId]);
 
   // Parse images
@@ -165,11 +164,11 @@ function ProductPage() {
   // Discount and availability
   const discountPercentage = useMemo(() => {
     if (typeof compareAtPrice === 'number' && compareAtPrice > 0) {
-      const price = (offerPrice ?? variantPrice) ?? 0;
+      const price = variantPrice ?? 0;
       if (price > 0) return Math.round(((compareAtPrice - price) / compareAtPrice) * 100);
     }
     return 0;
-  }, [compareAtPrice, variantPrice, offerPrice]);
+  }, [compareAtPrice, variantPrice]);
 
   const isAvailable = useMemo(() => {
     if (!product) return false;
@@ -296,10 +295,10 @@ function ProductPage() {
                 {variantPrice !== null && (
                   <div className="flex items-baseline gap-3 flex-wrap">
                     <span className="text-3xl sm:text-4xl font-bold text-gray-900 dark:text-gray-100">
-                      ${(offerPrice ?? variantPrice).toFixed(2)}
+                      ${variantPrice.toFixed(2)}
                     </span>
                     
-                    {compareAtPrice && compareAtPrice > (offerPrice ?? variantPrice) && (
+                    {compareAtPrice && compareAtPrice > variantPrice && (
                       <>
                         <span className="text-xl sm:text-2xl text-gray-500 dark:text-gray-400 line-through">
                           ${compareAtPrice.toFixed(2)}

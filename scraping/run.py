@@ -15,7 +15,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 from orchestrator.main import PipelineOrchestrator
 import config.settings as settings
-from uploader.supabase_client import SupabaseClient
+from uploader.db_client import DatabaseClient
 
 def setup_environment():
     """Setup environment and logging."""
@@ -26,6 +26,37 @@ def setup_environment():
     print(f"\n{'='*60}")
     print("SHOPIFY SCRAPER SYSTEM")
     print(f"{'='*60}")
+
+# ... (lines 30-262 omitted)
+
+def setup_database_structure(args):
+    """Set up the new database structure and populate initial data."""
+    print("\nSetting up new database structure...")
+    try:
+        db = DatabaseClient()
+        
+        def do_setup(conn):
+            with conn.cursor() as cur:
+                cur.execute('SELECT populate_initial_data()')
+                return cur.fetchall()
+        
+        result = db.safe_execute(do_setup, 'Setup database structure', max_retries=3)
+        
+        if result is not None:
+            print("Database structure setup complete")
+            # Save result file
+            out = settings.DATA_DIR / f"setup_database_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json"
+            with open(out, 'w', encoding='utf-8') as fh:
+                json.dump({'status': 'success', 'data': result}, fh, indent=2, ensure_ascii=False)
+            print(f"Setup result saved to: {out}")
+            return True
+        else:
+            print("Failed to setup database structure")
+            return False
+            
+    except Exception as e:
+        print(f"Error setting up database: {e}")
+        return False
 
 def filter_shops_needing_update(shops, days_threshold=7):
     """Filter shops that haven't been scraped recently.

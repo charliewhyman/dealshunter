@@ -106,7 +106,7 @@ class ShopUploader(BaseUploader):
                 sample = transformed[0]
                 self.logger.info(f"Sample shop data: {sample}")
 
-            success = self.supabase.bulk_upsert(
+            success = self.db.bulk_upsert(
                 table_name=self.get_table_name(),
                 data=transformed,
                 on_conflict=self.get_on_conflict()

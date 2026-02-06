@@ -1,6 +1,7 @@
 import { ChangeEvent, FormEvent, useCallback, useEffect, useRef, useState, useMemo, startTransition } from 'react';
 import { ProductWithDetails } from '../types';
-import { getSupabase } from '../lib/supabase';
+import { db } from '../lib/db';
+import { sql } from 'kysely';
 import AsyncLucideIcon from '../components/AsyncLucideIcon';
 import { ProductCard } from '../components/ProductCard';
 import { Header } from '../components/Header';
@@ -201,9 +202,9 @@ export function HomePage() {
 
   // Update price range constants
   const ABS_MIN_PRICE = 0;
-  const ABS_MAX_PRICE = 500; // Reduced from 100000 to 500
+  const ABS_MAX_PRICE = 500; 
   
-  const PRICE_RANGE = useMemo<[number, number]>(() => [15, 200], []); // Default range 15-200
+  const PRICE_RANGE = useMemo<[number, number]>(() => [15, 200], []); 
   
   const [selectedPriceRange, setSelectedPriceRange] = useState<[number, number]>(() => {
     try {
@@ -233,7 +234,6 @@ export function HomePage() {
   const [productPricings, setProductPricings] = useState<Record<string, {
     variantPrice: number | null; 
     compareAtPrice: number | null; 
-    offerPrice: number | null;
   }>>({});
 
   // ============================================================================
@@ -336,7 +336,7 @@ export function HomePage() {
     if (urlSearch !== null && urlSearch !== searchQuery) {
       setSearchQuery(urlSearch);
     }
-  }, [searchParams]); // Don't include searchQuery to avoid loops
+  }, [searchParams]);
 
   // ============================================================================
   // UTILITY FUNCTIONS
@@ -372,27 +372,30 @@ export function HomePage() {
     const idsToFetch = uniqueIds.filter(id => !(id in productPricings));
     if (idsToFetch.length === 0) return;
     
-    const supabase = getSupabase();
-    const pricingMap: Record<string, {variantPrice: number | null; compareAtPrice: number | null; offerPrice: number | null;}> = {};
+    const pricingMap: Record<string, {variantPrice: number | null; compareAtPrice: number | null;}> = {};
     
     try {
-      const numericIds = idsToFetch.map(id => Number(id)).filter(id => !isNaN(id) && id > 0);
-      if (numericIds.length === 0) return;
       
-      const { data: rpcData, error: rpcError } = await supabase.rpc('get_products_pricing', { 
-        p_product_ids: numericIds
-      });
-      
-      if (!rpcError && Array.isArray(rpcData)) {
-        for (const row of rpcData) {
-          const pid = String(row.product_id);
-          pricingMap[pid] = {
-            variantPrice: row.variant_price != null ? parseFloat(String(row.variant_price)) : null,
-            compareAtPrice: row.compare_at_price != null ? parseFloat(String(row.compare_at_price)) : null,
-            offerPrice: row.offer_price != null ? parseFloat(String(row.offer_price)) : null
-          };
+      const vRes = await db
+        .selectFrom('variants')
+        .select(['product_id', 'price', 'compare_at_price'])
+        .where('product_id', 'in', idsToFetch)
+        .execute();
+
+      for (const row of vRes) {
+        const pid = String(row.product_id);
+        const price = row.price != null ? Number(row.price) : null;
+        const compare = row.compare_at_price != null ? Number(row.compare_at_price) : null;
+        if (!pricingMap[pid]) pricingMap[pid] = { variantPrice: price, compareAtPrice: compare };
+        else {
+          const existing = pricingMap[pid];
+          if (price !== null && (existing.variantPrice === null || price < existing.variantPrice)) {
+            existing.variantPrice = price;
+            existing.compareAtPrice = compare ?? existing.compareAtPrice;
+          }
         }
       }
+      
     } catch (error) {
       console.error('Error fetching pricing:', error);
     }
@@ -476,88 +479,82 @@ export function HomePage() {
     return data;
   }, [CACHE_TTL]);
 
-  const buildQuery = useCallback((supabase: ReturnType<typeof getSupabase>, filters: FilterOptions, sortOrder: SortOrder) => {
-    let query = supabase.from('products_with_details_core').select('*');
+  const buildQuery = useCallback((filters: FilterOptions, sortOrder: SortOrder) => {
+    let query = db.selectFrom('products_with_details_core').selectAll();
 
     // Shops
     const shopIds = filters.selectedShopName.map(id => parseInt(id)).filter(id => !isNaN(id) && id > 0);
-    if (shopIds.length > 0) {
-      query = query.in('shop_id', shopIds);
+    // Convert to strings for comparison if needed, but schema says bigint which Kysely maps mostly.
+    // However, if column `shop_id` is defined as string in types.ts (Generated<string>), we should pass strings.
+    const shopIdsStr = shopIds.map(String);
+    if (shopIdsStr.length > 0) {
+      query = query.where('shop_id', 'in', shopIdsStr);
     }
 
     // Size Groups
-    // The column is text[], so we use overlaps to check if any selected size is in the product's size_groups
     const sizeGroups = filters.selectedSizeGroups.filter(s => s.trim());
     if (sizeGroups.length > 0) {
-      query = query.overlaps('size_groups', sizeGroups);
+      // Overlaps using raw SQL for postgres array
+      // query.where('size_groups', '&&', sizes) is typical Kysely syntax for arrays if supported
+      // Using sql template for array overlap
+      query = query.where(sql`size_groups && ${sizeGroups}`);
     }
 
     // Grouped Types
     const types = filters.selectedGroupedTypes.filter(s => s.trim());
     if (types.length > 0) {
-      query = query.in('grouped_product_type', types);
+      query = query.where('grouped_product_type', 'in', types);
     }
 
     // Categories
     const categories = filters.selectedTopLevelCategories.filter(s => s.trim());
     if (categories.length > 0) {
-      query = query.in('top_level_category', categories);
+      query = query.where('top_level_category', 'in', categories);
     }
 
     // Gender/Age
     const genders = filters.selectedGenderAges.filter(s => s.trim());
     if (genders.length > 0) {
-      query = query.in('gender_age', genders);
+      query = query.where('gender_age', 'in', genders);
     }
 
     // On Sale
     if (filters.onSaleOnly) {
-      query = query.eq('on_sale', true);
+      query = query.where('on_sale', '=', true);
     }
 
     // Price Range
     if (filters.selectedPriceRange[0] > ABS_MIN_PRICE) {
-      query = query.gte('min_price', filters.selectedPriceRange[0]);
+      query = query.where('min_price', '>=', filters.selectedPriceRange[0]);
     }
     if (filters.selectedPriceRange[1] < ABS_MAX_PRICE) {
-      query = query.lte('min_price', filters.selectedPriceRange[1]);
+      query = query.where('min_price', '<=', filters.selectedPriceRange[1]);
     }
 
     // Search
     if (filters.searchQuery?.trim()) {
-      query = query.textSearch('fts', filters.searchQuery.trim());
+      query = query.where(sql`fts @@ websearch_to_tsquery('english', ${filters.searchQuery.trim()})`);
     }
 
-    // Default filters to match previous RPC logic:
-    // Exclude Insurance and Shipping, ensure In Stock and Not Archived
+    // Default filters
     query = query
-      .neq('product_type', 'Insurance')
-      .neq('product_type', 'Shipping')
-      .eq('in_stock', true)
-      .eq('is_archived', false);
+      .where('product_type', '!=', 'Insurance')
+      .where('product_type', '!=', 'Shipping')
+      .where('in_stock', '=', true)
+      .where('is_archived', '=', false);
 
     // Sort
     switch (sortOrder) {
       case 'price_asc':
-        // Primary sort: Price ASC
-        // Tie breaker: ID DESC
-        query = query.order('min_price', { ascending: true })
-                     .order('id', { ascending: false });
+        query = query.orderBy('min_price', 'asc').orderBy('id', 'desc');
         break;
       case 'price_desc':
-        // Primary sort: Price DESC
-        // Tie breaker: ID DESC
-        query = query.order('min_price', { ascending: false })
-                     .order('id', { ascending: false });
+        query = query.orderBy('min_price', 'desc').orderBy('id', 'desc');
         break;
       case 'discount_desc':
       default:
-        // Primary sort: Discount DESC (nulls last)
-        // Secondary: Created At DESC
-        // Tie breaker: ID DESC
-        query = query.order('max_discount_percentage', { ascending: false, nullsFirst: false })
-                     .order('created_at', { ascending: false })
-                     .order('id', { ascending: false });
+        // nullsLast is default in some places, but good to specify if needed. Kysely supports `nulls last`
+        query = query.orderBy('max_discount_percentage', 'desc').orderBy('created_at', 'desc').orderBy('id', 'desc');
         break;
     }
 
@@ -583,17 +580,14 @@ export function HomePage() {
     inFlightRequestsRef.current.add(requestKey);
     
     if (isFilterChange) {
-      // Reset auto-load counter
       autoLoadCountRef.current = 0;
       setShowLoadMoreButton(false);
       
-      // Abort any in-flight request
       if (currentRequestRef.current) {
         currentRequestRef.current.abort();
       }
       currentRequestRef.current = null;
       
-      // Clear cache for this filter combination
       const keysToDelete = Object.keys(prefetchCacheRef.current).filter(key => 
         key.startsWith(`${JSON.stringify(filters)}-`)
       );
@@ -602,7 +596,6 @@ export function HomePage() {
       });
     }
     
-    // Check cache first (skip for filter changes)
     if (!isFilterChange) {
       const cached = prefetchCacheRef.current[requestKey];
       if (cached) {
@@ -645,12 +638,10 @@ export function HomePage() {
             const nextKey = `${JSON.stringify(filters)}-${nextOffset}-${sortOrder}`;
             if (!prefetchCacheRef.current[nextKey]) {
               try {
-                const supabase = getSupabase();
-                const query = buildQuery(supabase, filters, sortOrder);
-                const from = nextOffset;
-                const to = nextOffset + ITEMS_PER_PAGE; // fetch one extra
+                const query = buildQuery(filters, sortOrder);
+                const limit = ITEMS_PER_PAGE + 1;
                 
-                const { data: nextData } = await query.range(from, to);
+                const nextData = await query.offset(nextOffset).limit(limit).execute();
                 
                 if (Array.isArray(nextData)) {
                   prefetchCacheRef.current[nextKey] = { data: nextData as unknown as ProductWithDetails[] };
@@ -668,7 +659,6 @@ export function HomePage() {
       }
     }
     
-    // Fetch from database
     isFetchingRef.current = true;
     
     if (isFilterChange) {
@@ -677,33 +667,31 @@ export function HomePage() {
     }
     
     try {
-      const supabase = getSupabase();
-      // Set up AbortController
       const controller = new AbortController();
       currentRequestRef.current = controller;
       
       const timeoutId = setTimeout(() => controller.abort(), REGULAR_LOAD_TIMEOUT_MS);
       
-      const query = buildQuery(supabase, filters, sortOrder);
-      const from = offset;
-      const to = offset + ITEMS_PER_PAGE; // inclusive range, so simple limit + offset logic checks one more item
+      const query = buildQuery(filters, sortOrder);
+      const limit = ITEMS_PER_PAGE + 1;
       
-      const { data, error } = await query.range(from, to).abortSignal(controller.signal);
+      // Kysely execute returns promise, we don't have abort signal support directly in execute() usually?
+      // kysely-neon doesn't support abort signal unless the driver does. 
+      // neon client `query` supports options but abort signal might be tricky.
+      // We will ignore abort signal for now or wrap it.
+      // But standard Kysely usage: await query.execute()
+      const data = await query.offset(offset).limit(limit).execute();
       
       clearTimeout(timeoutId);
-      
-      if (error) throw error;
       
       const newData = (data as unknown as ProductWithDetails[]) || [];
       const hasMoreData = newData.length > ITEMS_PER_PAGE;
       const productsToShow = hasMoreData ? newData.slice(0, ITEMS_PER_PAGE) : newData;
 
-      // Cache the result (except for initial filter changes)
       if (!isFilterChange || productsToShow.length > 0) {
         prefetchCacheRef.current[requestKey] = { data: newData };
       }
       
-      // Prune cache to prevent memory leak
       const cacheKeys = Object.keys(prefetchCacheRef.current);
       if (cacheKeys.length > MAX_CACHE_ENTRIES) {
         const toRemove = cacheKeys.slice(0, cacheKeys.length - MAX_CACHE_ENTRIES);
@@ -741,19 +729,15 @@ export function HomePage() {
         });
       }
       
-      // Prefetch next page
       if (hasMoreData && autoLoadCountRef.current < MAX_AUTO_LOADS) {
         scheduleIdle(async () => {
           const nextOffset = offset + ITEMS_PER_PAGE;
           const nextKey = `${JSON.stringify(filters)}-${nextOffset}-${sortOrder}`;
           if (!prefetchCacheRef.current[nextKey]) {
             try {
-              const supabase = getSupabase();
-              const query = buildQuery(supabase, filters, sortOrder);
-              const from = nextOffset;
-              const to = nextOffset + ITEMS_PER_PAGE; 
-              
-              const { data: nextData } = await query.range(from, to);
+              const query = buildQuery(filters, sortOrder);
+              const limit = ITEMS_PER_PAGE + 1;
+              const nextData = await query.offset(nextOffset).limit(limit).execute();
               
               if (Array.isArray(nextData)) {
                 prefetchCacheRef.current[nextKey] = { data: nextData as unknown as ProductWithDetails[] };
@@ -803,19 +787,16 @@ export function HomePage() {
   // ============================================================================
 
   useEffect(() => {
-    // Pre-warm Supabase connection on component mount
+    // Pre-warm Neon connection on component mount
     const prewarmConnection = async () => {
       try {
-        const supabase = getSupabase();
-        
         // Make a tiny, fast query to establish connection
-        // Using a simple count query or health check
-        await supabase
-          .from('products_with_details_core')
-          .select('id', { count: 'exact', head: true })
-          .limit(1);
+        await db.selectFrom('products_with_details_core')
+          .select('id')
+          .limit(1)
+          .execute();
         
-        console.log('Supabase connection pre-warmed');
+        console.log('Neon connection pre-warmed');
       } catch (error) {
         // Silent fail - just establishing connection
         console.log('Pre-warm attempt completed (may have failed silently)');
@@ -864,8 +845,7 @@ export function HomePage() {
       // ==============================
       // 2. Fetch fresh data
       // ==============================
-      const supabase = getSupabase();
-
+      
       const [
         shopsResult,
         sizesResult,
@@ -877,25 +857,26 @@ export function HomePage() {
         // Shops (real table)
         // ------------------------------
         fetchWithCache<{ id: number; shop_name: string }>('shops', async () => {
-          const { data, error } = await supabase
-            .from('shops')
-            .select('id, shop_name')
-            .order('shop_name');
+          const data = await db
+            .selectFrom('shops')
+            .select(['id', 'shop_name'])
+            .orderBy('shop_name')
+            .execute();
 
-          if (error) throw error;
           // Filter out any shops with null names to satisfy the type definition
-          return (data ?? []).filter((s): s is { id: number; shop_name: string } => s.shop_name !== null);
+          return (data ?? [])
+            .filter(s => s.shop_name !== null)
+            .map(s => ({ id: Number(s.id), shop_name: s.shop_name! }));
         }),
 
         // ------------------------------
         // Sizes (View)
         // ------------------------------
         fetchWithCache<{ size_group: string | null }>('sizes', async () => {
-          const { data, error } = await supabase
-            .from('distinct_size_groups')
-            .select('size_group');
-
-          if (error) throw error;
+          const data = await db
+            .selectFrom('distinct_size_groups')
+            .select('size_group')
+            .execute();
           return data ?? [];
         }),
 
@@ -903,11 +884,10 @@ export function HomePage() {
         // Grouped types (View)
         // ------------------------------
         fetchWithCache<{ grouped_product_type: string | null }>('types', async () => {
-          const { data, error } = await supabase
-            .from('distinct_grouped_types')
-            .select('grouped_product_type');
-
-          if (error) throw error;
+          const data = await db
+            .selectFrom('distinct_grouped_types')
+            .select('grouped_product_type')
+            .execute();
           return data ?? [];
         }),
 
@@ -915,11 +895,10 @@ export function HomePage() {
         // Top-level categories (View)
         // ------------------------------
         fetchWithCache<{ top_level_category: string | null }>('categories', async () => {
-          const { data, error } = await supabase
-            .from('distinct_top_level_categories')
-            .select('top_level_category');
-
-          if (error) throw error;
+          const data = await db
+            .selectFrom('distinct_top_level_categories')
+            .select('top_level_category')
+            .execute();
           return data ?? [];
         }),
 
@@ -927,11 +906,10 @@ export function HomePage() {
         // Gender / age (View)
         // ------------------------------
         fetchWithCache<{ gender_age: string | null }>('genders', async () => {
-          const { data, error } = await supabase
-            .from('distinct_gender_ages')
-            .select('gender_age');
-
-          if (error) throw error;
+          const data = await db
+            .selectFrom('distinct_gender_ages')
+            .select('gender_age')
+            .execute();
           return data ?? [];
         })
       ]);

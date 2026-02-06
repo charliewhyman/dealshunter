@@ -20,7 +20,7 @@ from uploader.product_uploader import ProductUploader
 
 from core.logger import scraper_logger, uploader_logger
 import config.settings as settings
-from uploader.supabase_client import SupabaseClient
+from uploader.db_client import DatabaseClient
 from core.state_manager import StateManager
 
 
@@ -86,14 +86,17 @@ class PipelineOrchestrator:
             try:
                 urls = [s.get('url') for s in shops if s.get('url')]
                 if urls:
-                    def do_select(client):
-                        return client.table('shops').select('id,url').in_('url', urls).execute()
+                    def do_select(conn):
+                        with conn.cursor() as cur:
+                            cur.execute("SELECT id, url FROM shops WHERE url = ANY(%s)", (urls,))
+                            return cur.fetchall()
 
-                    sup = SupabaseClient()
-                    result = sup.safe_execute(do_select, 'Fetch shop ids by url', max_retries=3)
+                    db = DatabaseClient()
+                    result = db.safe_execute(do_select, 'Fetch shop ids by url', max_retries=3)
                     url_to_id = {}
-                    if result and hasattr(result, 'data'):
-                        for row in result.data:
+                    if result:
+                        for row in result:
+                            # row is a dict because DatabaseClient uses dict_row
                             url_to_id[row.get('url')] = row.get('id')
 
                     resolved = 0
