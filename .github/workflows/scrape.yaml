@@ -85,8 +85,7 @@ jobs:
       - name: Run scraper
         id: run_scraper
         env:
-          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
-          SUPABASE_SECRET_KEY: ${{ secrets.SUPABASE_SECRET_KEY }}
+          VITE_DATABASE_URL: ${{ secrets.VITE_DATABASE_URL }}
           ENVIRONMENT: production
         run: |
           cd scraping
@@ -105,16 +104,6 @@ jobs:
             echo "ERROR: Scraper failed with exit code $EXIT_CODE"
             exit $EXIT_CODE
           fi
-
-      - name: Run maintenance (monthly only)
-        if: steps.strategy.outputs.scrape_type == 'monthly'
-        env:
-          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
-          SUPABASE_SECRET_KEY: ${{ secrets.SUPABASE_SECRET_KEY }}
-        run: |
-          cd scraping
-          echo "Running database maintenance..."
-          uv run python run.py --mode=db --maintenance
 
       - name: Upload artifacts
         if: always()
