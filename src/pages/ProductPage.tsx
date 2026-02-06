@@ -1,6 +1,6 @@
 import { ChangeEvent, FormEvent, useEffect, useMemo, useState, useRef } from 'react';
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
-import { db } from '../lib/db';
+import { apiClient } from '../lib/api-client';
 import { ProductWithDetails } from '../types';
 import AsyncLucideIcon from '../components/AsyncLucideIcon';
 import { useProductPricing } from '../hooks/useProductPricing';
@@ -50,11 +50,7 @@ function ProductPage() {
       if (!productId) return;
       try {
         setLoading(true);
-        const productData = await db
-          .selectFrom('products_with_details_core')
-          .selectAll()
-          .where('id', '=', productId)
-          .executeTakeFirst();
+        const productData = await apiClient.fetchProduct(productId);
 
         setProduct((productData as unknown as ProductWithDetails) || null);
       } catch (error) {

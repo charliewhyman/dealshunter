@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { db } from '../lib/db';
+import { apiClient } from '../lib/api-client';
 
 interface ProductPricing {
   variantPrice: number | null;
@@ -29,11 +29,8 @@ async function flushBatch() {
     const uniq = Array.from(new Set(ids.map(String)));
 
     // Fetch variants for all ids in one query
-    const vRes = await db
-      .selectFrom('variants')
-      .select(['product_id', 'price', 'compare_at_price'])
-      .where('product_id', 'in', uniq)
-      .execute();
+    // Fetch variants for all ids in one query
+    const vRes = await apiClient.fetchPricing(uniq);
 
     const resultMap: Record<string, ProductPricing> = {};
 

@@ -1,6 +1,6 @@
 import { ChangeEvent, FormEvent, useCallback, useEffect, useRef, useState, useMemo, startTransition } from 'react';
 import { ProductWithDetails } from '../types';
-import { db } from '../lib/db';
+import { apiClient } from '../lib/api-client';
 
 import AsyncLucideIcon from '../components/AsyncLucideIcon';
 import { ProductCard } from '../components/ProductCard';
@@ -375,14 +375,9 @@ export function HomePage() {
     const pricingMap: Record<string, {variantPrice: number | null; compareAtPrice: number | null;}> = {};
     
     try {
-      
-      const vRes = await db
-        .selectFrom('variants')
-        .select(['product_id', 'price', 'compare_at_price'])
-        .where('product_id', 'in', idsToFetch.map(Number))
-        .execute();
+      const prices = await apiClient.fetchPricing(idsToFetch);
 
-      for (const row of vRes) {
+      for (const row of prices) {
         const pid = String(row.product_id);
         const price = row.price != null ? Number(row.price) : null;
         const compare = row.compare_at_price != null ? Number(row.compare_at_price) : null;
@@ -479,82 +474,7 @@ export function HomePage() {
     return data;
   }, [CACHE_TTL]);
 
-  const buildQuery = useCallback((filters: FilterOptions, sortOrder: SortOrder) => {
-    let query = db.selectFrom('products_with_details_core').selectAll();
 
-    // Shops
-    const shopIds = filters.selectedShopName.map(id => parseInt(id)).filter(id => !isNaN(id) && id > 0);
-    if (shopIds.length > 0) {
-      query = query.where('shop_id', 'in', shopIds);
-    }
-
-    // Size Groups
-    const sizeGroups = filters.selectedSizeGroups.filter(s => s.trim());
-    if (sizeGroups.length > 0) {
-      // Overlaps using Kysely array operator
-      query = query.where('size_groups', '&&', sizeGroups);
-    }
-
-    // Grouped Types
-    const types = filters.selectedGroupedTypes.filter(s => s.trim());
-    if (types.length > 0) {
-      query = query.where('grouped_product_type', 'in', types);
-    }
-
-    // Categories
-    const categories = filters.selectedTopLevelCategories.filter(s => s.trim());
-    if (categories.length > 0) {
-      query = query.where('top_level_category', 'in', categories);
-    }
-
-    // Gender/Age
-    const genders = filters.selectedGenderAges.filter(s => s.trim());
-    if (genders.length > 0) {
-      query = query.where('gender_age', 'in', genders);
-    }
-
-    // On Sale
-    if (filters.onSaleOnly) {
-      query = query.where('on_sale', '=', true);
-    }
-
-    // Price Range
-    if (filters.selectedPriceRange[0] > ABS_MIN_PRICE) {
-      query = query.where('min_price', '>=', filters.selectedPriceRange[0]);
-    }
-    if (filters.selectedPriceRange[1] < ABS_MAX_PRICE) {
-      query = query.where('min_price', '<=', filters.selectedPriceRange[1]);
-    }
-
-    // Search
-    if (filters.searchQuery?.trim()) {
-      query = query.where((eb) => eb('fts', '@@', eb.fn('websearch_to_tsquery', [eb.val('english'), eb.val(filters.searchQuery.trim())])));
-    }
-
-    // Default filters
-    query = query
-      .where('product_type', '!=', 'Insurance')
-      .where('product_type', '!=', 'Shipping')
-      .where('in_stock', '=', true)
-      .where('is_archived', '=', false);
-
-    // Sort
-    switch (sortOrder) {
-      case 'price_asc':
-        query = query.orderBy('min_price', 'asc').orderBy('id', 'desc');
-        break;
-      case 'price_desc':
-        query = query.orderBy('min_price', 'desc').orderBy('id', 'desc');
-        break;
-      case 'discount_desc':
-      default:
-        // nullsLast is default in some places, but good to specify if needed. Kysely supports `nulls last`
-        query = query.orderBy('max_discount_percentage', 'desc').orderBy('created_at', 'desc').orderBy('id', 'desc');
-        break;
-    }
-
-    return query;
-  }, [ABS_MIN_PRICE, ABS_MAX_PRICE]);
 
   // ============================================================================
   // MAIN FETCH FUNCTION
@@ -633,10 +553,8 @@ export function HomePage() {
             const nextKey = `${JSON.stringify(filters)}-${nextOffset}-${sortOrder}`;
             if (!prefetchCacheRef.current[nextKey]) {
               try {
-                const query = buildQuery(filters, sortOrder);
-                const limit = ITEMS_PER_PAGE + 1;
-                
-                const nextData = await query.offset(nextOffset).limit(limit).execute();
+                // Prefetch next page: default limit is 31 in api client which is essentially page + 1
+                const nextData = await apiClient.fetchProducts(filters, nextOffset, sortOrder);
                 
                 if (Array.isArray(nextData)) {
                   prefetchCacheRef.current[nextKey] = { data: nextData as unknown as ProductWithDetails[] };
@@ -667,15 +585,9 @@ export function HomePage() {
       
       const timeoutId = setTimeout(() => controller.abort(), REGULAR_LOAD_TIMEOUT_MS);
       
-      const query = buildQuery(filters, sortOrder);
-      const limit = ITEMS_PER_PAGE + 1;
       
-      // Kysely execute returns promise, we don't have abort signal support directly in execute() usually?
-      // kysely-neon doesn't support abort signal unless the driver does. 
-      // neon client `query` supports options but abort signal might be tricky.
-      // We will ignore abort signal for now or wrap it.
-      // But standard Kysely usage: await query.execute()
-      const data = await query.offset(offset).limit(limit).execute();
+      // Call API
+      const data = await apiClient.fetchProducts(filters, offset, sortOrder);
       
       clearTimeout(timeoutId);
       
@@ -730,9 +642,7 @@ export function HomePage() {
           const nextKey = `${JSON.stringify(filters)}-${nextOffset}-${sortOrder}`;
           if (!prefetchCacheRef.current[nextKey]) {
             try {
-              const query = buildQuery(filters, sortOrder);
-              const limit = ITEMS_PER_PAGE + 1;
-              const nextData = await query.offset(nextOffset).limit(limit).execute();
+              const nextData = await apiClient.fetchProducts(filters, nextOffset, sortOrder);
               
               if (Array.isArray(nextData)) {
                 prefetchCacheRef.current[nextKey] = { data: nextData as unknown as ProductWithDetails[] };
@@ -775,7 +685,7 @@ export function HomePage() {
         inFlightRequestsRef.current.delete(requestKey);
       }
     }
-  }, [scheduleIdle, buildQuery, fetchBatchPricingFor]);
+  }, [scheduleIdle, fetchBatchPricingFor]);
 
   // ============================================================================
   // PRE-WARM CONNECTION ON APP START
@@ -783,19 +693,9 @@ export function HomePage() {
 
   useEffect(() => {
     // Pre-warm Neon connection on component mount
+    // Connection pre-warming removed as we are now using HTTP API
     const prewarmConnection = async () => {
-      try {
-        // Make a tiny, fast query to establish connection
-        await db.selectFrom('products_with_details_core')
-          .select('id')
-          .limit(1)
-          .execute();
-        
-        console.log('Neon connection pre-warmed');
-      } catch (error) {
-        // Silent fail - just establishing connection
-        console.log('Pre-warm attempt completed (may have failed silently)');
-      }
+      // no-op
     };
 
     // Small delay to not block initial render
@@ -852,11 +752,7 @@ export function HomePage() {
         // Shops (real table)
         // ------------------------------
         fetchWithCache<{ id: number; shop_name: string }>('shops', async () => {
-          const data = await db
-            .selectFrom('shops')
-            .select(['id', 'shop_name'])
-            .orderBy('shop_name')
-            .execute();
+          const data = await apiClient.fetchShops();
 
           // Filter out any shops with null names to satisfy the type definition
           return (data ?? [])
@@ -868,10 +764,7 @@ export function HomePage() {
         // Sizes (View)
         // ------------------------------
         fetchWithCache<{ size_group: string | null }>('sizes', async () => {
-          const data = await db
-            .selectFrom('distinct_size_groups')
-            .select('size_group')
-            .execute();
+          const data = await apiClient.fetchSizes();
           return data ?? [];
         }),
 
@@ -879,10 +772,7 @@ export function HomePage() {
         // Grouped types (View)
         // ------------------------------
         fetchWithCache<{ grouped_product_type: string | null }>('types', async () => {
-          const data = await db
-            .selectFrom('distinct_grouped_types')
-            .select('grouped_product_type')
-            .execute();
+          const data = await apiClient.fetchTypes();
           return data ?? [];
         }),
 
@@ -890,10 +780,7 @@ export function HomePage() {
         // Top-level categories (View)
         // ------------------------------
         fetchWithCache<{ top_level_category: string | null }>('categories', async () => {
-          const data = await db
-            .selectFrom('distinct_top_level_categories')
-            .select('top_level_category')
-            .execute();
+          const data = await apiClient.fetchCategories();
           return data ?? [];
         }),
 
@@ -901,10 +788,7 @@ export function HomePage() {
         // Gender / age (View)
         // ------------------------------
         fetchWithCache<{ gender_age: string | null }>('genders', async () => {
-          const data = await db
-            .selectFrom('distinct_gender_ages')
-            .select('gender_age')
-            .execute();
+          const data = await apiClient.fetchGenders();
           return data ?? [];
         })
       ]);
