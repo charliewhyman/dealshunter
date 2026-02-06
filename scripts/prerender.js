@@ -2,7 +2,8 @@
 import fs from 'fs';
 import path from 'path';
 import { spawnSync } from 'child_process';
-import { createClient } from '@supabase/supabase-js';
+import { neon } from '@neondatabase/serverless';
+import 'dotenv/config'; // Load env vars from .env
 
 function usage() {
   console.log('Usage: node scripts/prerender.js [--lcp=<image-url>]');
@@ -20,34 +21,33 @@ for (const a of argv) {
 }
 
 async function tryAutoDetectLcp() {
-  const SUPABASE_URL = process.env.VITE_SUPABASE_URL || '';
-  const SUPABASE_KEY = process.env.VITE_SUPABASE_PUBLISHABLE_KEY || '';
-  if (!SUPABASE_URL || !SUPABASE_KEY) {
-    console.log('Supabase env vars not set; skipping auto-detect.');
+  const DATABASE_URL = process.env.VITE_DATABASE_URL || process.env.DATABASE_URL || '';
+  if (!DATABASE_URL) {
+    console.log('DATABASE_URL env var not set; skipping auto-detect.');
     return '';
   }
 
   try {
-    const supabase = createClient(SUPABASE_URL, SUPABASE_KEY, { global: { headers: { 'x-prerender': '1' } } });
-    console.log('Querying Supabase for first product image...');
-    const { data, error } = await supabase
-      .from('products_with_details')
-      .select('images')
-      .order('created_at', { ascending: false })
-      .limit(1);
-    if (error) {
-      console.warn('Supabase query error:', error.message || error);
-      return '';
-    }
-    if (data && data.length > 0) {
-      const images = data[0]?.images;
+    const sql = neon(DATABASE_URL);
+    console.log('Querying Neon for first product image...');
+
+    // Equivalent to: .from('products_with_details_core').select('images').order('created_at', { ascending: false }).limit(1)
+    const rows = await sql`
+      SELECT images 
+      FROM products_with_details_core 
+      ORDER BY created_at DESC 
+      LIMIT 1
+    `;
+
+    if (rows && rows.length > 0) {
+      const images = rows[0]?.images;
       if (images && Array.isArray(images) && images[0] && images[0].src) {
         return images[0].src;
       }
     }
     return '';
   } catch (err) {
-    console.warn('Failed to query Supabase:', err);
+    console.warn('Failed to query Neon:', err);
     return '';
   }
 }
@@ -58,7 +58,7 @@ try {
   if (result.status !== 0) process.exit(result.status || 1);
 
   if (!lcpArg) {
-    // attempt to auto-detect from Supabase
+    // attempt to auto-detect
     lcpArg = await tryAutoDetectLcp();
   }
 
