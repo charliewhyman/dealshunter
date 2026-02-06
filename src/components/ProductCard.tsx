@@ -204,7 +204,7 @@ function ProductCardComponent({ product, pricing, isLcp }: ProductCardProps) {
         </div>
       )}
 
-      <div className="relative w-full pt-[56%] sm:pt-[70%] overflow-hidden bg-gray-100 dark:bg-gray-900 flex-shrink-0 rounded-t-md">
+      <div className="relative w-full aspect-square overflow-hidden bg-gray-100 dark:bg-gray-900 flex-shrink-0 rounded-t-md border-b border-gray-100 dark:border-gray-700">
         {finalSrc ? (
           <picture>
             {finalWebpSrcSet && <source type="image/webp" srcSet={finalWebpSrcSet} sizes={sizesAttr} />}

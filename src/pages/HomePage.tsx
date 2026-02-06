@@ -5,7 +5,7 @@ import { db } from '../lib/db';
 import AsyncLucideIcon from '../components/AsyncLucideIcon';
 import { ProductCard } from '../components/ProductCard';
 import { Header } from '../components/Header';
-import { useLocation, useNavigate, useSearchParams } from 'react-router-dom';
+import { Link, useLocation, useNavigate, useSearchParams } from 'react-router-dom';
 import { MultiSelectDropdown, SingleSelectDropdown } from '../components/Dropdowns';
 import TransformSlider from '../components/TransformSlider';
 
@@ -1150,7 +1150,7 @@ export function HomePage() {
   // ============================================================================
   
   return (
-    <div className="min-h-screen bg-gray-50 dark:bg-gray-950">
+    <div className="min-h-screen bg-gray-50 dark:bg-gray-950 font-['Inter',sans-serif]">
       <Header 
         searchQuery={searchQuery}
         handleSearchChange={handleSearchChange}
@@ -1160,7 +1160,7 @@ export function HomePage() {
         <div className="flex flex-col lg:flex-row gap-6">
           {/* Filters Sidebar */}
           <div className="w-full lg:w-96 flex-shrink-0">
-            <div className="lg:sticky lg:top-6">
+            <div className="lg:sticky lg:top-24">
               {/* Mobile Filter Toggle */}
               <div className="lg:hidden mb-4">
                 <button
@@ -1410,6 +1410,19 @@ export function HomePage() {
                     </div>
                   </div>
                 )}
+              </div>
+
+              {/* Sidebar Footer */}
+              <div className="mt-8 pt-6 border-t border-gray-200 dark:border-gray-800">
+                <div className="flex flex-wrap gap-x-4 gap-y-2 text-xs text-gray-500 dark:text-gray-400">
+                  <Link to="/about" className="hover:text-gray-900 dark:hover:text-gray-200">About</Link>
+                  <Link to="/contact" className="hover:text-gray-900 dark:hover:text-gray-200">Contact</Link>
+                  <Link to="/privacy" className="hover:text-gray-900 dark:hover:text-gray-200">Privacy</Link>
+                  <Link to="/terms" className="hover:text-gray-900 dark:hover:text-gray-200">Terms</Link>
+                </div>
+                <p className="mt-4 text-xs text-gray-400 dark:text-gray-600">
+                  © {new Date().getFullYear()} Curated Canada
+                </p>
               </div>
             </div>
           </div>

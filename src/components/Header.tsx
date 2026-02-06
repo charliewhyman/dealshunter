@@ -15,7 +15,7 @@ export const Header = ({ searchQuery, handleSearchChange, handleSearchSubmit }: 
         <div className="flex items-center justify-between h-full">
           <Link to="/" className="flex items-center space-x-2">
             <AsyncLucideIcon name="Tag" className="w-6 h-6 text-yellow-600 dark:text-yellow-500" />
-            <span className="text-xl font-semibold text-gray-900 dark:text-gray-100">
+            <span className="text-2xl sm:text-3xl font-bold text-gray-900 dark:text-gray-100 tracking-tight">
               Curated Canada
             </span>
           </Link>
