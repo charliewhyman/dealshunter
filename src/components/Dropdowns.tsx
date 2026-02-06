@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import AsyncLucideIcon from './AsyncLucideIcon';
+import { ChevronDown, ChevronsUpDown, X } from 'lucide-react';
 
 // Types
 interface Option {
@@ -34,63 +34,20 @@ const MultiSelectDropdown: React.FC<MultiSelectDropdownProps> = ({
 }) => {
   const [isOpen, setIsOpen] = useState<boolean>(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
-  const pointerDownPosRef = useRef<{ x: number; y: number } | null>(null);
-  const pointerMovedRef = useRef<boolean>(false);
 
   useEffect(() => {
-    const handleClickOutside = (event: Event) => {
-      const evTarget = event.target as Node | null;
-      if (dropdownRef.current && evTarget && !dropdownRef.current.contains(evTarget)) {
+    const handleClickOutside = (event: MouseEvent | TouchEvent) => {
+      if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
         setIsOpen(false);
       }
     };
 
-    // Use pointerdown which covers mouse, touch and pen. Fallback to mousedown for older browsers.
-    const usePointer = typeof window !== 'undefined' && 'PointerEvent' in window;
-    if (usePointer) {
-      document.addEventListener('pointerdown', handleClickOutside);
-      return () => document.removeEventListener('pointerdown', handleClickOutside);
-    }
-
     document.addEventListener('mousedown', handleClickOutside);
-    return () => document.removeEventListener('mousedown', handleClickOutside);
-  }, []);
-
-  // Track pointer movement to avoid treating drags/scrolls as clicks
-  useEffect(() => {
-    const onPointerMove = (ev: PointerEvent) => {
-      if (!pointerDownPosRef.current) return;
-      const dx = Math.abs(ev.clientX - pointerDownPosRef.current.x);
-      const dy = Math.abs(ev.clientY - pointerDownPosRef.current.y);
-      if (dx > 6 || dy > 6) pointerMovedRef.current = true;
+    document.addEventListener('touchstart', handleClickOutside);
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+      document.removeEventListener('touchstart', handleClickOutside);
     };
-
-    const onPointerUp = (ev: PointerEvent) => {
-      if (!pointerDownPosRef.current) return;
-      // If pointer didn't move much and the up target is inside the toggle area, toggle open
-      if (!pointerMovedRef.current) {
-        const upTarget = ev.target as Node | null;
-        if (upTarget && dropdownRef.current && dropdownRef.current.contains(upTarget)) {
-          setIsOpen(prev => !prev);
-        }
-      }
-
-      pointerDownPosRef.current = null;
-      pointerMovedRef.current = false;
-    };
-
-    const usePointer = typeof window !== 'undefined' && 'PointerEvent' in window;
-    if (usePointer) {
-      document.addEventListener('pointermove', onPointerMove);
-      document.addEventListener('pointerup', onPointerUp);
-      return () => {
-        document.removeEventListener('pointermove', onPointerMove);
-        document.removeEventListener('pointerup', onPointerUp);
-      };
-    }
-
-    // Fallback: no-op for environments without PointerEvent
-    return () => {};
   }, []);
 
   const handleOptionToggle = (value: string) => {
@@ -107,14 +64,7 @@ const MultiSelectDropdown: React.FC<MultiSelectDropdownProps> = ({
   return (
     <div ref={dropdownRef} className="relative">
       <div
-        onPointerDown={(e) => {
-          // record initial pointer position; actual toggle occurs on pointerup if no movement
-          const pe = e as React.PointerEvent;
-          pointerDownPosRef.current = { x: pe.clientX, y: pe.clientY };
-          pointerMovedRef.current = false;
-        }}
-        // Prevent default click behavior which can lead to unexpected synthetic clicks after drags
-        onClick={(e) => e.preventDefault()}
+        onClick={() => setIsOpen(!isOpen)}
         className="w-full min-h-[36px] px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 cursor-pointer flex items-center justify-between hover:border-gray-400 dark:hover:border-gray-500 transition-colors"
       >
         <div className="flex-1 flex flex-wrap gap-1">
@@ -142,7 +92,7 @@ const MultiSelectDropdown: React.FC<MultiSelectDropdownProps> = ({
                     }}
                     className="hover:text-red-500 dark:hover:text-red-400"
                   >
-                    <AsyncLucideIcon name="X" className="h-3 w-3" />
+                    <X className="h-3 w-3" />
                   </button>
                 </span>
               );
@@ -153,8 +103,7 @@ const MultiSelectDropdown: React.FC<MultiSelectDropdownProps> = ({
             </span>
           )}
         </div>
-        <AsyncLucideIcon
-          name="ChevronDown"
+        <ChevronDown
           className={`h-4 w-4 text-gray-500 dark:text-gray-400 transition-transform ${
             isOpen ? 'rotate-180' : ''
           }`}
@@ -162,7 +111,7 @@ const MultiSelectDropdown: React.FC<MultiSelectDropdownProps> = ({
       </div>
 
       {isOpen && (
-        <div className="absolute top-full left-0 right-0 mt-1 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-lg shadow-lg z-50 max-h-60 overflow-y-auto">
+        <div className="absolute top-full left-0 right-0 mt-1 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-lg shadow-lg z-[60] max-h-60 overflow-y-auto">
           {options.length > 0 ? (
             options.map((option) => {
               const value = typeof option === 'string' ? option : option.value;
@@ -207,59 +156,20 @@ const SingleSelectDropdown: React.FC<SingleSelectDropdownProps> = ({
 }) => {
   const [isOpen, setIsOpen] = useState<boolean>(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
-  const pointerDownPosRef = useRef<{ x: number; y: number } | null>(null);
-  const pointerMovedRef = useRef<boolean>(false);
 
   useEffect(() => {
-    const handleClickOutside = (event: Event) => {
-      const evTarget = event.target as Node | null;
-      if (dropdownRef.current && evTarget && !dropdownRef.current.contains(evTarget)) {
+    const handleClickOutside = (event: MouseEvent | TouchEvent) => {
+      if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
         setIsOpen(false);
       }
     };
 
-    const usePointer = typeof window !== 'undefined' && 'PointerEvent' in window;
-    if (usePointer) {
-      document.addEventListener('pointerdown', handleClickOutside);
-      return () => document.removeEventListener('pointerdown', handleClickOutside);
-    }
-
     document.addEventListener('mousedown', handleClickOutside);
-    return () => document.removeEventListener('mousedown', handleClickOutside);
-  }, []);
-
-  useEffect(() => {
-    const onPointerMove = (ev: PointerEvent) => {
-      if (!pointerDownPosRef.current) return;
-      const dx = Math.abs(ev.clientX - pointerDownPosRef.current.x);
-      const dy = Math.abs(ev.clientY - pointerDownPosRef.current.y);
-      if (dx > 6 || dy > 6) pointerMovedRef.current = true;
+    document.addEventListener('touchstart', handleClickOutside);
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+      document.removeEventListener('touchstart', handleClickOutside);
     };
-
-    const onPointerUp = (ev: PointerEvent) => {
-      if (!pointerDownPosRef.current) return;
-      if (!pointerMovedRef.current) {
-        const upTarget = ev.target as Node | null;
-        if (upTarget && dropdownRef.current && dropdownRef.current.contains(upTarget)) {
-          setIsOpen(prev => !prev);
-        }
-      }
-
-      pointerDownPosRef.current = null;
-      pointerMovedRef.current = false;
-    };
-
-    const usePointer = typeof window !== 'undefined' && 'PointerEvent' in window;
-    if (usePointer) {
-      document.addEventListener('pointermove', onPointerMove);
-      document.addEventListener('pointerup', onPointerUp);
-      return () => {
-        document.removeEventListener('pointermove', onPointerMove);
-        document.removeEventListener('pointerup', onPointerUp);
-      };
-    }
-
-    return () => {};
   }, []);
 
   const handleOptionSelect = (value: string) => {
@@ -272,22 +182,16 @@ const SingleSelectDropdown: React.FC<SingleSelectDropdownProps> = ({
   return (
     <div ref={dropdownRef} className="relative">
       <div
-        onPointerDown={(e) => {
-          const pe = e as React.PointerEvent;
-          pointerDownPosRef.current = { x: pe.clientX, y: pe.clientY };
-          pointerMovedRef.current = false;
-        }}
-        onClick={(e) => e.preventDefault()}
+        onClick={() => setIsOpen(!isOpen)}
         className="w-full min-h-[34px] px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 cursor-pointer flex items-center justify-between hover:border-gray-400 dark:hover:border-gray-500 transition-colors"
       >
         <div className="flex items-center gap-2 min-w-0 flex-1">
-          <AsyncLucideIcon name="ChevronsUpDown" className="h-4 w-4 text-gray-500 dark:text-gray-400" />
+          <ChevronsUpDown className="h-4 w-4 text-gray-500 dark:text-gray-400" />
           <span className={`text-gray-900 dark:text-gray-100 text-sm ${className || ''}`}>
             {selectedOption ? selectedOption.label : placeholder}
           </span>
         </div>
-        <AsyncLucideIcon
-          name="ChevronDown"
+        <ChevronDown
           className={`h-4 w-4 text-gray-500 dark:text-gray-400 transition-transform ${
             isOpen ? 'rotate-180' : ''
           }`}
@@ -295,7 +199,7 @@ const SingleSelectDropdown: React.FC<SingleSelectDropdownProps> = ({
       </div>
 
       {isOpen && (
-        <div className="absolute top-full left-0 right-0 mt-1 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-lg shadow-lg z-50 max-h-60 overflow-y-auto">
+        <div className="absolute top-full left-0 right-0 mt-1 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-lg shadow-lg z-[60] max-h-60 overflow-y-auto">
           {options.map((option) => (
             <div
               key={option.value}

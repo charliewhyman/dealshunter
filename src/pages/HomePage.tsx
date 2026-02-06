@@ -379,7 +379,7 @@ export function HomePage() {
       const vRes = await db
         .selectFrom('variants')
         .select(['product_id', 'price', 'compare_at_price'])
-        .where('product_id', 'in', idsToFetch)
+        .where('product_id', 'in', idsToFetch.map(Number))
         .execute();
 
       for (const row of vRes) {
@@ -484,11 +484,8 @@ export function HomePage() {
 
     // Shops
     const shopIds = filters.selectedShopName.map(id => parseInt(id)).filter(id => !isNaN(id) && id > 0);
-    // Convert to strings for comparison if needed, but schema says bigint which Kysely maps mostly.
-    // However, if column `shop_id` is defined as string in types.ts (Generated<string>), we should pass strings.
-    const shopIdsStr = shopIds.map(String);
-    if (shopIdsStr.length > 0) {
-      query = query.where('shop_id', 'in', shopIdsStr);
+    if (shopIds.length > 0) {
+      query = query.where('shop_id', 'in', shopIds);
     }
 
     // Size Groups
@@ -1159,10 +1156,10 @@ export function HomePage() {
         handleSearchChange={handleSearchChange}
         handleSearchSubmit={handleSearchSubmit}
       />
-      <div className="mx-auto px-4 py-6 sm:px-6 lg:px-8 max-w-screen-2xl">
+      <div className="mx-auto px-4 pt-24 pb-6 sm:px-6 lg:px-8 max-w-screen-2xl">
         <div className="flex flex-col lg:flex-row gap-6">
           {/* Filters Sidebar */}
-          <div className="w-full lg:w-64 flex-shrink-0">
+          <div className="w-full lg:w-96 flex-shrink-0">
             <div className="lg:sticky lg:top-6">
               {/* Mobile Filter Toggle */}
               <div className="lg:hidden mb-4">
