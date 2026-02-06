@@ -7,7 +7,7 @@ interface ProductPricing {
 }
 
 // Module-level batching/cache structures so multiple hook instances
-// can be served by a single batched Supabase request.
+// can be served by a single batched request.
 const batchQueue = new Set<string>();
 const listeners = new Map<string, Set<(p: ProductPricing) => void>>();
 const pricingCache = new Map<string, ProductPricing>();
