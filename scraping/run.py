@@ -414,6 +414,7 @@ def main():
         
         return 0
         
+
     except KeyboardInterrupt:
         print("\n\nProcess interrupted by user")
         return 130
@@ -422,6 +423,12 @@ def main():
         import traceback
         traceback.print_exc()
         return 1
+    finally:
+        try:
+            # Ensure database connection is closed
+            DatabaseClient.cleanup()
+        except Exception as e:
+            print(f"Error closing database pool: {e}")
 
 if __name__ == "__main__":
     sys.exit(main())

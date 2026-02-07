@@ -515,7 +515,7 @@ class ProductUploader(BaseUploader):
         filter_available_only: bool = True, 
         min_price_threshold: float = 0,
         preserve_html: bool = True,
-        batch_size: int = 100,
+        batch_size: int = 1000,
         timeout_retry_config: Optional[Dict[str, Any]] = None
     ):
         super().__init__('products')
@@ -602,500 +602,7 @@ class ProductUploader(BaseUploader):
         
         return shop_id_to_name
     
-    def _is_timeout_error(self, error: Exception) -> bool:
-        """Check if error is a timeout error."""
-        error_msg = str(error).lower()
-        return any(timeout_indicator in error_msg for timeout_indicator in 
-                  ['timeout', '57014', 'statement timeout', 'canceling statement', 'operationalerror'])
-    
-    def _handle_timeout_retry(self, operation_type: str, operation_name: str,
-                             attempt: int = 1, batch_size: Optional[int] = None) -> bool:
-        """
-        Handle timeout retry logic with exponential backoff.
-        """
-        config = self.timeout_retry_config
-        max_retries = config['max_retries']
-        
-        if attempt > max_retries:
-            self.logger.error(f"Max retries ({max_retries}) exceeded for {operation_name}")
-            return False
-        
-        # Calculate exponential backoff delay
-        delay = min(
-            config['initial_delay'] * (config['backoff_factor'] ** (attempt - 1)),
-            config['max_delay']
-        )
-        
-        self.logger.warning(
-            f"Timeout attempt {attempt}/{max_retries} for {operation_name}. "
-            f"Waiting {delay:.1f}s before retry..."
-        )
-        
-        time.sleep(delay)
-        return True  # Continue retry
-    
-    def _safe_bulk_upsert(self, data: List[Dict[str, Any]], table_name: str, 
-                         on_conflict: str = "id") -> bool:
-        """
-        Safe bulk upsert with timeout retry handling and correct batch numbering.
-        """
-        if not data:
-            return True
-        
-        config = self.timeout_retry_config
-        
-        # Start with small batch sizes
-        initial_batch_size = min(50, len(data))  # Start small
-        total_batches = (len(data) - 1) // initial_batch_size + 1
-        
-        self.logger.info(f"Uploading {len(data)} records to {table_name} in {total_batches} batches")
-        
-        all_success = True
-        
-        for i in range(0, len(data), initial_batch_size):
-            batch = data[i:i + initial_batch_size]
-            batch_num = i // initial_batch_size + 1
-            batch_name = f"batch {batch_num}/{total_batches} to {table_name}"
-            
-            # Only log progress for large operations
-            if total_batches > 10 and batch_num % 10 == 0:
-                self.logger.info(f"Processing {batch_name} ({len(batch)} records)")
-            
-            success = self._execute_upsert_with_retry(batch, table_name, on_conflict, batch_name)
-            if not success:
-                all_success = False
-                # Try individual inserts as last resort
-                if len(batch) > 1:
-                    self.logger.info(f"Trying individual inserts for failed batch {batch_num}/{total_batches}...")
-                    individual_success = True
-                    for idx, record in enumerate(batch, 1):
-                        record_name = f"individual record {idx}/{len(batch)} to {table_name}"
-                        record_success = self._execute_upsert_with_retry(
-                            [record], table_name, on_conflict, record_name
-                        )
-                        if not record_success:
-                            individual_success = False
-                    
-                    if individual_success:
-                        self.logger.info(f"Individual inserts succeeded for batch {batch_num}/{total_batches}")
-                    else:
-                        self.logger.error(f"Individual inserts also failed for batch {batch_num}/{total_batches}")
-        
-        return all_success
-    
-    def _execute_upsert_with_retry(self, data: List[Dict[str, Any]], table_name: str,
-                                  on_conflict: str, operation_name: str) -> bool:
-        """Execute upsert with retry logic."""
-        config = self.timeout_retry_config
-        max_retries = config['max_retries']
-        
-        for attempt in range(1, max_retries + 1):
-            try:
-                success = self.db.bulk_upsert(
-                    table_name=table_name,
-                    data=data,
-                    on_conflict=on_conflict,
-                    retries=1 # DB client has its own retries, we handle outer timeout retries here
-                )
-                if success and attempt == 1:
-                    self.logger.debug(f"✅ {operation_name} succeeded")
-                elif success:
-                    self.logger.debug(f"✅ {operation_name} succeeded on retry {attempt}")
-                return success
-            except Exception as e:
-                if self._is_timeout_error(e):
-                    self.logger.warning(f"Timeout on {operation_name} (attempt {attempt}): {e}")
-                    if attempt < max_retries:
-                        # Wait and retry with same data
-                        time.sleep(config['initial_delay'] * (config['backoff_factor'] ** (attempt - 1)))
-                    else:
-                        self.logger.error(f"Max retries exceeded for {operation_name}")
-                        return False
-                else:
-                    self.logger.error(f"Non-timeout error on {operation_name}: {e}")
-                    return False
-        
-        return False
-    
-    def _safe_bulk_delete(self, table_name: str, ids: List[str]) -> bool:
-        """
-        Safe bulk delete with ultra-small batch sizes and aggressive retry.
-        """
-        if not ids:
-            return True
-        
-        config = self.timeout_retry_config
-        delete_batch_size = config.get('delete_batch_size', 5)  # Very small batches
-        total_batches = (len(ids) - 1) // delete_batch_size + 1
-        
-        self.logger.info(f"Deleting {len(ids)} records from {table_name} in {total_batches} batches")
-        
-        all_success = True
-        
-        for i in range(0, len(ids), delete_batch_size):
-            batch = ids[i:i + delete_batch_size]
-            batch_num = i // delete_batch_size + 1
-            
-            # Only log progress for large operations
-            if total_batches > 10 and batch_num % 10 == 0:
-                self.logger.info(f"Deleting batch {batch_num}/{total_batches} ({len(batch)} records)")
-            
-            success = self._execute_delete_with_retry(table_name, batch, batch_num, total_batches)
-            if not success:
-                all_success = False
-                
-                # Try individual deletes
-                self.logger.info(f"Trying individual deletes for batch {batch_num}/{total_batches}...")
-                individual_success = True
-                for idx, record_id in enumerate(batch, 1):
-                    if not self._execute_single_delete(table_name, record_id):
-                        individual_success = False
-                        self.logger.warning(f"Failed to delete individual record {idx}/{len(batch)}")
-                
-                if individual_success:
-                    self.logger.info(f"Individual deletes succeeded for batch {batch_num}/{total_batches}")
-                else:
-                    self.logger.error(f"Individual deletes also failed for batch {batch_num}/{total_batches}")
-            
-            # Small delay between batches to prevent overwhelming the database
-            if i + delete_batch_size < len(ids):
-                time.sleep(0.1)
-        
-        return all_success
-    
-    def _execute_delete_with_retry(self, table_name: str, ids: List[str], 
-                                  batch_num: int, total_batches: int) -> bool:
-        """Execute delete with retry logic and correct batch numbering."""
-        config = self.timeout_retry_config
-        max_retries = config['max_retries']
-        operation_name = f"batch {batch_num}/{total_batches} delete from {table_name} ({len(ids)} records)"
-        
-        for attempt in range(1, max_retries + 1):
-            try:
-                success = self.db.bulk_delete(table_name, ids)
-                if success:
-                    self.logger.debug(f"✅ {operation_name} succeeded")
-                    return True
-                else:
-                    self.logger.warning(f"⚠️ {operation_name} failed (not a timeout)")
-                    return False
-            except Exception as e:
-                if self._is_timeout_error(e):
-                    self.logger.warning(f"Timeout on {operation_name} (attempt {attempt}): {e}")
-                    if attempt < max_retries:
-                        # Exponential backoff
-                        delay = min(
-                            config['initial_delay'] * (config['backoff_factor'] ** (attempt - 1)),
-                            config['max_delay']
-                        )
-                        time.sleep(delay)
-                    else:
-                        self.logger.error(f"Max retries exceeded for {operation_name}")
-                        return False
-                else:
-                    self.logger.error(f"Non-timeout error on {operation_name}: {e}")
-                    return False
-        
-        return False
-    
-    def _execute_single_delete(self, table_name: str, record_id: str) -> bool:
-        """Execute a single record delete with retry."""
-        config = self.timeout_retry_config
-        max_retries = 3
-        
-        for attempt in range(1, max_retries + 1):
-            try:
-                # Use direct query for single delete
-                def do_delete(conn):
-                    with conn.cursor() as cur:
-                        cur.execute(f'DELETE FROM "{table_name}" WHERE "id" = %s', (record_id,))
-                        return True
-                        
-                result = self.db.safe_execute(do_delete, f"Single delete {record_id}")
-                return bool(result)
 
-            except Exception as e:
-                if self._is_timeout_error(e):
-                    if attempt < max_retries:
-                        time.sleep(1)
-                    else:
-                        self.logger.debug(f"Max retries exceeded for single delete of {record_id}")
-                        return False
-                else:
-                    self.logger.debug(f"Error deleting {record_id}: {e}")
-                    return False
-        
-        return False
-    
-    def _safe_execute_query(self, query_func, description: str, max_retries: int = 3) -> Any:
-        """Execute a query with timeout retry handling."""
-        for attempt in range(1, max_retries + 1):
-            try:
-                return self.db.safe_execute(query_func, description, max_retries=1)
-            except Exception as e:
-                if self._is_timeout_error(e) and attempt < max_retries:
-                    delay = min(2.0 * (attempt - 1), 10.0)
-                    self.logger.warning(f"Query timeout ({description}), retry {attempt}/{max_retries} in {delay}s...")
-                    time.sleep(delay)
-                else:
-                    self.logger.error(f"Error during {description}: {e}")
-                    return None
-        
-        return None
-    
-    def process_file(self, filepath: Path) -> bool:
-        """Process a single product file with filtering and HTML support."""
-        self.logger.info(f"📦 Processing product file: {filepath.name}")
-        
-        try:
-            # Load JSON data
-            with open(filepath, 'r', encoding='utf-8') as f:
-                products = json.load(f)
-            
-            self.logger.info(f"Found {len(products)} products in file")
-            
-            # Reset processor for this file
-            self.product_processor.reset_collections()
-            
-            # Collect all shop IDs first
-            all_shop_ids = set()
-            for product in products:
-                if shop_id := product.get('shop_id'):
-                    all_shop_ids.add(str(shop_id))
-            
-            # Get shop names for all shops in this file
-            shop_id_to_name = self._get_shop_names_mapping(all_shop_ids)
-            
-            product_ids = []
-            
-            # Process each product with filtering
-            for idx, product in enumerate(products, 1):
-                if idx % 100 == 0:
-                    self.logger.debug(f"Processed {idx}/{len(products)} products")
-                
-                raw_shop_id = product.get('shop_id')
-                
-                # Validate shop_id
-                if raw_shop_id is None:
-                    self.logger.warning(f"No shop_id found for product {product.get('id')}")
-                    continue
-                
-                try:
-                    shop_id = int(raw_shop_id)
-                except (ValueError, TypeError):
-                    self.logger.warning(f"Invalid shop_id format: {raw_shop_id}")
-                    continue
-                
-                # Add shop name to product data
-                product["shop_id"] = shop_id
-                shop_id_str = str(shop_id)
-                if shop_id_str in shop_id_to_name:
-                    product["shop_name"] = shop_id_to_name[shop_id_str]
-                else:
-                    product["shop_name"] = None
-                
-                # Process product with filters
-                product_id = self.product_processor.process_product(product)
-                if product_id:
-                    product_ids.append(product_id)
-            
-            # Log statistics
-            stats = self.product_processor.get_stats()
-            filter_stats = stats['filter_stats']
-            desc_stats = stats['description_stats']
-            total = filter_stats['total_processed']
-            uploaded = filter_stats['uploaded']
-            
-            self.logger.info(f"📊 Filter stats for {filepath.name}:")
-            self.logger.info(f"  • Total processed: {total}")
-            self.logger.info(f"  • Uploaded: {uploaded} ({filter_stats.get('uploaded_percentage', 0)}%)")
-            self.logger.info(f"  • Skipped: {total - uploaded} ({filter_stats.get('skipped_percentage', 0)}%)")
-            
-            # Description statistics
-            self.logger.info(f"📝 Description stats:")
-            self.logger.info(f"  • Found: {desc_stats['total_found']}")
-            self.logger.info(f"  • HTML: {desc_stats['html_descriptions']}")
-            self.logger.info(f"  • Plain text: {desc_stats['plain_text_descriptions']}")
-            
-            # Upload if we have products
-            if uploaded > 0:
-                # Upload products
-                products_data = self.product_processor.collections["products"]
-                
-                self.logger.info(f"🚀 Uploading {uploaded} products to database...")
-                
-                success = self._safe_bulk_upsert(
-                    data=products_data,
-                    table_name="products_with_details_core",
-                    on_conflict="id"
-                )
-                
-                if success:
-                    self.logger.info(f"✅ Successfully uploaded {uploaded} products")
-                    
-                    # Upload variants
-                    variants = self.product_processor.collections.get("variants", [])
-                    if variants:
-                        self.logger.info(f"📋 Uploading {len(variants)} variants...")
-                        variants_success = self._safe_bulk_upsert(
-                            data=variants,
-                            table_name="variants",
-                            on_conflict="id"
-                        )
-                        if variants_success:
-                            self.logger.info(f"✅ Uploaded {len(variants)} variants")
-                        else:
-                            self.logger.error("❌ Failed to upload variants")
-                    
-                    # Upload images
-                    images = self.product_processor.collections.get("images", [])
-                    if images:
-                        self.logger.info(f"🖼️  Uploading {len(images)} images...")
-                        images_success = self._safe_bulk_upsert(
-                            data=images,
-                            table_name="images",
-                            on_conflict="id"
-                        )
-                        if images_success:
-                            self.logger.info(f"✅ Uploaded {len(images)} images")
-                        else:
-                            self.logger.error("❌ Failed to upload images")
-                    
-                    # Clean up stale records for shops in this file
-                    if product_ids:
-                        shop_ids = {p["shop_id"] for p in self.product_processor.collections["products"]}
-                        for shop_id in shop_ids:
-                            # Skip cleanup if we're having timeout issues
-                            if len(product_ids) > 1000:  # Skip cleanup for large datasets
-                                self.logger.warning(f"Skipping cleanup for shop {shop_id} due to large dataset")
-                            else:
-                                self.cleanup_stale_records(product_ids, str(shop_id))
-                    
-                    # Move file to processed
-                    try:
-                        self.file_manager.move_to_processed(filepath)
-                    except Exception as e:
-                        self.logger.warning(f"Could not move file to processed: {e}")
-                        try:
-                            processed_dir = self.file_manager.data_dirs['processed'] / 'products'
-                            processed_dir.mkdir(parents=True, exist_ok=True)
-                            filepath.rename(processed_dir / filepath.name)
-                        except Exception as e2:
-                            self.logger.error(f"Failed to move file: {e2}")
-                    
-                    self.logger.info(f"🎉 Successfully processed {filepath.name}")
-                    return True
-                else:
-                    self.logger.error(f"❌ Failed to upload products from {filepath.name}")
-                    # Move file to failed directory
-                    try:
-                        failed_dir = self.file_manager.data_dirs['failed'] / 'products'
-                        failed_dir.mkdir(parents=True, exist_ok=True)
-                        filepath.rename(failed_dir / filepath.name)
-                    except Exception as e:
-                        self.logger.error(f"Failed to move file to failed: {e}")
-                    return False
-            else:
-                self.logger.warning(f"⚠️  No products passed filters in {filepath.name}")
-                # Move to processed since we processed it
-                try:
-                    self.file_manager.move_to_processed(filepath)
-                except Exception as e:
-                    self.logger.warning(f"Could not move file: {e}")
-                return True
-                
-        except json.JSONDecodeError as e:
-            self.logger.error(f"❌ JSON decode error in {filepath.name}: {e}")
-            try:
-                failed_dir = self.file_manager.data_dirs['failed'] / 'products'
-                failed_dir.mkdir(parents=True, exist_ok=True)
-                filepath.rename(failed_dir / filepath.name)
-            except Exception as e2:
-                self.logger.error(f"Failed to move file to failed: {e2}")
-            return False
-        except Exception as e:
-            self.logger.error(f"❌ Error processing {filepath.name}: {e}")
-            import traceback
-            self.logger.error(traceback.format_exc())
-            try:
-                failed_dir = self.file_manager.data_dirs['failed'] / 'products'
-                failed_dir.mkdir(parents=True, exist_ok=True)
-                filepath.rename(failed_dir / filepath.name)
-            except Exception as e2:
-                self.logger.error(f"Failed to move file to failed: {e2}")
-            return False
-    
-    def cleanup_stale_records(self, current_ids: List[str], shop_id: Optional[str] = None) -> bool:
-        """
-        Remove products from database that are no longer in the current data.
-        """
-        try:
-            if not current_ids:
-                return True
-            
-            self.logger.debug(f"Starting cleanup for shop {shop_id}...")
-            
-            # Get all product IDs for this shop from database
-            def get_existing_products(conn):
-                with conn.cursor() as cur:
-                    sql = 'SELECT "id" FROM "products_with_details_core"'
-                    params = []
-                    if shop_id:
-                        sql += ' WHERE "shop_id" = %s'
-                        params.append(shop_id)
-                    sql += ' LIMIT 10000'
-                    cur.execute(sql, params)
-                    return cur.fetchall()
-            
-            result = self._safe_execute_query(
-                get_existing_products,
-                f"Get existing product IDs for shop {shop_id}",
-                max_retries=2
-            )
-            
-            if result is None:
-                self.logger.warning(f"Could not fetch existing products for shop {shop_id}")
-                return True
-            
-            # Normalize IDs
-            existing_ids = {str(item.get('id')).strip() for item in result if item.get('id') is not None}
-            current_ids_str = {str(cid).strip() for cid in current_ids}
-            to_delete = list(existing_ids - current_ids_str)
-            
-            if not to_delete:
-                self.logger.info(f"No stale products to delete for shop {shop_id}")
-                return True
-            
-            if len(to_delete) > 1000:
-                self.logger.warning(
-                    f"Large number of records to delete ({len(to_delete)}). "
-                    f"Consider manual cleanup for shop {shop_id}"
-                )
-                # Process in smaller chunks
-                for i in range(0, len(to_delete), 500):
-                    chunk = to_delete[i:i + 500]
-                    chunk_num = i // 500 + 1
-                    total_chunks = (len(to_delete) - 1) // 500 + 1
-                    self.logger.info(f"Deleting chunk {chunk_num}/{total_chunks} ({len(chunk)} records)")
-                    self._safe_bulk_delete("products_with_details_core", chunk)
-                return True
-            
-            self.logger.info(f"🗑️  Removing {len(to_delete)} stale products for shop {shop_id}")
-            
-            # Delete stale records using safe delete
-            success = self._safe_bulk_delete("products_with_details_core", to_delete)
-            
-            if success:
-                self.logger.info(f"✅ Removed {len(to_delete)} stale products")
-            else:
-                self.logger.warning(f"⚠️  Failed to remove some stale products")
-            
-            return True
-                
-        except Exception as e:
-            self.logger.error(f"Error in cleanup_stale_records: {e}")
-            return False
-    
     def _is_timeout_error(self, error: Exception) -> bool:
         """Check if error is a timeout error."""
         error_msg = str(error).lower()
@@ -1337,7 +844,7 @@ class ProductUploader(BaseUploader):
         
         return None
     
-    def process_file(self, filepath: Path) -> bool:
+    def process_file(self, filepath: Path, shop_product_ids: Dict[str, set]) -> bool:
         """Process a single product file with filtering and HTML support."""
         self.logger.info(f"📦 Processing product file: {filepath.name}")
         
@@ -1391,6 +898,8 @@ class ProductUploader(BaseUploader):
                 # Process product with filters
                 product_id = self.product_processor.process_product(product)
                 if product_id:
+                    if shop_id_str:
+                        shop_product_ids[shop_id_str].add(str(product_id))
                     product_ids.append(product_id)
             
             # Log statistics
@@ -1455,15 +964,8 @@ class ProductUploader(BaseUploader):
                         else:
                             self.logger.error("❌ Failed to upload images")
                     
-                    # Clean up stale records for shops in this file
-                    if product_ids:
-                        shop_ids = {p["shop_id"] for p in self.product_processor.collections["products"]}
-                        for shop_id in shop_ids:
-                            # Skip cleanup if we're having timeout issues
-                            if len(product_ids) > 1000:  # Skip cleanup for large datasets
-                                self.logger.warning(f"Skipping cleanup for shop {shop_id} due to large dataset")
-                            else:
-                                self.cleanup_stale_records(product_ids, str(shop_id))
+                    # Clean up stale records is deferred to process_all
+                    # if product_ids: ... (logic moved)
                     
                     # Move file to processed
                     try:
@@ -1592,6 +1094,8 @@ class ProductUploader(BaseUploader):
     
     def process_all(self) -> Dict[str, Any]:
         """Process all product files with comprehensive reporting."""
+        from collections import defaultdict
+        
         files = self.find_data_files()
         results = {
             'processed_files': 0,
@@ -1623,12 +1127,16 @@ class ProductUploader(BaseUploader):
             f"HTML: {'PRESERVED' if self.preserve_html else 'STRIPPED'})"
         )
         
+        # Track product IDs per shop across all files for deferred cleanup
+        shop_product_ids = defaultdict(set)
+        
         for file_idx, filepath in enumerate(files, 1):
             self.logger.info(f"\n{'='*60}")
             self.logger.info(f"Processing file {file_idx}/{len(files)}: {filepath.name}")
             self.logger.info(f"{'='*60}")
             
-            success = self.process_file(filepath)
+            # Pass the tracker to process_file
+            success = self.process_file(filepath, shop_product_ids)
             if success:
                 results['processed_files'] += 1
                 
@@ -1651,6 +1159,16 @@ class ProductUploader(BaseUploader):
                         results['shop_ids'].add(shop_id)
             else:
                 results['failed_files'] += 1
+        
+        # Perform deferred cleanup for each shop
+        if shop_product_ids:
+            self.logger.info(f"\n{'='*60}")
+            self.logger.info("🧹 Performing deferred cleanup for {len(shop_product_ids)} shops")
+            self.logger.info(f"{'='*60}")
+            
+            for shop_id, current_ids in shop_product_ids.items():
+                self.logger.info(f"Cleaning up shop {shop_id} (tracking {len(current_ids)} active products)...")
+                self.cleanup_stale_records(list(current_ids), shop_id)
         
         results['shop_ids'] = list(results['shop_ids'])
         
