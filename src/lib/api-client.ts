@@ -48,7 +48,12 @@ export const apiClient = {
         if (!response.ok) {
             throw new Error(`Failed to fetch products: ${await response.text()}`);
         }
-        return response.json();
+        const data = await response.json();
+        return data.map((p: any) => ({
+            ...p,
+            min_price: p.min_price != null ? Number(p.min_price) : null,
+            max_discount_percentage: p.max_discount_percentage != null ? Number(p.max_discount_percentage) : null,
+        }));
     },
 
     async fetchProduct(id: string | number): Promise<ProductWithDetails> {
@@ -56,7 +61,12 @@ export const apiClient = {
         if (!response.ok) {
             throw new Error(`Failed to fetch product: ${await response.text()}`);
         }
-        return response.json();
+        const p = await response.json();
+        return {
+            ...p,
+            min_price: p.min_price != null ? Number(p.min_price) : null,
+            max_discount_percentage: p.max_discount_percentage != null ? Number(p.max_discount_percentage) : null,
+        };
     },
 
     async fetchPricing(ids: Array<number | string>): Promise<Array<{ product_id: number, price: string | number | null, compare_at_price: string | number | null }>> {
