@@ -8,6 +8,7 @@ import { Header } from '../components/Header';
 import { Link, useLocation, useNavigate, useSearchParams } from 'react-router-dom';
 import { MultiSelectDropdown, SingleSelectDropdown } from '../components/Dropdowns';
 import TransformSlider from '../components/TransformSlider';
+import { CategoryConfig } from '../data/categories';
 
 // ============================================================================
 // CONSTANTS
@@ -93,7 +94,7 @@ interface FilterOptions {
 // MAIN COMPONENT
 // ============================================================================
 
-export function HomePage() {
+export function HomePage({ categoryConfig }: { categoryConfig?: CategoryConfig }) {
   // ============================================================================
   // STATE - Core
   // ============================================================================
@@ -136,6 +137,7 @@ export function HomePage() {
   });
 
   const [searchQuery, setSearchQuery] = useState<string>(() => {
+    if (categoryConfig?.filterDefaults?.query) return categoryConfig.filterDefaults.query;
     try {
       const fromUrl = new URLSearchParams(location.search).get('search');
       if (fromUrl != null) return fromUrl;
@@ -159,6 +161,7 @@ export function HomePage() {
   });
 
   const [selectedGroupedTypes, setSelectedGroupedTypes] = useState<string[]>(() => {
+    if (categoryConfig?.filterDefaults?.selectedGroupedTypes) return categoryConfig.filterDefaults.selectedGroupedTypes;
     try {
       const saved = localStorage.getItem('selectedGroupedTypes');
       const parsed = saved ? JSON.parse(saved) : [];
@@ -170,6 +173,7 @@ export function HomePage() {
   });
 
   const [selectedTopLevelCategories, setSelectedTopLevelCategories] = useState<string[]>(() => {
+    if (categoryConfig?.filterDefaults?.selectedTopLevelCategories) return categoryConfig.filterDefaults.selectedTopLevelCategories;
     try {
       const saved = localStorage.getItem('selectedTopLevelCategories');
       const parsed = saved ? JSON.parse(saved) : [];
@@ -181,6 +185,7 @@ export function HomePage() {
   });
 
   const [selectedGenderAges, setSelectedGenderAges] = useState<string[]>(() => {
+    if (categoryConfig?.filterDefaults?.selectedGenderAges) return categoryConfig.filterDefaults.selectedGenderAges;
     try {
       const saved = localStorage.getItem('selectedGenderAges');
       const parsed = saved ? JSON.parse(saved) : [];
@@ -688,6 +693,30 @@ export function HomePage() {
   }, [scheduleIdle, fetchBatchPricingFor]);
 
   // ============================================================================
+  // EFFECT - Handle Category Page Navigation / Reset
+  // ============================================================================
+  const [isCategoryInitialized, setIsCategoryInitialized] = useState(false);
+
+  useEffect(() => {
+    if (categoryConfig) {
+      const defaults = categoryConfig.filterDefaults;
+      
+      // Explicitly reset filters when category SLUG changes
+      setSelectedTopLevelCategories(defaults.selectedTopLevelCategories || []);
+      setSelectedGenderAges(defaults.selectedGenderAges || []);
+      setSelectedGroupedTypes(defaults.selectedGroupedTypes || []);
+      setSelectedSizeGroups([]); 
+      setSelectedShopName([]); 
+      setSearchQuery(defaults.query || ''); 
+      setSelectedPriceRange([0, 500]); 
+      
+      setIsCategoryInitialized(true);
+    } else {
+      setIsCategoryInitialized(true);
+    }
+  }, [categoryConfig?.slug]);
+
+  // ============================================================================
   // PRE-WARM CONNECTION ON APP START
   // ============================================================================
 
@@ -706,19 +735,106 @@ export function HomePage() {
     return () => clearTimeout(timer);
   }, []);
 
-  // Add index, follow meta tag
+  // Add index, follow meta tag (and other SEO tags for categories)
   useEffect(() => {
+    const tags: HTMLElement[] = [];
+
+    // Robots
     const metaRobots = document.createElement('meta');
     metaRobots.name = 'robots';
     metaRobots.content = 'index, follow';
     document.head.appendChild(metaRobots);
+    tags.push(metaRobots);
 
-    return () => {
-      if (document.head.contains(metaRobots)) {
-        document.head.removeChild(metaRobots);
+    // Category SEO
+    if (categoryConfig) {
+      // Title
+      const originalTitle = document.title;
+      document.title = categoryConfig.title;
+
+      // Meta Description
+      let metaDesc = document.querySelector('meta[name="description"]');
+      let originalDesc = metaDesc?.getAttribute('content') || '';
+      if (!metaDesc) {
+        metaDesc = document.createElement('meta');
+        metaDesc.setAttribute('name', 'description');
+        document.head.appendChild(metaDesc);
+        tags.push(metaDesc as HTMLElement); // Mark for removal if we created it? Actually better not to remove existing description element, just revert content.
       }
-    };
-  }, []);
+      metaDesc.setAttribute('content', categoryConfig.metaDescription);
+
+      // Canonical
+      const linkCanonical = document.createElement('link');
+      linkCanonical.rel = 'canonical';
+      // Assuming slug matches URL path segment
+      linkCanonical.href = `https://curatedcanada.ca/collections/${categoryConfig.slug}`;
+      document.head.appendChild(linkCanonical);
+      tags.push(linkCanonical);
+
+      return () => {
+        document.title = originalTitle;
+        if (metaDesc) metaDesc.setAttribute('content', originalDesc);
+        tags.forEach(t => {
+          if (document.head.contains(t)) document.head.removeChild(t);
+        });
+      };
+    } else {
+      // Cleanup robots only if not category page logic (which handles cleanup above)
+       return () => {
+        tags.forEach(t => {
+          if (document.head.contains(t)) document.head.removeChild(t);
+        });
+      };
+    }
+  }, [categoryConfig]);
+
+  // ============================================================================
+  // EFFECT - Redirect to Home if Category Filters Cleared
+  // ============================================================================
+  useEffect(() => {
+    if (!categoryConfig || !categoryConfig.filterDefaults) return;
+    
+    // Prevent redirect if we are in the process of initializing defaults
+    if (!isCategoryInitialized) return;
+
+    // Check if we are still 'in' the category
+    // Logic: If the category has defaults, at least one of them must be active.
+    // Actually, user might want to clear specific filters, but if they clear EVERYTHING that defines the category, they should probably go home.
+    
+    // We only check the defaults that are arrays (the multi-selects).
+    // If a default exists (e.g. selectedTopLevelCategories=['Footwear']), 
+    // we require that the current selection overlaps with it or contains it?
+    // No, usually "Footwear" is pre-selected. If user unchecks "Footwear", selectedTopLevelCategories becomes empty.
+    
+    // So: if filterDefaults has a key, and the corresponding state is empty, redirect.
+    
+    const defaults = categoryConfig.filterDefaults;
+    let shouldRedirect = false;
+
+    if (defaults.selectedTopLevelCategories && defaults.selectedTopLevelCategories.length > 0) {
+      if (selectedTopLevelCategories.length === 0) shouldRedirect = true;
+    }
+    
+    // Sometimes gender is the defining feature (Women's Clothing)
+    if (defaults.selectedGenderAges && defaults.selectedGenderAges.length > 0) {
+       // Ideally we check if "Women" is still selected for Women's Clothing.
+       // But user might filter for "Women" + "Sales". If they remove "Women", they are seeing sales of Men's too?
+       // Yes.
+       if (selectedGenderAges.length === 0) shouldRedirect = true;
+    }
+
+    if (shouldRedirect) {
+       // Use replace to avoid back-button loops
+       navigate('/', { replace: true });
+    }
+
+  }, [
+    categoryConfig, 
+    selectedTopLevelCategories, 
+    selectedGenderAges, 
+    // We focus on the "Big" filters. Types can be cleared without leaving the category (e.g. searching).
+    navigate
+  ]);
 
   // ============================================================================
   // FETCH INITIAL FILTER OPTIONS
@@ -1327,6 +1443,32 @@ export function HomePage() {
 
           {/* Products Grid */}
           <div className="flex-1">
+            {/* Category Header (H1 + Intro) */}
+            {categoryConfig && (
+              <div className="mb-8">
+                <h1 className="text-3xl font-bold text-gray-900 dark:text-gray-100 mb-4">
+                  {categoryConfig.h1}
+                </h1>
+                <div className="text-gray-600 dark:text-gray-300">
+                  {typeof categoryConfig.introText === 'function' 
+                    ? categoryConfig.introText({
+                        setGroupedTypes: setSelectedGroupedTypes,
+                        setTopLevelCategories: setSelectedTopLevelCategories,
+                        setGenderAges: setSelectedGenderAges,
+                        setSearchQuery: setSearchQuery
+                      }) 
+                    : (categoryConfig.introText as React.ReactNode)}
+                </div>
+                {/* Stats */}
+                {!loading && products.length > 0 && (
+                  <p className="mt-4 text-sm text-gray-500 dark:text-gray-400">
+                    Currently showing {products.length} {products.length === 1 ? 'item' : 'items'} 
+                    {selectedPriceRange[0] !== 0 || selectedPriceRange[1] !== 500 ? ` from $${selectedPriceRange[0]} to $${selectedPriceRange[1]}` : ''}.
+                  </p>
+                )}
+              </div>
+            )}
+
             <div className="mb-3 flex items-center justify-end sm:mb-4">
               <div className="w-40 sm:w-48">
                 <SingleSelectDropdown 
@@ -1504,6 +1646,13 @@ export function HomePage() {
                 </div>
               )}
             </div>
+            
+            {/* Category Bottom Content */}
+            {categoryConfig && categoryConfig.bottomContent && (
+              <div className="mt-16">
+                 {categoryConfig.bottomContent}
+              </div>
+            )}
           </div>
         </div>
       </div>

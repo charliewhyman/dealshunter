@@ -6,6 +6,7 @@ import ProductPage from './pages/ProductPage';
 import { AboutPage } from './pages/AboutPage';
 import { PrivacyPolicy } from './pages/PrivacyPolicy';
 import { TermsPage } from './pages/TermsPage';
+import CategoryPage from './pages/CategoryPage';
 
 export function AppRoutes() {
   const [searchParams] = useSearchParams();
@@ -51,6 +52,7 @@ export function AppRoutes() {
       />
       <Routes>
         <Route path="/" element={<HomePage />} />
+        <Route path="/collections/:slug" element={<CategoryPage />} />
         <Route path="/products/:productId" element={<ProductPage />} />
         <Route path="/about" element={<AboutPage />} />
         <Route path="/privacy" element={<PrivacyPolicy />} />

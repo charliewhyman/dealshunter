@@ -14,10 +14,7 @@ export interface FilterOptions {
     selectedPriceRange: [number, number];
 }
 
-interface ProductPricing {
-    variantPrice: number | null;
-    compareAtPrice: number | null;
-}
+
 
 const API_BASE = '/api';
 
