@@ -1,8 +1,20 @@
-import React, { useEffect } from 'react';
+import { useEffect } from 'react';
 
 export function ContactPage() {
   useEffect(() => {
     document.title = 'Contact - Curated Canada';
+    
+    // Add index, follow meta tag
+    const metaRobots = document.createElement('meta');
+    metaRobots.name = 'robots';
+    metaRobots.content = 'index, follow';
+    document.head.appendChild(metaRobots);
+
+    return () => {
+      if (document.head.contains(metaRobots)) {
+        document.head.removeChild(metaRobots);
+      }
+    };
   }, []);
 
   return (

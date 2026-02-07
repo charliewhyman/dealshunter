@@ -706,6 +706,20 @@ export function HomePage() {
     return () => clearTimeout(timer);
   }, []);
 
+  // Add index, follow meta tag
+  useEffect(() => {
+    const metaRobots = document.createElement('meta');
+    metaRobots.name = 'robots';
+    metaRobots.content = 'index, follow';
+    document.head.appendChild(metaRobots);
+
+    return () => {
+      if (document.head.contains(metaRobots)) {
+        document.head.removeChild(metaRobots);
+      }
+    };
+  }, []);
+
   // ============================================================================
   // FETCH INITIAL FILTER OPTIONS
   // ============================================================================

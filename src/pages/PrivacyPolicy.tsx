@@ -7,6 +7,18 @@ export function PrivacyPolicy() {
     if (metaDescription) {
       metaDescription.setAttribute('content', 'Privacy Policy for Curated Canada detailing data collection, cookies, user rights, and GDPR/CCPA compliance. Learn about our use of Google AdSense and your privacy choices.');
     }
+
+    // Add index, follow meta tag
+    const metaRobots = document.createElement('meta');
+    metaRobots.name = 'robots';
+    metaRobots.content = 'index, follow';
+    document.head.appendChild(metaRobots);
+
+    return () => {
+      if (document.head.contains(metaRobots)) {
+        document.head.removeChild(metaRobots);
+      }
+    };
   }, []);
 
   const lastUpdated = new Date().toLocaleDateString('en-CA', { 

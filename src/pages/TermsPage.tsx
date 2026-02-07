@@ -1,4 +1,4 @@
-import React, { useEffect } from 'react';
+import { useEffect } from 'react';
 
 export function TermsPage() {
   useEffect(() => {
@@ -7,6 +7,18 @@ export function TermsPage() {
     if (metaDescription) {
       metaDescription.setAttribute('content', 'Terms of Service for Curated Canada. Learn about user responsibilities, limitations, and conditions for using our product comparison platform.');
     }
+
+    // Add index, follow meta tag
+    const metaRobots = document.createElement('meta');
+    metaRobots.name = 'robots';
+    metaRobots.content = 'index, follow';
+    document.head.appendChild(metaRobots);
+
+    return () => {
+      if (document.head.contains(metaRobots)) {
+        document.head.removeChild(metaRobots);
+      }
+    };
   }, []);
 
   const lastUpdated = new Date().toLocaleDateString('en-CA', { 

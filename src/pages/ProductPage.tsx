@@ -45,6 +45,20 @@ function ProductPage() {
     }
   };
 
+  // Add noindex meta tag to prevent indexing of product pages
+  useEffect(() => {
+    const meta = document.createElement('meta');
+    meta.name = 'robots';
+    meta.content = 'noindex';
+    document.head.appendChild(meta);
+
+    return () => {
+      if (document.head.contains(meta)) {
+        document.head.removeChild(meta);
+      }
+    };
+  }, []);
+
   useEffect(() => {
     const fetchProductData = async () => {
       if (!productId) return;

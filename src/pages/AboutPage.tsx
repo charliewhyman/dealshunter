@@ -7,6 +7,18 @@ export function AboutPage() {
     if (metaDescription) {
       metaDescription.setAttribute('content', 'Learn about Curated Canada - a platform dedicated to discovering and comparing products from independent Canadian fashion and footwear brands.');
     }
+
+    // Add index, follow meta tag
+    const metaRobots = document.createElement('meta');
+    metaRobots.name = 'robots';
+    metaRobots.content = 'index, follow';
+    document.head.appendChild(metaRobots);
+
+    return () => {
+      if (document.head.contains(metaRobots)) {
+        document.head.removeChild(metaRobots);
+      }
+    };
   }, []);
 
   return (
