@@ -39,3 +39,9 @@ venv/
 __pycache__/
 *.py[cod]
 .cache
+# Testing
+coverage
+test-results/
+playwright-report/
+blob-report/
+playwright/.cache/
