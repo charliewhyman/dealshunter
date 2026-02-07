@@ -23,8 +23,6 @@ const PRICING_DEBOUNCE_MS = 300;
 const OBSERVER_CHECK_INTERVAL_MS = 500;
 const REGULAR_LOAD_TIMEOUT_MS = 30000;
 const MAX_CACHE_ENTRIES = 10;
-const FILTER_OPTIONS_CACHE_KEY = 'filter_options_cache';
-const FILTER_OPTIONS_TTL = 24 * 60 * 60 * 1000; // 24 hours
 
 type SortOrder = 'price_asc' | 'price_desc' | 'discount_desc';
 
@@ -43,41 +41,22 @@ function createDebounced<Args extends unknown[]>(fn: (...args: Args) => void, wa
   return debounced;
 }
 
-// Safe localStorage operations
-const safeLocalStorageSet = (key: string, value: string) => {
-  try {
-    localStorage.setItem(key, value);
-  } catch (error) {
-    if (error instanceof DOMException && 
-        (error.name === 'QuotaExceededError' || 
-         error.name === 'NS_ERROR_DOM_QUOTA_REACHED')) {
-      console.warn('LocalStorage quota exceeded, clearing non-essential data');
-      
-      // Keep only essential keys
-      const essentialKeys = [
-        'sortOrder', 'searchQuery', 'selectedShopName', 'selectedSizeGroups',
-        'selectedGroupedTypes', 'selectedTopLevelCategories', 'selectedGenderAges',
-        'onSaleOnly', 'selectedPriceRange'
-      ];
-      
-      for (let i = 0; i < localStorage.length; i++) {
-        const storageKey = localStorage.key(i);
-        if (storageKey && !essentialKeys.includes(storageKey)) {
-          localStorage.removeItem(storageKey);
-        }
-      }
-      
-      // Retry
-      try {
-        localStorage.setItem(key, value);
-      } catch (retryError) {
-        console.error('Failed to save to localStorage even after cleanup:', retryError);
-      }
-    } else {
-      console.error('Failed to save to localStorage:', error);
-    }
-  }
+const parseArrayParam = (param: string | null) => {
+  if (!param) return [];
+  return param.split(',').filter(Boolean);
 };
+
+const parsePriceRange = (param: string | null, absMin: number, absMax: number): [number, number] | null => {
+  if (!param) return null;
+  const parts = param.split('-').map(Number);
+  if (parts.length === 2 && !isNaN(parts[0]) && !isNaN(parts[1])) {
+    return [
+      Math.max(absMin, parts[0]), 
+      Math.min(absMax, parts[1])
+    ];
+  }
+  return null;
+}
 
 interface FilterOptions {
   selectedShopName: string[];
@@ -99,13 +78,12 @@ export function HomePage({ categoryConfig }: { categoryConfig?: CategoryConfig }
   // STATE - Core
   // ============================================================================
   const [products, setProducts] = useState<ProductWithDetails[]>([]);
-  const [searchParams] = useSearchParams();
+  const [searchParams, setSearchParams] = useSearchParams();
   const [loading, setLoading] = useState(true);
   const [initialLoad, setInitialLoad] = useState(true);
   const [hasMore, setHasMore] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [isFilterChanging, setIsFilterChanging] = useState(false);
-  const location = useLocation();
   const navigate = useNavigate();
 
   // Hybrid loading state
@@ -122,118 +100,69 @@ export function HomePage({ categoryConfig }: { categoryConfig?: CategoryConfig }
   const [allTopLevelCategories, setAllTopLevelCategories] = useState<Array<{top_level_category: string | null}>>([]);
   const [allGenderAges, setAllGenderAges] = useState<Array<{gender_age: string | null}>>([]);
 
+  // Price range constants
+  const ABS_MIN_PRICE = 0;
+  const ABS_MAX_PRICE = 500; 
+  const PRICE_RANGE = useMemo<[number, number]>(() => [15, 200], []); 
+
   // ============================================================================
-  // STATE - User Selections (with localStorage)
+  // STATE - User Selections (Synced with URL)
   // ============================================================================
+  
   const [sortOrder, setSortOrder] = useState<SortOrder>(() => {
-    try {
-      const stored = localStorage.getItem('sortOrder');
-      if (stored === 'price_asc' || stored === 'price_desc' || stored === 'discount_desc') 
-        return stored as SortOrder;
-    } catch (error) {
-      console.error('Failed to retrieve sortOrder from localStorage:', error);
-    }
+    const fromUrl = searchParams.get('sort');
+    if (fromUrl === 'price_asc' || fromUrl === 'price_desc' || fromUrl === 'discount_desc') 
+      return fromUrl as SortOrder;
     return 'discount_desc';
   });
 
   const [searchQuery, setSearchQuery] = useState<string>(() => {
+    const fromUrl = searchParams.get('search');
+    if (fromUrl !== null) return fromUrl;
     if (categoryConfig?.filterDefaults?.query) return categoryConfig.filterDefaults.query;
-    try {
-      const fromUrl = new URLSearchParams(location.search).get('search');
-      if (fromUrl != null) return fromUrl;
-      const fromStorage = localStorage.getItem('searchQuery');
-      if (fromStorage) return fromStorage;
-    } catch (error) {
-      console.error('Failed to retrieve searchQuery from localStorage or URL:', error);
-    }
     return '';
   });
 
   const [selectedShopName, setSelectedShopName] = useState<string[]>(() => {
-    try {
-      const saved = localStorage.getItem('selectedShopName');
-      const parsed = saved ? JSON.parse(saved) : [];
-      return Array.isArray(parsed) ? parsed : [];
-    } catch (error) {
-      console.error('Failed to parse selectedShopName from localStorage:', error);
-      return [];
-    }
+    return parseArrayParam(searchParams.get('shop'));
   });
 
   const [selectedGroupedTypes, setSelectedGroupedTypes] = useState<string[]>(() => {
+    const fromUrl = parseArrayParam(searchParams.get('type'));
+    if (fromUrl.length > 0) return fromUrl;
     if (categoryConfig?.filterDefaults?.selectedGroupedTypes) return categoryConfig.filterDefaults.selectedGroupedTypes;
-    try {
-      const saved = localStorage.getItem('selectedGroupedTypes');
-      const parsed = saved ? JSON.parse(saved) : [];
-      return Array.isArray(parsed) ? parsed : [];
-    } catch (error) {
-      console.error('Failed to parse selectedGroupedTypes from localStorage:', error);
-      return [];
-    }
+    return [];
   });
 
   const [selectedTopLevelCategories, setSelectedTopLevelCategories] = useState<string[]>(() => {
+    const fromUrl = parseArrayParam(searchParams.get('category'));
+    if (fromUrl.length > 0) return fromUrl;
     if (categoryConfig?.filterDefaults?.selectedTopLevelCategories) return categoryConfig.filterDefaults.selectedTopLevelCategories;
-    try {
-      const saved = localStorage.getItem('selectedTopLevelCategories');
-      const parsed = saved ? JSON.parse(saved) : [];
-      return Array.isArray(parsed) ? parsed : [];
-    } catch (error) {
-      console.error('Failed to parse selectedTopLevelCategories from localStorage:', error);
-      return [];
-    }
+    return [];
   });
 
   const [selectedGenderAges, setSelectedGenderAges] = useState<string[]>(() => {
+    const fromUrl = parseArrayParam(searchParams.get('gender'));
+    if (fromUrl.length > 0) return fromUrl;
     if (categoryConfig?.filterDefaults?.selectedGenderAges) return categoryConfig.filterDefaults.selectedGenderAges;
-    try {
-      const saved = localStorage.getItem('selectedGenderAges');
-      const parsed = saved ? JSON.parse(saved) : [];
-      return Array.isArray(parsed) ? parsed : [];
-    } catch (error) {
-      console.error('Failed to parse selectedGenderAges from localStorage:', error);
-      return [];
-    }
+    return [];
   });
   
   const [onSaleOnly, setOnSaleOnly] = useState<boolean>(() => {
-    try {
-      return JSON.parse(localStorage.getItem('onSaleOnly') || 'false');
-    } catch (error) {
-      console.error('Failed to parse onSaleOnly from localStorage:', error);
-      return false;
-    }
+    const fromUrl = searchParams.get('sale');
+    if (fromUrl === 'true') return true;
+    if (fromUrl === 'false') return false;
+    return false;
   });
 
-  // Update price range constants
-  const ABS_MIN_PRICE = 0;
-  const ABS_MAX_PRICE = 500; 
-  
-  const PRICE_RANGE = useMemo<[number, number]>(() => [15, 200], []); 
-  
   const [selectedPriceRange, setSelectedPriceRange] = useState<[number, number]>(() => {
-    try {
-      const savedRange = JSON.parse(localStorage.getItem('selectedPriceRange') || 'null');
-      if (Array.isArray(savedRange) && savedRange.length === 2 &&
-          typeof savedRange[0] === 'number' && typeof savedRange[1] === 'number' &&
-          savedRange[0] <= savedRange[1] && savedRange[0] >= ABS_MIN_PRICE && savedRange[1] <= ABS_MAX_PRICE) {
-        return [savedRange[0], savedRange[1]];
-      }
-    } catch (error) {
-      console.error('Failed to parse selectedPriceRange from localStorage:', error);
-    }
+    const fromUrl = parsePriceRange(searchParams.get('price'), ABS_MIN_PRICE, ABS_MAX_PRICE);
+    if (fromUrl) return fromUrl;
     return [...PRICE_RANGE];
   });
 
   const [selectedSizeGroups, setSelectedSizeGroups] = useState<string[]>(() => {
-    try {
-      const saved = localStorage.getItem('selectedSizeGroups');
-      const parsed = saved ? JSON.parse(saved) : [];
-      return Array.isArray(parsed) ? parsed : [];
-    } catch (error) {
-      console.error('Failed to parse selectedSizeGroups from localStorage:', error);
-      return [];
-    }
+    return parseArrayParam(searchParams.get('size'));
   });
 
   const [productPricings, setProductPricings] = useState<Record<string, {
@@ -256,6 +185,9 @@ export function HomePage({ categoryConfig }: { categoryConfig?: CategoryConfig }
   const CACHE_TTL = 5 * 60 * 1000;
   const canLoadMoreRef = useRef(true);
   const prevFilterKeyRef = useRef<string>('');
+  
+  // Ref to track if we are syncing from URL to avoid loop
+  const isSyncingFromUrl = useRef(false);
 
   // ============================================================================
   // PRICE RANGE INPUT HANDLERS
@@ -267,7 +199,7 @@ export function HomePage({ categoryConfig }: { categoryConfig?: CategoryConfig }
       const newMin = Math.min(value, selectedPriceRange[1]);
       setSelectedPriceRange([newMin, selectedPriceRange[1]]);
     }
-  }, [selectedPriceRange]);
+  }, [selectedPriceRange, ABS_MIN_PRICE, ABS_MAX_PRICE]);
 
   const handleMaxPriceChange = useCallback((e: ChangeEvent<HTMLInputElement>) => {
     const value = parseFloat(e.target.value);
@@ -275,7 +207,7 @@ export function HomePage({ categoryConfig }: { categoryConfig?: CategoryConfig }
       const newMax = Math.max(value, selectedPriceRange[0]);
       setSelectedPriceRange([selectedPriceRange[0], newMax]);
     }
-  }, [selectedPriceRange]);
+  }, [selectedPriceRange, ABS_MIN_PRICE, ABS_MAX_PRICE]);
 
   const handlePriceInputBlur = useCallback(() => {
     // Ensure min <= max
@@ -285,62 +217,89 @@ export function HomePage({ categoryConfig }: { categoryConfig?: CategoryConfig }
   }, [selectedPriceRange]);
 
   // ============================================================================
-  // EFFECTS - LocalStorage Sync
+  // EFFECTS - URL Sync
   // ============================================================================
   
-  // Sync sortOrder to localStorage
+  // Sync State -> URL
   useEffect(() => {
-    safeLocalStorageSet('sortOrder', sortOrder);
-  }, [sortOrder]);
+    if (isSyncingFromUrl.current) return;
 
-  // Sync searchQuery to localStorage
-  useEffect(() => {
-    safeLocalStorageSet('searchQuery', searchQuery);
-  }, [searchQuery]);
-
-  // Sync selectedShopName to localStorage
-  useEffect(() => {
-    safeLocalStorageSet('selectedShopName', JSON.stringify(selectedShopName));
-  }, [selectedShopName]);
-
-  // Sync selectedSizeGroups to localStorage
-  useEffect(() => {
-    safeLocalStorageSet('selectedSizeGroups', JSON.stringify(selectedSizeGroups));
-  }, [selectedSizeGroups]);
-
-  // Sync selectedGroupedTypes to localStorage
-  useEffect(() => {
-    safeLocalStorageSet('selectedGroupedTypes', JSON.stringify(selectedGroupedTypes));
-  }, [selectedGroupedTypes]);
-
-  // Sync selectedTopLevelCategories to localStorage
-  useEffect(() => {
-    safeLocalStorageSet('selectedTopLevelCategories', JSON.stringify(selectedTopLevelCategories));
-  }, [selectedTopLevelCategories]);
-
-  // Sync selectedGenderAges to localStorage
-  useEffect(() => {
-    safeLocalStorageSet('selectedGenderAges', JSON.stringify(selectedGenderAges));
-  }, [selectedGenderAges]);
-
-  // Sync onSaleOnly to localStorage
-  useEffect(() => {
-    safeLocalStorageSet('onSaleOnly', JSON.stringify(onSaleOnly));
-  }, [onSaleOnly]);
-
-  // Sync selectedPriceRange to localStorage
-  useEffect(() => {
-    safeLocalStorageSet('selectedPriceRange', JSON.stringify(selectedPriceRange));
-  }, [selectedPriceRange]);
-
-  // Sync URL search parameter
-  useEffect(() => {
-    const urlSearch = searchParams.get('search');
+    const params = new URLSearchParams();
     
-    // Only update if URL param exists and differs from current state
-    if (urlSearch !== null && urlSearch !== searchQuery) {
-      setSearchQuery(urlSearch);
+    if (searchQuery) params.set('search', searchQuery);
+    if (sortOrder !== 'discount_desc') params.set('sort', sortOrder);
+    if (selectedShopName.length > 0) params.set('shop', selectedShopName.join(','));
+    if (selectedSizeGroups.length > 0) params.set('size', selectedSizeGroups.join(','));
+    if (selectedGroupedTypes.length > 0) params.set('type', selectedGroupedTypes.join(','));
+    // For top level categories, do not sync to URL if we are on a dedicated category page?
+    // Actually, usually category page implies filter, but keeping it in URL is safer for consistent state.
+    if (selectedTopLevelCategories.length > 0) params.set('category', selectedTopLevelCategories.join(','));
+    if (selectedGenderAges.length > 0) params.set('gender', selectedGenderAges.join(','));
+    if (onSaleOnly) params.set('sale', 'true');
+    
+    // Only sync price if it differs from default
+    // Wait, default is dynamic ([15, 200]), better to always sync if set, or just sync.
+    // Let's syc if it's not the ABS range.
+    if (selectedPriceRange[0] !== PRICE_RANGE[0] || selectedPriceRange[1] !== PRICE_RANGE[1]) {
+       params.set('price', `${selectedPriceRange[0]}-${selectedPriceRange[1]}`);
     }
+
+    const currentParamsString = searchParams.toString();
+    const newParamsString = params.toString();
+
+    if (currentParamsString !== newParamsString) {
+      setSearchParams(params, { replace: true });
+    }
+  }, [
+    searchQuery, sortOrder, selectedShopName, selectedSizeGroups, selectedGroupedTypes,
+    selectedTopLevelCategories, selectedGenderAges, onSaleOnly, selectedPriceRange,
+    setSearchParams, PRICE_RANGE
+  ]);
+
+  // Sync URL -> State (Handle Back/Forward)
+  useEffect(() => {
+    isSyncingFromUrl.current = true;
+    
+    const urlSearch = searchParams.get('search') || '';
+    if (urlSearch !== searchQuery) setSearchQuery(urlSearch);
+
+    const urlSort = (searchParams.get('sort') as SortOrder) || 'discount_desc';
+    if (urlSort !== sortOrder) setSortOrder(urlSort);
+
+    const urlShops = parseArrayParam(searchParams.get('shop'));
+    if (JSON.stringify(urlShops) !== JSON.stringify(selectedShopName)) setSelectedShopName(urlShops);
+
+    const urlSizes = parseArrayParam(searchParams.get('size'));
+    if (JSON.stringify(urlSizes) !== JSON.stringify(selectedSizeGroups)) setSelectedSizeGroups(urlSizes);
+
+    const urlTypes = parseArrayParam(searchParams.get('type'));
+    if (JSON.stringify(urlTypes) !== JSON.stringify(selectedGroupedTypes)) setSelectedGroupedTypes(urlTypes);
+    
+    const urlCats = parseArrayParam(searchParams.get('category'));
+    if (JSON.stringify(urlCats) !== JSON.stringify(selectedTopLevelCategories)) setSelectedTopLevelCategories(urlCats);
+    
+    const urlGenders = parseArrayParam(searchParams.get('gender'));
+    if (JSON.stringify(urlGenders) !== JSON.stringify(selectedGenderAges)) setSelectedGenderAges(urlGenders);
+
+    const urlSale = searchParams.get('sale') === 'true';
+    if (urlSale !== onSaleOnly) setOnSaleOnly(urlSale);
+
+    const urlPrice = parsePriceRange(searchParams.get('price'), ABS_MIN_PRICE, ABS_MAX_PRICE);
+    if (urlPrice) {
+      if (urlPrice[0] !== selectedPriceRange[0] || urlPrice[1] !== selectedPriceRange[1]) {
+        setSelectedPriceRange(urlPrice);
+      }
+    } else {
+        // If no price in URL, reset to default if not already
+        // Wait, loop risk if default is distinct.
+        // If URL has no price, we should probably respect that means 'default'.
+        if (selectedPriceRange[0] !== PRICE_RANGE[0] || selectedPriceRange[1] !== PRICE_RANGE[1]) {
+             setSelectedPriceRange([...PRICE_RANGE]);
+        }
+    }
+
+    // Release lock after render cycle
+    setTimeout(() => { isSyncingFromUrl.current = false; }, 0);
   }, [searchParams]);
 
   // ============================================================================
@@ -840,125 +799,85 @@ export function HomePage({ categoryConfig }: { categoryConfig?: CategoryConfig }
   // FETCH INITIAL FILTER OPTIONS
   // ============================================================================
   
+  // ============================================================================
+  // FETCH INITIAL FILTER OPTIONS
+  // ============================================================================
+  
   useEffect(() => {
-  let cancelled = false;
+    let cancelled = false;
 
-  async function fetchInitialData() {
-    try {
-      // ==============================
-      // 1. Try localStorage cache
-      // ==============================
-      const cached = localStorage.getItem(FILTER_OPTIONS_CACHE_KEY);
-      if (cached) {
-        try {
-          const parsed = JSON.parse(cached);
-          if (Date.now() - parsed.timestamp < FILTER_OPTIONS_TTL) {
-            if (cancelled) return;
+    async function fetchInitialData() {
+      try {
+        const [
+          shopsResult,
+          sizesResult,
+          typesResult,
+          categoriesResult,
+          gendersResult
+        ] = await Promise.all([
+          // ------------------------------
+          // Shops (real table)
+          // ------------------------------
+          fetchWithCache<{ id: number; shop_name: string }>('shops', async () => {
+            const data = await apiClient.fetchShops();
 
-            setShopList(parsed.shops ?? []);
-            setAllSizeData(parsed.sizes ?? []);
-            setAllGroupedTypes(parsed.types ?? []);
-            setAllTopLevelCategories(parsed.categories ?? []);
-            setAllGenderAges(parsed.genders ?? []);
-            return;
-          }
-        } catch (err) {
-          console.warn('Filter cache invalid, refetching');
-        }
+            // Filter out any shops with null names to satisfy the type definition
+            return (data ?? [])
+              .filter(s => s.shop_name !== null)
+              .map(s => ({ id: Number(s.id), shop_name: s.shop_name! }));
+          }),
+
+          // ------------------------------
+          // Sizes (View)
+          // ------------------------------
+          fetchWithCache<{ size_group: string | null }>('sizes', async () => {
+            const data = await apiClient.fetchSizes();
+            return data ?? [];
+          }),
+
+          // ------------------------------
+          // Grouped types (View)
+          // ------------------------------
+          fetchWithCache<{ grouped_product_type: string | null }>('types', async () => {
+            const data = await apiClient.fetchTypes();
+            return data ?? [];
+          }),
+
+          // ------------------------------
+          // Top-level categories (View)
+          // ------------------------------
+          fetchWithCache<{ top_level_category: string | null }>('categories', async () => {
+            const data = await apiClient.fetchCategories();
+            return data ?? [];
+          }),
+
+          // ------------------------------
+          // Gender / age (View)
+          // ------------------------------
+          fetchWithCache<{ gender_age: string | null }>('genders', async () => {
+            const data = await apiClient.fetchGenders();
+            return data ?? [];
+          })
+        ]);
+
+        if (cancelled) return;
+
+        setShopList(shopsResult);
+        setAllSizeData(sizesResult);
+        setAllGroupedTypes(typesResult);
+        setAllTopLevelCategories(categoriesResult);
+        setAllGenderAges(gendersResult);
+      } catch (error) {
+        console.error('Error fetching filter options:', error);
       }
-
-      // ==============================
-      // 2. Fetch fresh data
-      // ==============================
-      
-      const [
-        shopsResult,
-        sizesResult,
-        typesResult,
-        categoriesResult,
-        gendersResult
-      ] = await Promise.all([
-        // ------------------------------
-        // Shops (real table)
-        // ------------------------------
-        fetchWithCache<{ id: number; shop_name: string }>('shops', async () => {
-          const data = await apiClient.fetchShops();
-
-          // Filter out any shops with null names to satisfy the type definition
-          return (data ?? [])
-            .filter(s => s.shop_name !== null)
-            .map(s => ({ id: Number(s.id), shop_name: s.shop_name! }));
-        }),
-
-        // ------------------------------
-        // Sizes (View)
-        // ------------------------------
-        fetchWithCache<{ size_group: string | null }>('sizes', async () => {
-          const data = await apiClient.fetchSizes();
-          return data ?? [];
-        }),
-
-        // ------------------------------
-        // Grouped types (View)
-        // ------------------------------
-        fetchWithCache<{ grouped_product_type: string | null }>('types', async () => {
-          const data = await apiClient.fetchTypes();
-          return data ?? [];
-        }),
-
-        // ------------------------------
-        // Top-level categories (View)
-        // ------------------------------
-        fetchWithCache<{ top_level_category: string | null }>('categories', async () => {
-          const data = await apiClient.fetchCategories();
-          return data ?? [];
-        }),
-
-        // ------------------------------
-        // Gender / age (View)
-        // ------------------------------
-        fetchWithCache<{ gender_age: string | null }>('genders', async () => {
-          const data = await apiClient.fetchGenders();
-          return data ?? [];
-        })
-      ]);
-
-      if (cancelled) return;
-
-      // ==============================
-      // 3. Update state
-      // ==============================
-      setShopList(shopsResult);
-      setAllSizeData(sizesResult);
-      setAllGroupedTypes(typesResult);
-      setAllTopLevelCategories(categoriesResult);
-      setAllGenderAges(gendersResult);
-
-      // ==============================
-      // 4. Cache results
-      // ==============================
-      safeLocalStorageSet(
-        FILTER_OPTIONS_CACHE_KEY,
-        JSON.stringify({
-          timestamp: Date.now(),
-          shops: shopsResult,
-          sizes: sizesResult,
-          types: typesResult,
-          categories: categoriesResult,
-          genders: gendersResult
-        })
-      );
-    } catch (error) {
-      console.error('Error fetching filter options:', error);
     }
-  }
 
-  fetchInitialData();
+    fetchInitialData();
 
-  return () => {
-    cancelled = true;
-  };
-}, [fetchWithCache]);
+    return () => {
+      cancelled = true;
+    };
+  }, [fetchWithCache]);
 
   // ============================================================================
   // EFFECT - Monitor Filter Changes and Trigger Fetch
