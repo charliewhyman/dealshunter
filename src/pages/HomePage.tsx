@@ -1,11 +1,10 @@
-import { ChangeEvent, FormEvent, useCallback, useEffect, useRef, useState, useMemo, startTransition } from 'react';
+import { ChangeEvent, useCallback, useEffect, useRef, useState, useMemo, startTransition } from 'react';
+import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { ProductWithDetails } from '../types';
 import { apiClient } from '../lib/api-client';
 
 import AsyncLucideIcon from '../components/AsyncLucideIcon';
 import { ProductCard } from '../components/ProductCard';
-import { Header } from '../components/Header';
-import { Link, useLocation, useNavigate, useSearchParams } from 'react-router-dom';
 import { MultiSelectDropdown, SingleSelectDropdown } from '../components/Dropdowns';
 import TransformSlider from '../components/TransformSlider';
 import { CategoryConfig } from '../data/categories';
@@ -189,6 +188,20 @@ export function HomePage({ categoryConfig }: { categoryConfig?: CategoryConfig }
   // Ref to track if we are syncing from URL to avoid loop
   const isSyncingFromUrl = useRef(false);
 
+  const updateFilter = useCallback((key: string, value: string | string[] | null) => {
+    const newParams = new URLSearchParams(searchParams);
+    
+    if (value === null || (Array.isArray(value) && value.length === 0) || value === '') {
+      newParams.delete(key);
+    } else if (Array.isArray(value)) {
+      newParams.set(key, value.join(','));
+    } else {
+      newParams.set(key, value);
+    }
+    
+    setSearchParams(newParams, { replace: true });
+  }, [searchParams, setSearchParams]);
+
   // ============================================================================
   // PRICE RANGE INPUT HANDLERS
   // ============================================================================
@@ -210,51 +223,29 @@ export function HomePage({ categoryConfig }: { categoryConfig?: CategoryConfig }
   }, [selectedPriceRange, ABS_MIN_PRICE, ABS_MAX_PRICE]);
 
   const handlePriceInputBlur = useCallback(() => {
+    let [min, max] = selectedPriceRange;
+    
     // Ensure min <= max
-    if (selectedPriceRange[0] > selectedPriceRange[1]) {
-      setSelectedPriceRange([selectedPriceRange[1], selectedPriceRange[1]]);
+    if (min > max) {
+      min = max;
+      setSelectedPriceRange([min, max]);
     }
-  }, [selectedPriceRange]);
+    
+    // Sync to URL
+    if (min !== PRICE_RANGE[0] || max !== PRICE_RANGE[1]) {
+      updateFilter('price', `${min}-${max}`);
+    } else {
+      updateFilter('price', null); // Reset to default
+    }
+  }, [selectedPriceRange, PRICE_RANGE, updateFilter]);
 
   // ============================================================================
   // EFFECTS - URL Sync
   // ============================================================================
   
-  // Sync State -> URL
-  useEffect(() => {
-    if (isSyncingFromUrl.current) return;
-
-    const params = new URLSearchParams();
-    
-    if (searchQuery) params.set('search', searchQuery);
-    if (sortOrder !== 'discount_desc') params.set('sort', sortOrder);
-    if (selectedShopName.length > 0) params.set('shop', selectedShopName.join(','));
-    if (selectedSizeGroups.length > 0) params.set('size', selectedSizeGroups.join(','));
-    if (selectedGroupedTypes.length > 0) params.set('type', selectedGroupedTypes.join(','));
-    // For top level categories, do not sync to URL if we are on a dedicated category page?
-    // Actually, usually category page implies filter, but keeping it in URL is safer for consistent state.
-    if (selectedTopLevelCategories.length > 0) params.set('category', selectedTopLevelCategories.join(','));
-    if (selectedGenderAges.length > 0) params.set('gender', selectedGenderAges.join(','));
-    if (onSaleOnly) params.set('sale', 'true');
-    
-    // Only sync price if it differs from default
-    // Wait, default is dynamic ([15, 200]), better to always sync if set, or just sync.
-    // Let's syc if it's not the ABS range.
-    if (selectedPriceRange[0] !== PRICE_RANGE[0] || selectedPriceRange[1] !== PRICE_RANGE[1]) {
-       params.set('price', `${selectedPriceRange[0]}-${selectedPriceRange[1]}`);
-    }
-
-    const currentParamsString = searchParams.toString();
-    const newParamsString = params.toString();
-
-    if (currentParamsString !== newParamsString) {
-      setSearchParams(params, { replace: true });
-    }
-  }, [
-    searchQuery, sortOrder, selectedShopName, selectedSizeGroups, selectedGroupedTypes,
-    selectedTopLevelCategories, selectedGenderAges, onSaleOnly, selectedPriceRange,
-    setSearchParams, PRICE_RANGE
-  ]);
+  // Sync State -> URL - REMOVED TO PREVENT LOOPS and enforce URL source of truth
+  // useEffect(() => { ... }, [...]); 
+  // We now update URL directly in handlers.
 
   // Sync URL -> State (Handle Back/Forward)
   useEffect(() => {
@@ -305,6 +296,8 @@ export function HomePage({ categoryConfig }: { categoryConfig?: CategoryConfig }
   // ============================================================================
   // UTILITY FUNCTIONS
   // ============================================================================
+
+
   
   const scheduleIdle = useCallback((task: () => void) => {
     const w = window as unknown as { requestIdleCallback?: (cb: () => void, opts?: { timeout?: number }) => number };
@@ -987,24 +980,9 @@ export function HomePage({ categoryConfig }: { categoryConfig?: CategoryConfig }
   // ============================================================================
   // EVENT HANDLERS
   // ============================================================================
-  
-  const handleSearchChange = (e: ChangeEvent<HTMLInputElement>) => {
-    setSearchQuery(e.target.value);
-  };
-
-  const handleSearchSubmit = (e: FormEvent) => {
-    e.preventDefault();
-    const trimmedQuery = searchQuery.trim();
-    
-    if (trimmedQuery) {
-      navigate(`/?search=${encodeURIComponent(trimmedQuery)}`, { replace: true });
-    } else {
-      navigate('/', { replace: true });
-    }
-  };
 
   const handleSortChange = (value: string) => {
-    setSortOrder(value as SortOrder);
+    updateFilter('sort', value);
   };
 
   const handleLoadMoreClick = () => {
@@ -1018,14 +996,7 @@ export function HomePage({ categoryConfig }: { categoryConfig?: CategoryConfig }
   };
 
   const handleClearAllFilters = () => {
-    setSelectedShopName([]);
-    setSelectedSizeGroups([]);
-    setSelectedGroupedTypes([]);
-    setSelectedTopLevelCategories([]);
-    setSelectedGenderAges([]);
-    setOnSaleOnly(false);
-    setSelectedPriceRange([...PRICE_RANGE]);
-    setSearchQuery('');
+    // Navigate to root clears all query params including search
     navigate('/', { replace: true });
   };
 
@@ -1084,11 +1055,6 @@ export function HomePage({ categoryConfig }: { categoryConfig?: CategoryConfig }
   
   return (
     <div className="min-h-screen bg-gray-50 dark:bg-gray-950 font-['Inter',sans-serif]">
-      <Header 
-        searchQuery={searchQuery}
-        handleSearchChange={handleSearchChange}
-        handleSearchSubmit={handleSearchSubmit}
-      />
       <div className="mx-auto px-4 pt-24 pb-6 sm:px-6 lg:px-8 max-w-screen-2xl">
         <div className="flex flex-col lg:flex-row gap-6">
           {/* Filters Sidebar */}
@@ -1179,7 +1145,7 @@ export function HomePage({ categoryConfig }: { categoryConfig?: CategoryConfig }
                         <MultiSelectDropdown
                           options={shopOptions}
                           selected={selectedShopName}
-                          onChange={setSelectedShopName}
+                          onChange={(val) => updateFilter('shop', val)}
                           placeholder="All shops"
                         />
                       </div>
@@ -1191,7 +1157,7 @@ export function HomePage({ categoryConfig }: { categoryConfig?: CategoryConfig }
                         <MultiSelectDropdown
                           options={sizeOptions}
                           selected={selectedSizeGroups}
-                          onChange={setSelectedSizeGroups}
+                          onChange={(val) => updateFilter('size', val)}
                           placeholder="All sizes"
                         />
                       </div>
@@ -1203,7 +1169,7 @@ export function HomePage({ categoryConfig }: { categoryConfig?: CategoryConfig }
                         <MultiSelectDropdown
                           options={typeOptions}
                           selected={selectedGroupedTypes}
-                          onChange={setSelectedGroupedTypes}
+                          onChange={(val) => updateFilter('type', val)}
                           placeholder="All types"
                         />
                       </div>
@@ -1215,7 +1181,7 @@ export function HomePage({ categoryConfig }: { categoryConfig?: CategoryConfig }
                         <MultiSelectDropdown
                           options={categoryOptions}
                           selected={selectedTopLevelCategories}
-                          onChange={setSelectedTopLevelCategories}
+                          onChange={(val) => updateFilter('category', val)}
                           placeholder="All categories"
                         />
                       </div>
@@ -1227,7 +1193,7 @@ export function HomePage({ categoryConfig }: { categoryConfig?: CategoryConfig }
                         <MultiSelectDropdown
                           options={genderOptions}
                           selected={selectedGenderAges}
-                          onChange={setSelectedGenderAges}
+                          onChange={(val) => updateFilter('gender', val)}
                           placeholder="All"
                         />
                       </div>
@@ -1290,7 +1256,8 @@ export function HomePage({ categoryConfig }: { categoryConfig?: CategoryConfig }
                             value={selectedPriceRange}
                             onFinalChange={(values) => {
                               if (Array.isArray(values) && values.length === 2) {
-                                setSelectedPriceRange([values[0], values[1]]);
+                                // Update URL directly
+                                updateFilter('price', `${values[0]}-${values[1]}`);
                               }
                             }}
                           />
@@ -1308,7 +1275,7 @@ export function HomePage({ categoryConfig }: { categoryConfig?: CategoryConfig }
                           <input
                             type="checkbox"
                             checked={onSaleOnly}
-                            onChange={(e: ChangeEvent<HTMLInputElement>) => setOnSaleOnly(e.target.checked)}
+                            onChange={(e) => updateFilter('sale', e.target.checked ? 'true' : 'false')}
                             className="w-4 h-4 text-blue-600 bg-gray-100 border-gray-300 rounded focus:ring-blue-500 dark:focus:ring-blue-600 dark:bg-gray-700 dark:border-gray-600"
                           />
                           <span className="text-sm text-gray-700 dark:text-gray-300">On sale only</span>
@@ -1324,7 +1291,7 @@ export function HomePage({ categoryConfig }: { categoryConfig?: CategoryConfig }
                           {selectedShopName.length > 0 && (
                             <div className="inline-flex items-center gap-1 px-2 py-1 bg-blue-100 dark:bg-blue-900/30 text-blue-800 dark:text-blue-300 rounded text-xs">
                               Shops ({selectedShopName.length})
-                              <button onClick={() => setSelectedShopName([])} className="ml-0.5 text-blue-600 hover:text-blue-800 dark:text-blue-400 dark:hover:text-blue-200">
+                              <button onClick={() => updateFilter('shop', [])} className="ml-0.5 text-blue-600 hover:text-blue-800 dark:text-blue-400 dark:hover:text-blue-200">
                                 <AsyncLucideIcon name="X" className="h-2.5 w-2.5 sm:h-3 sm:w-3" />
                               </button>
                             </div>
@@ -1332,7 +1299,7 @@ export function HomePage({ categoryConfig }: { categoryConfig?: CategoryConfig }
                           {selectedSizeGroups.length > 0 && (
                             <div className="inline-flex items-center gap-1 px-2 py-1 bg-blue-100 dark:bg-blue-900/30 text-blue-800 dark:text-blue-300 rounded text-xs">
                               Sizes ({selectedSizeGroups.length})
-                              <button onClick={() => setSelectedSizeGroups([])} className="ml-0.5 text-blue-600 hover:text-blue-800 dark:text-blue-400 dark:hover:text-blue-200">
+                              <button onClick={() => updateFilter('size', [])} className="ml-0.5 text-blue-600 hover:text-blue-800 dark:text-blue-400 dark:hover:text-blue-200">
                                 <AsyncLucideIcon name="X" className="h-2.5 w-2.5 sm:h-3 sm:w-3" />
                               </button>
                             </div>
@@ -1340,7 +1307,7 @@ export function HomePage({ categoryConfig }: { categoryConfig?: CategoryConfig }
                           {selectedGroupedTypes.length > 0 && (
                             <div className="inline-flex items-center gap-1 px-2 py-1 bg-blue-100 dark:bg-blue-900/30 text-blue-800 dark:text-blue-300 rounded text-xs">
                               Types ({selectedGroupedTypes.length})
-                              <button onClick={() => setSelectedGroupedTypes([])} className="ml-0.5 text-blue-600 hover:text-blue-800 dark:text-blue-400 dark:hover:text-blue-200">
+                              <button onClick={() => updateFilter('type', [])} className="ml-0.5 text-blue-600 hover:text-blue-800 dark:text-blue-400 dark:hover:text-blue-200">
                                 <AsyncLucideIcon name="X" className="h-2.5 w-2.5 sm:h-3 sm:w-3" />
                               </button>
                             </div>
@@ -1348,7 +1315,7 @@ export function HomePage({ categoryConfig }: { categoryConfig?: CategoryConfig }
                           {selectedTopLevelCategories.length > 0 && (
                             <div className="inline-flex items-center gap-1 px-2 py-1 bg-blue-100 dark:bg-blue-900/30 text-blue-800 dark:text-blue-300 rounded text-xs">
                               Categories ({selectedTopLevelCategories.length})
-                              <button onClick={() => setSelectedTopLevelCategories([])} className="ml-0.5 text-blue-600 hover:text-blue-800 dark:text-blue-400 dark:hover:text-blue-200">
+                              <button onClick={() => updateFilter('category', [])} className="ml-0.5 text-blue-600 hover:text-blue-800 dark:text-blue-400 dark:hover:text-blue-200">
                                 <AsyncLucideIcon name="X" className="h-2.5 w-2.5 sm:h-3 sm:w-3" />
                               </button>
                             </div>
@@ -1356,7 +1323,7 @@ export function HomePage({ categoryConfig }: { categoryConfig?: CategoryConfig }
                           {selectedGenderAges.length > 0 && (
                             <div className="inline-flex items-center gap-1 px-2 py-1 bg-blue-100 dark:bg-blue-900/30 text-blue-800 dark:text-blue-300 rounded text-xs">
                               Gender/Age ({selectedGenderAges.length})
-                              <button onClick={() => setSelectedGenderAges([])} className="ml-0.5 text-blue-600 hover:text-blue-800 dark:text-blue-400 dark:hover:text-blue-200">
+                              <button onClick={() => updateFilter('gender', [])} className="ml-0.5 text-blue-600 hover:text-blue-800 dark:text-blue-400 dark:hover:text-blue-200">
                                 <AsyncLucideIcon name="X" className="h-2.5 w-2.5 sm:h-3 sm:w-3" />
                               </button>
                             </div>
@@ -1364,7 +1331,7 @@ export function HomePage({ categoryConfig }: { categoryConfig?: CategoryConfig }
                           {(selectedPriceRange[0] !== PRICE_RANGE[0] || selectedPriceRange[1] !== PRICE_RANGE[1]) && (
                             <div className="inline-flex items-center gap-1 px-2 py-1 bg-blue-100 dark:bg-blue-900/30 text-blue-800 dark:text-blue-300 rounded text-xs">
                               ${selectedPriceRange[0]} - ${selectedPriceRange[1]}
-                              <button onClick={() => setSelectedPriceRange([...PRICE_RANGE])} className="ml-0.5 text-blue-600 hover:text-blue-800 dark:text-blue-400 dark:hover:text-blue-200">
+                              <button onClick={() => updateFilter('price', `${PRICE_RANGE[0]}-${PRICE_RANGE[1]}`)} className="ml-0.5 text-blue-600 hover:text-blue-800 dark:text-blue-400 dark:hover:text-blue-200">
                                 <AsyncLucideIcon name="X" className="h-2.5 w-2.5 sm:h-3 sm:w-3" />
                               </button>
                             </div>
@@ -1372,7 +1339,7 @@ export function HomePage({ categoryConfig }: { categoryConfig?: CategoryConfig }
                           {onSaleOnly && (
                             <div className="inline-flex items-center gap-1 px-2 py-1 bg-orange-100 dark:bg-orange-900/30 text-orange-800 dark:text-orange-300 rounded text-xs">
                               On Sale
-                              <button onClick={() => setOnSaleOnly(false)} className="ml-0.5 text-orange-600 hover:text-orange-800 dark:text-orange-400 dark:hover:text-orange-200">
+                              <button onClick={() => updateFilter('sale', 'false')} className="ml-0.5 text-orange-600 hover:text-orange-800 dark:text-orange-400 dark:hover:text-orange-200">
                                 <AsyncLucideIcon name="X" className="h-2.5 w-2.5 sm:h-3 sm:w-3" />
                               </button>
                             </div>

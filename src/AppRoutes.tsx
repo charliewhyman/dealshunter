@@ -1,5 +1,5 @@
 import { Routes, Route, useSearchParams, useNavigate } from 'react-router-dom';
-import { ChangeEvent, FormEvent, useCallback, useRef } from 'react';
+import { FormEvent, useCallback } from 'react';
 import { Header } from './components/Header';
 import { HomePage } from './pages/HomePage';
 import ProductPage from './pages/ProductPage';
@@ -12,22 +12,6 @@ export function AppRoutes() {
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
   const searchQuery = searchParams.get('search') || '';
-  const debounceRef = useRef<number | null>(null);
-  const DEBOUNCE_MS = 300;
-
-  const handleSearchChange = useCallback(
-    (e: ChangeEvent<HTMLInputElement>) => {
-      const value = e.target.value;
-
-      if (debounceRef.current) window.clearTimeout(debounceRef.current);
-      debounceRef.current = window.setTimeout(() => {
-        if (value) navigate(`/?search=${encodeURIComponent(value)}`);
-        else navigate(`/`);
-        debounceRef.current = null;
-      }, DEBOUNCE_MS) as unknown as number;
-    },
-    [navigate]
-  );
 
   const handleSearchSubmit = useCallback(
     (e: FormEvent<HTMLFormElement>) => {
@@ -47,7 +31,6 @@ export function AppRoutes() {
     <>
       <Header
         searchQuery={searchQuery}
-        handleSearchChange={handleSearchChange}
         handleSearchSubmit={handleSearchSubmit}
       />
       <Routes>

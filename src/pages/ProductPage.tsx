@@ -1,10 +1,9 @@
-import { ChangeEvent, FormEvent, useEffect, useMemo, useState, useRef } from 'react';
-import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
+import { useEffect, useMemo, useState } from 'react';
+import { useParams } from 'react-router-dom';
 import { apiClient } from '../lib/api-client';
 import { ProductWithDetails } from '../types';
 import AsyncLucideIcon from '../components/AsyncLucideIcon';
 import { useProductPricing } from '../hooks/useProductPricing';
-import { Header } from '../components/Header';
 import { format } from 'date-fns/format';
 import '../index.css';
 
@@ -15,35 +14,8 @@ function ProductPage() {
   const [imgLoaded, setImgLoaded] = useState(false);
   const [showFullDescription, setShowFullDescription] = useState(false);
   const { variantPrice, compareAtPrice } = useProductPricing(productId || '');
-  const navigate = useNavigate();
 
-  // Read search query from URL
-  const [searchParams] = useSearchParams();
-  const searchQuery = searchParams.get('search') || '';
-
-  const DEBOUNCE_MS = 300;
-  const debounceRef = useRef<number | null>(null);
-
-  const handleSearchChange = (e: ChangeEvent<HTMLInputElement>) => {
-    const value = e.target.value;
-    if (debounceRef.current) window.clearTimeout(debounceRef.current);
-
-    debounceRef.current = window.setTimeout(() => {
-      if (value) navigate(`/?search=${encodeURIComponent(value)}`);
-      else navigate('/');
-      debounceRef.current = null;
-    }, DEBOUNCE_MS) as unknown as number;
-  };
-
-  const handleSearchSubmit = (e: FormEvent<HTMLFormElement>) => {
-    e.preventDefault();
-    const input = e.currentTarget.querySelector('input');
-    if (input) {
-      const value = (input as HTMLInputElement).value;
-      if (value) navigate(`/?search=${encodeURIComponent(value)}`);
-      else navigate('/');
-    }
-  };
+  // Add noindex meta tag to prevent indexing of product pages
 
   // Add noindex meta tag to prevent indexing of product pages
   useEffect(() => {
@@ -234,11 +206,6 @@ function ProductPage() {
 
   return (
     <div className="min-h-screen bg-white dark:bg-gray-900">
-      <Header
-        searchQuery={searchQuery}
-        handleSearchChange={handleSearchChange}
-        handleSearchSubmit={handleSearchSubmit}
-      />
       
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-20 pb-8">
         <div className="text-gray-900 dark:text-gray-100">
