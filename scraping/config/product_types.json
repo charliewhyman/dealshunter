@@ -1,51 +1,78 @@
 {
     "category_mapping": {
         "Clothing - Tops": {
-            "keywords": ["tee", "t-shirt", "tank", "top", "sweater", "hoodie", "sweatshirt", 
-                         "pullover", "crewneck", "henley", "blouse", "shirt", "cardigan",
-                         "tunic", "crop", "jersey", "polo", "rugby"],
-            "exclude": ["shorts", "pants", "skirt", "dress", "jacket", "coat", "vest"]
+            "keywords": [
+                "tee", "t-shirt", "tank", "top", "sweater", "pullover", 
+                "crewneck", "henley", "blouse", "shirt", "tunic", "crop", 
+                "jersey", "polo", "rugby", "raglan", "long sleeve"
+            ],
+            "exclude": ["shorts", "pants", "skirt", "dress", "jacket", "coat", "vest", "hoodie", "sweatshirt", "zip hoodie"]
         },
         "Clothing - Bottoms": {
-            "keywords": ["pants", "pant", "jeans", "shorts", "short", "skirt", "leggings", 
-                         "joggers", "sweatpant", "trousers", "chino", "capri"],
-            "exclude": []
+            "keywords": [
+                "pants", "pant", "jeans", "shorts", "short", "skirt", "leggings", 
+                "joggers", "sweatpant", "trousers", "chino", "capri", "sweatshort"
+            ],
+            "exclude": ["swim short", "training short", "swim"]
         },
         "Clothing - Dresses & Jumpsuits": {
-            "keywords": ["dress", "jumpsuit", "romper", "overall"],
+            "keywords": ["dress", "jumpsuit", "romper", "overall", "caftan", "kaftan"],
             "exclude": []
         },
         "Clothing - Outerwear": {
-            "keywords": ["jacket", "coat", "bomber", "vest", "poncho", "windguard"],
-            "exclude": ["cardigan", "sweater"]
+            "keywords": [
+                "jacket", "coat", "bomber", "vest", "poncho", "windguard",
+                "cardigan", "blazer", "parka", "windbreaker", "team jacket",
+                "coach jacket", "shawl cardigan"
+            ],
+            "exclude": []
         },
         "Clothing - Activewear & Loungewear": {
-            "keywords": ["lounge", "active", "yoga", "athletic", "performance"],
+            "keywords": [
+                "lounge", "active", "yoga", "athletic", "performance",
+                "hoodie", "sweatshirt", "zip hoodie", "terry", "fleece",
+                "training", "workout", "gym", "tracksuit", "sports bra",
+                "set"
+            ],
             "exclude": []
         },
         "Clothing - Sleepwear & Intimates": {
-            "keywords": ["sleepwear", "pajama", "pyjama", "nightie", "sleeper", "robe", 
-                         "underwear", "boxer", "brief", "bra", "lingerie", "intimates"],
+            "keywords": [
+                "sleepwear", "pajama", "pyjama", "nightie", "sleeper", "robe", 
+                "underwear", "boxer", "brief", "bra", "lingerie", "intimates",
+                "sleep mask", "sleep set"
+            ],
             "exclude": []
         },
         "Clothing - Swimwear": {
-            "keywords": ["swim", "bathing suit", "bikini", "trunks"],
+            "keywords": [
+                "swim", "bathing suit", "bikini", "trunks", "swimsuit", 
+                "swimwear", "swim short", "boardshort"
+            ],
             "exclude": []
         },
         "Accessories - Headwear": {
-            "keywords": ["hat", "toque", "beanie", "cap", "headband", "headwear", 
-                         "balaclava", "bonnet", "baseball"],
+            "keywords": [
+                "hat", "toque", "beanie", "cap", "headband", "headwear", 
+                "balaclava", "bonnet", "baseball"
+            ],
             "exclude": []
         },
         "Accessories - Bags": {
-            "keywords": ["bag", "backpack", "tote", "wallet", "handbag", "messenger", 
-                         "luggage", "hip pack"],
-            "exclude": []
+            "keywords": [
+                "bag", "backpack", "tote", "wallet", "handbag", "messenger", 
+                "luggage", "hip pack", "purse", "clutch", "crossbody", 
+                "satchel", "pouch"
+            ],
+            "exclude": ["sleeping bag", "tea bag"]
         },
         "Accessories - Jewelry": {
-            "keywords": ["jewelry", "necklace", "earring", "bracelet", "ring", 
-                         "anklet", "charm", "pendant"],
-            "exclude": []
+            "keywords": [
+                "jewelry", "necklace", "earring", "bracelet", "ring", 
+                "anklet", "charm", "pendant", "jewellery", "chain",
+                "engagement ring", "wedding ring", "wedding band"
+            ],
+            "exclude": ["keyring", "key ring"]
         },
         "Accessories - Scarves & Gloves": {
             "keywords": ["scarf", "scarves", "glove", "mitten", "dickie"],
@@ -88,7 +115,7 @@
             "exclude": ["sock", "socks"]
         },
         "Footwear - Dress Shoes": {
-            "keywords": ["mocassin", "dress"],
+            "keywords": ["mocassin", "dress shoes"],
             "exclude": ["sock", "socks"]
         },
         "Footwear - Other": {
@@ -96,35 +123,43 @@
             "exclude": ["sock", "socks"]
         },
         "Home & Living - Decor": {
-            "keywords": ["decor", "cushion", "pillow", "vase", "clock", "ornament"],
+            "keywords": ["decor", "cushion", "pillow", "vase", "clock", "ornament", "wall art", "print", "poster", "frame"],
             "exclude": []
         },
         "Home & Living - Candles & Fragrance": {
-            "keywords": ["candle", "fragrance", "incense", "diffuser", "room spray", 
-                         "linen spray", "scent"],
+            "keywords": [
+                "candle", "fragrance", "incense", "diffuser", "room spray", 
+                "linen spray", "scent"
+            ],
             "exclude": []
         },
         "Home & Living - Kitchen & Bar": {
-            "keywords": ["kitchen", "bar", "mug", "cup", "glass", "kettle", "dish", 
-                         "utensil", "tabletop"],
+            "keywords": [
+                "kitchen", "bar", "mug", "cup", "glass", "kettle", "dish", 
+                "utensil", "tabletop"
+            ],
             "exclude": []
         },
         "Home & Living - Blankets & Textiles": {
-            "keywords": ["blanket", "towel", "textile", "napkin", "tea towel", 
-                         "washcloth", "swaddle"],
+            "keywords": [
+                "blanket", "towel", "textile", "napkin", "tea towel", 
+                "washcloth", "swaddle"
+            ],
             "exclude": []
         },
         "Beauty & Personal Care - Bath & Body": {
-            "keywords": ["body lotion", "body oil", "body wash", "bath salt", 
-                         "bath", "soap", "bar soap"],
+            "keywords": [
+                "body lotion", "body oil", "body wash", "bath salt", 
+                "bath", "soap", "bar soap"
+            ],
             "exclude": ["hair", "face", "oral"]
         },
         "Beauty & Personal Care - Skincare": {
-            "keywords": ["face", "skin", "serum", "face mask", "face mist", "face pad"],
+            "keywords": ["face", "skin", "serum", "face mask", "face mist", "face pad", "skincare"],
             "exclude": []
         },
         "Beauty & Personal Care - Haircare": {
-            "keywords": ["shampoo", "conditioner", "hair oil", "hair serum", "hair"],
+            "keywords": ["shampoo", "conditioner", "hair oil", "hair serum", "hair", "haircare"],
             "exclude": ["accessory"]
         },
         "Beauty & Personal Care - Grooming": {
@@ -160,7 +195,7 @@
             "exclude": ["gift card"]
         },
         "Gifts & Stationery - Gift Cards": {
-            "keywords": ["gift card", "cartes-cadeaux"],
+            "keywords": ["gift card", "cartes-cadeaux", "e-gift", "giftcard"],
             "exclude": []
         },
         "Gifts & Stationery - Books": {
@@ -168,8 +203,10 @@
             "exclude": []
         },
         "Gifts & Stationery - Stationery": {
-            "keywords": ["stationery", "notebook", "notepad", "pen", "planner", 
-                         "calendar", "patch", "sticker", "pin"],
+            "keywords": [
+                "stationery", "notebook", "notepad", "pen", "planner", 
+                "calendar", "patch", "sticker", "pin"
+            ],
             "exclude": []
         },
         "Gifts & Stationery - Gift Wrap": {
@@ -193,8 +230,10 @@
             "exclude": []
         },
         "Lifestyle - Cleaning": {
-            "keywords": ["cleaning", "laundry", "detergent", "stain remover", 
-                         "dish soap", "dryer balls"],
+            "keywords": [
+                "cleaning", "laundry", "detergent", "stain remover", 
+                "dish soap", "dryer balls"
+            ],
             "exclude": []
         },
         "Lifestyle - Reusables": {
@@ -207,12 +246,12 @@
         }
     },
     "gender_age_patterns": {
-      "Men's": ["mens", "men's", "men ", "male"],
-      "Women's": ["womens", "women's", "ladies", "women ", "female"],
-      "Kids": ["kids", "kid ", "kid's", "children", "youth"],
-      "Baby": ["baby", "infant", "toddler", "babies"],
-      "Unisex": ["unisex"]
+        "Men's": ["mens", "men's", "men ", "male", "MENS"],
+        "Women's": ["womens", "women's", "ladies", "women ", "female", "WOMENS"],
+        "Kids": ["kids", "kid ", "kid's", "children", "youth"],
+        "Baby": ["baby", "infant", "toddler", "babies"],
+        "Unisex": ["unisex"]
     },
     "uncategorized_fallback": "Uncategorized",
     "default_gender_age": "Unisex"
-  }
+}
