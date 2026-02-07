@@ -965,7 +965,7 @@ export function HomePage({ categoryConfig }: { categoryConfig?: CategoryConfig }
     };
     
     const io = new IntersectionObserver(handleIntersect, {
-      rootMargin: '100px',
+      rootMargin: '600px',
       threshold: INTERSECTION_THRESHOLD
     });
     
@@ -1101,7 +1101,8 @@ export function HomePage({ categoryConfig }: { categoryConfig?: CategoryConfig }
               z-50 lg:z-auto
             `}>
               
-               <div className="flex-1 overflow-y-auto lg:overflow-visible lg:sticky lg:top-24 p-4 lg:p-0">
+
+               <div className="flex-1 overflow-y-auto lg:overflow-y-auto lg:max-h-[calc(100vh-8rem)] p-4 lg:p-0 scrollbar-thin scrollbar-thumb-gray-300 dark:scrollbar-thumb-gray-600">
                   {/* Mobile Header */}
                   <div className="flex items-center justify-between mb-4 lg:hidden">
                     <h2 className="text-lg font-semibold text-gray-900 dark:text-gray-100">Filters</h2>
