@@ -4,14 +4,16 @@
             "keywords": [
                 "tee", "t-shirt", "tank", "top", "sweater", "pullover", 
                 "crewneck", "henley", "blouse", "shirt", "tunic", "crop", 
-                "jersey", "polo", "rugby", "raglan", "long sleeve"
+                "jersey", "polo", "rugby", "raglan", "long sleeve",
+                "haut", "chemise", "surchemise"
             ],
             "exclude": ["shorts", "pants", "skirt", "dress", "jacket", "coat", "vest", "hoodie", "sweatshirt", "zip hoodie"]
         },
         "Clothing - Bottoms": {
             "keywords": [
                 "pants", "pant", "jeans", "shorts", "short", "skirt", "leggings", 
-                "joggers", "sweatpant", "trousers", "chino", "capri", "sweatshort"
+                "joggers", "sweatpant", "trousers", "chino", "capri", "sweatshort",
+                "legging", "jogger", "skort", "sarong", "denim", "jupe"
             ],
             "exclude": ["swim short", "training short", "swim"]
         },
@@ -32,7 +34,7 @@
                 "lounge", "active", "yoga", "athletic", "performance",
                 "hoodie", "sweatshirt", "zip hoodie", "terry", "fleece",
                 "training", "workout", "gym", "tracksuit", "sports bra",
-                "set"
+                "set", "apparel"
             ],
             "exclude": []
         },
@@ -40,7 +42,7 @@
             "keywords": [
                 "sleepwear", "pajama", "pyjama", "nightie", "sleeper", "robe", 
                 "underwear", "boxer", "brief", "bra", "lingerie", "intimates",
-                "sleep mask", "sleep set"
+                "sleep mask", "sleep set", "nightgown", "bodysuit"
             ],
             "exclude": []
         },

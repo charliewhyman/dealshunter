@@ -288,12 +288,21 @@ class ProductProcessor:
             
             # Extract category information WITH TAGS for better gender detection
             product_type = product.get("product_type", "")
+            title = product.get("title", "")
+            description = product.get("description", "")
+            vendor = product.get("vendor", "")
             
             # Check if the categorizer has the enhanced method
             if hasattr(self.categorizer, 'get_category_info') and callable(self.categorizer.get_category_info):
                 try:
-                    # Try to call with tags parameter
-                    category_info = self.categorizer.get_category_info(product_type, tags_list)
+                    # Try to call with improved context
+                    category_info = self.categorizer.get_category_info(
+                        product_type=product_type,
+                        tags=tags_list,
+                        title=title,
+                        description=description,
+                        vendor=vendor
+                    )
                     
                     # Log gender detection for debugging
                     uploader_logger.debug(
@@ -304,7 +313,7 @@ class ProductProcessor:
                         f"is_unisex={category_info.get('is_unisex', False)}"
                     )
                 except TypeError:
-                    # Fallback to old method if new signature not supported
+                    # Fallback to old method if new signature not supported (though we verified it is)
                     category_info = self.categorizer.get_category_info(product_type)
                     # Add default gender categories for backward compatibility
                     primary_gender = category_info.get('gender_age', 'Unisex')
