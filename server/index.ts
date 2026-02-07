@@ -122,11 +122,13 @@ app.get('/api/products', async (c) => {
                 dbQuery = dbQuery.orderBy('min_price', 'asc').orderBy('id', 'desc');
                 break;
             case 'price_desc':
-                dbQuery = dbQuery.orderBy('min_price', 'desc').orderBy('id', 'desc');
+                // Use sql for NULLS LAST if needed, but min_price is usually not null on active products.
+                // However, let's keep it consistent.
+                dbQuery = dbQuery.orderBy(sql`min_price DESC NULLS LAST`).orderBy('id', 'desc');
                 break;
             case 'discount_desc':
             default:
-                dbQuery = dbQuery.orderBy('max_discount_percentage', 'desc').orderBy('created_at', 'desc').orderBy('id', 'desc');
+                dbQuery = dbQuery.orderBy(sql`max_discount_percentage DESC NULLS LAST`).orderBy('created_at', 'desc').orderBy('id', 'desc');
                 break;
         }
 
