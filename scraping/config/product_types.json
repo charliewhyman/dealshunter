@@ -73,27 +73,27 @@
         },
         "Footwear - Sneakers": {
             "keywords": ["sneaker", "sneakers"],
-            "exclude": []
+            "exclude": ["sock", "socks"]
         },
         "Footwear - Boots": {
             "keywords": ["boot", "boots", "bottes"],
-            "exclude": []
+            "exclude": ["sock", "socks"]
         },
         "Footwear - Sandals & Summer": {
             "keywords": ["sandal", "sandals", "summer"],
-            "exclude": ["boot"]
+            "exclude": ["boot", "sock", "socks"]
         },
         "Footwear - Slippers": {
             "keywords": ["slipper", "slippers", "pantoufles"],
-            "exclude": []
+            "exclude": ["sock", "socks"]
         },
         "Footwear - Dress Shoes": {
             "keywords": ["mocassin", "dress"],
-            "exclude": []
+            "exclude": ["sock", "socks"]
         },
         "Footwear - Other": {
             "keywords": ["footwear", "shoes", "chaussures"],
-            "exclude": []
+            "exclude": ["sock", "socks"]
         },
         "Home & Living - Decor": {
             "keywords": ["decor", "cushion", "pillow", "vase", "clock", "ornament"],

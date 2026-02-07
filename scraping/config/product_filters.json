@@ -1,0 +1,23 @@
+{
+  "vendor_filters": [
+    {
+      "vendor": "Ecksand",
+      "product_type": "PseudoProduct",
+      "reason": "Configurator variations - 700+ variants per design"
+    }
+  ],
+  "title_filters": [
+    {
+      "pattern": "gift card",
+      "case_insensitive": true,
+      "reason": "Gift cards not comparison-shoppable"
+    }
+  ],
+  "product_type_filters": [
+    {
+      "pattern": "digital download",
+      "case_insensitive": true,
+      "reason": "Digital products excluded"
+    }
+  ]
+}

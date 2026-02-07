@@ -64,6 +64,56 @@ class ProductScraper(BaseScraper):
             self.max_pages = self.inc_max_pages
             self.max_requests_per_shop = self.inc_max_requests
             self.logger.info("📊 Set to INCREMENTAL scrape mode")
+
+        # Load product filters
+        self.filters = self._load_filters()
+
+    def _load_filters(self) -> Dict[str, List[Dict]]:
+        """Load product filters from config file."""
+        try:
+            import os
+            config_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'config', 'product_filters.json')
+            if os.path.exists(config_path):
+                with open(config_path, 'r') as f:
+                    return json.load(f)
+            return {}
+        except Exception as e:
+            self.logger.error(f"Error loading product filters: {e}")
+            return {}
+
+    def _should_skip_product(self, product: Dict[str, Any], vendor: str) -> bool:
+        """Check if product should be filtered out based on criteria."""
+        if not self.filters:
+            return False
+
+        # Vendor filters
+        for f in self.filters.get('vendor_filters', []):
+            if f.get('vendor') == vendor and f.get('product_type') == product.get('product_type'):
+                return True
+
+        # Title filters
+        title = product.get('title', '')
+        for f in self.filters.get('title_filters', []):
+            pattern = f.get('pattern', '')
+            if f.get('case_insensitive', False):
+                if pattern.lower() in title.lower():
+                    return True
+            else:
+                if pattern in title:
+                    return True
+
+        # Product Type filters
+        p_type = product.get('product_type', '')
+        for f in self.filters.get('product_type_filters', []):
+            pattern = f.get('pattern', '')
+            if f.get('case_insensitive', False):
+                if pattern.lower() in p_type.lower():
+                    return True
+            else:
+                if pattern in p_type:
+                    return True
+
+        return False
     
     def scrape_single(self, shop_data: Dict[str, Any]) -> List[Dict[str, Any]]:
         """Main entry point - routes to full or incremental based on mode."""
@@ -188,6 +238,11 @@ class ProductScraper(BaseScraper):
                 # Process each product
                 for product in products:
                     try:
+                        # Check global filters
+                        vendor = product.get('vendor')
+                        if self._should_skip_product(product, vendor):
+                            continue
+
                         # Skip OOS products if enabled
                         if skip_oos:
                             variants = product.get('variants', [])
@@ -323,6 +378,11 @@ class ProductScraper(BaseScraper):
                 # Process products with OOS filtering
                 for product in products:
                     try:
+                        # Check global filters first
+                        vendor = product.get('vendor')
+                        if self._should_skip_product(product, vendor):
+                            continue
+
                         # CRITICAL: Skip OOS products in incremental mode
                         if skip_oos:
                             variants = product.get('variants', [])
