@@ -1175,11 +1175,11 @@ export function HomePage({ categoryConfig }: { categoryConfig?: CategoryConfig }
           {/* Filters Sidebar */}
           <div className="w-full lg:w-96 flex-shrink-0">
             <div className="lg:sticky lg:top-24">
-              {/* Mobile Filter Toggle */}
-              <div className="lg:hidden mb-4">
+              {/* Mobile Filter Toggle - Sticky Header */}
+              <div className="lg:hidden sticky top-16 z-30 mb-4 -mx-4 px-4 py-2 bg-gray-50/95 dark:bg-gray-950/95 backdrop-blur supports-[backdrop-filter]:bg-gray-50/60 border-b border-gray-200 dark:border-gray-800 transition-all duration-200">
                 <button
                   onClick={() => setShowFilters(!showFilters)}
-                  className="w-full flex items-center justify-between gap-2 px-4 py-3 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors"
+                  className="w-full flex items-center justify-between gap-2 px-4 py-3 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors shadow-sm"
                   aria-expanded={showFilters}
                   aria-label="Toggle filter panel"
                   aria-controls="filter-panel"
@@ -1196,249 +1196,289 @@ export function HomePage({ categoryConfig }: { categoryConfig?: CategoryConfig }
                   />
                 </button>
               </div>
+          <div className={`
+            fixed inset-0 z-50 lg:static lg:z-auto w-full lg:w-96 flex-shrink-0
+            ${showFilters ? 'block' : 'hidden lg:block'}
+          `}>
+             {/* Mobile Backdrop */}
+             <div 
+                className="fixed inset-0 bg-black/50 lg:hidden" 
+                onClick={() => setShowFilters(false)}
+                aria-hidden="true"
+             />
 
-              {/* Filter Panel */}
-              <div
-                id="filter-panel"
-                className={`${showFilters ? 'block' : 'hidden'} lg:block bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-lg p-4 space-y-4`}
-              >
-                <div className="flex items-center justify-between mb-4">
-                  <h3 className="font-semibold text-gray-900 dark:text-gray-100">Filters</h3>
-                  {activeFilterCount > 0 && (
-                    <button
-                      onClick={handleClearAllFilters}
-                      className="text-xs text-blue-600 dark:text-blue-400 hover:text-blue-800 dark:hover:text-blue-300 font-medium"
+            <div className={`
+              fixed inset-y-0 left-0 w-[280px] sm:w-[320px] bg-white dark:bg-gray-900 shadow-xl lg:shadow-none
+              lg:static lg:w-auto lg:bg-transparent
+              flex flex-col
+              transition-transform duration-300 ease-in-out
+              ${showFilters ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'}
+              z-50 lg:z-auto
+            `}>
+              
+               <div className="flex-1 overflow-y-auto lg:overflow-visible lg:sticky lg:top-24 p-4 lg:p-0">
+                  {/* Mobile Header */}
+                  <div className="flex items-center justify-between mb-4 lg:hidden">
+                    <h2 className="text-lg font-semibold text-gray-900 dark:text-gray-100">Filters</h2>
+                    <button 
+                      onClick={() => setShowFilters(false)}
+                      className="p-2 text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200"
                     >
-                      Clear all
+                      <AsyncLucideIcon name="X" className="h-5 w-5" />
                     </button>
-                  )}
-                </div>
-
-                {/* Filter Dropdowns */}
-                <div className="space-y-3">
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">
-                      Shop
-                    </label>
-                    <MultiSelectDropdown
-                      options={shopOptions}
-                      selected={selectedShopName}
-                      onChange={setSelectedShopName}
-                      placeholder="All shops"
-                    />
                   </div>
+              
+                  {/* Mobile Toggle (Hidden in drawer, visible on desktop main column if we moved it, but here we keep structure) - Actually we need the toggle OUTSIDE the sidebar for mobile. 
+                      Wait, the toggle button was originally inside the sidebar div but only visible on mobile. 
+                      If we make the sidebar hidden, the toggle button disappears.
+                      We need to move the toggle button OUTSIDE the sidebar container in the hierarchy. 
+                  */}
+                  
+                  {/* Tablet/Desktop Filter Panel Container */}
+                  <div
+                    id="filter-panel"
+                    className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-lg p-4 space-y-4 shadow-sm lg:shadow-none"
+                  >
+                    <div className="flex items-center justify-between mb-4">
+                      <h3 className="font-semibold text-gray-900 dark:text-gray-100 hidden lg:block">Filters</h3>
+                      {activeFilterCount > 0 && (
+                        <button
+                          onClick={handleClearAllFilters}
+                          className="text-xs text-blue-600 dark:text-blue-400 hover:text-blue-800 dark:hover:text-blue-300 font-medium"
+                        >
+                          Clear all
+                        </button>
+                      )}
+                    </div>
 
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">
-                      Size
-                    </label>
-                    <MultiSelectDropdown
-                      options={sizeOptions}
-                      selected={selectedSizeGroups}
-                      onChange={setSelectedSizeGroups}
-                      placeholder="All sizes"
-                    />
-                  </div>
-
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">
-                      Type
-                    </label>
-                    <MultiSelectDropdown
-                      options={typeOptions}
-                      selected={selectedGroupedTypes}
-                      onChange={setSelectedGroupedTypes}
-                      placeholder="All types"
-                    />
-                  </div>
-
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">
-                      Category
-                    </label>
-                    <MultiSelectDropdown
-                      options={categoryOptions}
-                      selected={selectedTopLevelCategories}
-                      onChange={setSelectedTopLevelCategories}
-                      placeholder="All categories"
-                    />
-                  </div>
-
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">
-                      Gender/Age
-                    </label>
-                    <MultiSelectDropdown
-                      options={genderOptions}
-                      selected={selectedGenderAges}
-                      onChange={setSelectedGenderAges}
-                      placeholder="All"
-                    />
-                  </div>
-
-                  {/* Price Range Filter - Updated */}
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                      Price Range
-                    </label>
+                    {/* Filter Dropdowns */}
                     <div className="space-y-3">
-                      {/* Price Input Boxes */}
-                      <div className="flex items-center justify-between gap-3">
-                        <div className="flex-1">
-                          <label className="sr-only">Minimum price</label>
-                          <div className="relative">
-                            <div className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500 dark:text-gray-400">
-                              $
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">
+                          Shop
+                        </label>
+                        <MultiSelectDropdown
+                          options={shopOptions}
+                          selected={selectedShopName}
+                          onChange={setSelectedShopName}
+                          placeholder="All shops"
+                        />
+                      </div>
+
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">
+                          Size
+                        </label>
+                        <MultiSelectDropdown
+                          options={sizeOptions}
+                          selected={selectedSizeGroups}
+                          onChange={setSelectedSizeGroups}
+                          placeholder="All sizes"
+                        />
+                      </div>
+
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">
+                          Type
+                        </label>
+                        <MultiSelectDropdown
+                          options={typeOptions}
+                          selected={selectedGroupedTypes}
+                          onChange={setSelectedGroupedTypes}
+                          placeholder="All types"
+                        />
+                      </div>
+
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">
+                          Category
+                        </label>
+                        <MultiSelectDropdown
+                          options={categoryOptions}
+                          selected={selectedTopLevelCategories}
+                          onChange={setSelectedTopLevelCategories}
+                          placeholder="All categories"
+                        />
+                      </div>
+
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">
+                          Gender/Age
+                        </label>
+                        <MultiSelectDropdown
+                          options={genderOptions}
+                          selected={selectedGenderAges}
+                          onChange={setSelectedGenderAges}
+                          placeholder="All"
+                        />
+                      </div>
+
+                      {/* Price Range Filter - Updated */}
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                          Price Range
+                        </label>
+                        <div className="space-y-3">
+                          {/* Price Input Boxes */}
+                          <div className="flex items-center justify-between gap-3">
+                            <div className="flex-1">
+                              <label className="sr-only">Minimum price</label>
+                              <div className="relative">
+                                <div className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500 dark:text-gray-400">
+                                  $
+                                </div>
+                                <input
+                                  type="number"
+                                  min={ABS_MIN_PRICE}
+                                  max={ABS_MAX_PRICE}
+                                  step="1"
+                                  value={selectedPriceRange[0]}
+                                  onChange={handleMinPriceChange}
+                                  onBlur={handlePriceInputBlur}
+                                  className="w-full pl-8 pr-3 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100"
+                                  placeholder="Min"
+                                  aria-label="Minimum price"
+                                />
+                              </div>
                             </div>
-                            <input
-                              type="number"
-                              min={ABS_MIN_PRICE}
-                              max={ABS_MAX_PRICE}
-                              step="1"
-                              value={selectedPriceRange[0]}
-                              onChange={handleMinPriceChange}
-                              onBlur={handlePriceInputBlur}
-                              className="w-full pl-8 pr-3 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100"
-                              placeholder="Min"
-                              aria-label="Minimum price"
-                            />
+                            <span className="text-gray-500 dark:text-gray-400">to</span>
+                            <div className="flex-1">
+                              <label className="sr-only">Maximum price</label>
+                              <div className="relative">
+                                <div className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500 dark:text-gray-400">
+                                  $
+                                </div>
+                                <input
+                                  type="number"
+                                  min={ABS_MIN_PRICE}
+                                  max={ABS_MAX_PRICE}
+                                  step="1"
+                                  value={selectedPriceRange[1]}
+                                  onChange={handleMaxPriceChange}
+                                  onBlur={handlePriceInputBlur}
+                                  className="w-full pl-8 pr-3 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100"
+                                  placeholder="Max"
+                                  aria-label="Maximum price"
+                                />
+                              </div>
+                            </div>
                           </div>
-                        </div>
-                        <span className="text-gray-500 dark:text-gray-400">to</span>
-                        <div className="flex-1">
-                          <label className="sr-only">Maximum price</label>
-                          <div className="relative">
-                            <div className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500 dark:text-gray-400">
-                              $
-                            </div>
-                            <input
-                              type="number"
-                              min={ABS_MIN_PRICE}
-                              max={ABS_MAX_PRICE}
-                              step="1"
-                              value={selectedPriceRange[1]}
-                              onChange={handleMaxPriceChange}
-                              onBlur={handlePriceInputBlur}
-                              className="w-full pl-8 pr-3 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100"
-                              placeholder="Max"
-                              aria-label="Maximum price"
-                            />
+                          
+                          {/* Slider */}
+                          <TransformSlider
+                            min={ABS_MIN_PRICE}
+                            max={ABS_MAX_PRICE}
+                            value={selectedPriceRange}
+                            onFinalChange={(values) => {
+                              if (Array.isArray(values) && values.length === 2) {
+                                setSelectedPriceRange([values[0], values[1]]);
+                              }
+                            }}
+                          />
+                          
+                          {/* Price Range Labels */}
+                          <div className="flex justify-between text-xs text-gray-500 dark:text-gray-400">
+                            <span>${ABS_MIN_PRICE}</span>
+                            <span>${ABS_MAX_PRICE}</span>
                           </div>
                         </div>
                       </div>
-                      
-                      {/* Slider */}
-                      <TransformSlider
-                        min={ABS_MIN_PRICE}
-                        max={ABS_MAX_PRICE}
-                        value={selectedPriceRange}
-                        onFinalChange={(values) => {
-                          if (Array.isArray(values) && values.length === 2) {
-                            setSelectedPriceRange([values[0], values[1]]);
-                          }
-                        }}
-                      />
-                      
-                      {/* Price Range Labels */}
-                      <div className="flex justify-between text-xs text-gray-500 dark:text-gray-400">
-                        <span>${ABS_MIN_PRICE}</span>
-                        <span>${ABS_MAX_PRICE}</span>
+
+                      <div className="pt-2">
+                        <label className="flex items-center gap-2 cursor-pointer">
+                          <input
+                            type="checkbox"
+                            checked={onSaleOnly}
+                            onChange={(e: ChangeEvent<HTMLInputElement>) => setOnSaleOnly(e.target.checked)}
+                            className="w-4 h-4 text-blue-600 bg-gray-100 border-gray-300 rounded focus:ring-blue-500 dark:focus:ring-blue-600 dark:bg-gray-700 dark:border-gray-600"
+                          />
+                          <span className="text-sm text-gray-700 dark:text-gray-300">On sale only</span>
+                        </label>
                       </div>
                     </div>
+
+                    {/* Active Filters Pills */}
+                    {activeFilterCount > 0 && (
+                      <div className="pt-4 border-t border-gray-200 dark:border-gray-800">
+                        <p className="text-xs font-medium text-gray-700 dark:text-gray-300 mb-2">Active filters:</p>
+                        <div className="flex flex-wrap gap-1.5">
+                          {selectedShopName.length > 0 && (
+                            <div className="inline-flex items-center gap-1 px-2 py-1 bg-blue-100 dark:bg-blue-900/30 text-blue-800 dark:text-blue-300 rounded text-xs">
+                              Shops ({selectedShopName.length})
+                              <button onClick={() => setSelectedShopName([])} className="ml-0.5 text-blue-600 hover:text-blue-800 dark:text-blue-400 dark:hover:text-blue-200">
+                                <AsyncLucideIcon name="X" className="h-2.5 w-2.5 sm:h-3 sm:w-3" />
+                              </button>
+                            </div>
+                          )}
+                          {selectedSizeGroups.length > 0 && (
+                            <div className="inline-flex items-center gap-1 px-2 py-1 bg-blue-100 dark:bg-blue-900/30 text-blue-800 dark:text-blue-300 rounded text-xs">
+                              Sizes ({selectedSizeGroups.length})
+                              <button onClick={() => setSelectedSizeGroups([])} className="ml-0.5 text-blue-600 hover:text-blue-800 dark:text-blue-400 dark:hover:text-blue-200">
+                                <AsyncLucideIcon name="X" className="h-2.5 w-2.5 sm:h-3 sm:w-3" />
+                              </button>
+                            </div>
+                          )}
+                          {selectedGroupedTypes.length > 0 && (
+                            <div className="inline-flex items-center gap-1 px-2 py-1 bg-blue-100 dark:bg-blue-900/30 text-blue-800 dark:text-blue-300 rounded text-xs">
+                              Types ({selectedGroupedTypes.length})
+                              <button onClick={() => setSelectedGroupedTypes([])} className="ml-0.5 text-blue-600 hover:text-blue-800 dark:text-blue-400 dark:hover:text-blue-200">
+                                <AsyncLucideIcon name="X" className="h-2.5 w-2.5 sm:h-3 sm:w-3" />
+                              </button>
+                            </div>
+                          )}
+                          {selectedTopLevelCategories.length > 0 && (
+                            <div className="inline-flex items-center gap-1 px-2 py-1 bg-blue-100 dark:bg-blue-900/30 text-blue-800 dark:text-blue-300 rounded text-xs">
+                              Categories ({selectedTopLevelCategories.length})
+                              <button onClick={() => setSelectedTopLevelCategories([])} className="ml-0.5 text-blue-600 hover:text-blue-800 dark:text-blue-400 dark:hover:text-blue-200">
+                                <AsyncLucideIcon name="X" className="h-2.5 w-2.5 sm:h-3 sm:w-3" />
+                              </button>
+                            </div>
+                          )}
+                          {selectedGenderAges.length > 0 && (
+                            <div className="inline-flex items-center gap-1 px-2 py-1 bg-blue-100 dark:bg-blue-900/30 text-blue-800 dark:text-blue-300 rounded text-xs">
+                              Gender/Age ({selectedGenderAges.length})
+                              <button onClick={() => setSelectedGenderAges([])} className="ml-0.5 text-blue-600 hover:text-blue-800 dark:text-blue-400 dark:hover:text-blue-200">
+                                <AsyncLucideIcon name="X" className="h-2.5 w-2.5 sm:h-3 sm:w-3" />
+                              </button>
+                            </div>
+                          )}
+                          {(selectedPriceRange[0] !== PRICE_RANGE[0] || selectedPriceRange[1] !== PRICE_RANGE[1]) && (
+                            <div className="inline-flex items-center gap-1 px-2 py-1 bg-blue-100 dark:bg-blue-900/30 text-blue-800 dark:text-blue-300 rounded text-xs">
+                              ${selectedPriceRange[0]} - ${selectedPriceRange[1]}
+                              <button onClick={() => setSelectedPriceRange([...PRICE_RANGE])} className="ml-0.5 text-blue-600 hover:text-blue-800 dark:text-blue-400 dark:hover:text-blue-200">
+                                <AsyncLucideIcon name="X" className="h-2.5 w-2.5 sm:h-3 sm:w-3" />
+                              </button>
+                            </div>
+                          )}
+                          {onSaleOnly && (
+                            <div className="inline-flex items-center gap-1 px-2 py-1 bg-orange-100 dark:bg-orange-900/30 text-orange-800 dark:text-orange-300 rounded text-xs">
+                              On Sale
+                              <button onClick={() => setOnSaleOnly(false)} className="ml-0.5 text-orange-600 hover:text-orange-800 dark:text-orange-400 dark:hover:text-orange-200">
+                                <AsyncLucideIcon name="X" className="h-2.5 w-2.5 sm:h-3 sm:w-3" />
+                              </button>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    )}
                   </div>
 
-                  <div className="pt-2">
-                    <label className="flex items-center gap-2 cursor-pointer">
-                      <input
-                        type="checkbox"
-                        checked={onSaleOnly}
-                        onChange={(e: ChangeEvent<HTMLInputElement>) => setOnSaleOnly(e.target.checked)}
-                        className="w-4 h-4 text-blue-600 bg-gray-100 border-gray-300 rounded focus:ring-blue-500 dark:focus:ring-blue-600 dark:bg-gray-700 dark:border-gray-600"
-                      />
-                      <span className="text-sm text-gray-700 dark:text-gray-300">On sale only</span>
-                    </label>
-                  </div>
-                </div>
-
-                {/* Active Filters Pills */}
-                {activeFilterCount > 0 && (
-                  <div className="pt-4 border-t border-gray-200 dark:border-gray-800">
-                    <p className="text-xs font-medium text-gray-700 dark:text-gray-300 mb-2">Active filters:</p>
-                    <div className="flex flex-wrap gap-1.5">
-                      {selectedShopName.length > 0 && (
-                        <div className="inline-flex items-center gap-1 px-2 py-1 bg-blue-100 dark:bg-blue-900/30 text-blue-800 dark:text-blue-300 rounded text-xs">
-                          Shops ({selectedShopName.length})
-                          <button onClick={() => setSelectedShopName([])} className="ml-0.5 text-blue-600 hover:text-blue-800 dark:text-blue-400 dark:hover:text-blue-200">
-                            <AsyncLucideIcon name="X" className="h-2.5 w-2.5 sm:h-3 sm:w-3" />
-                          </button>
-                        </div>
-                      )}
-                      {selectedSizeGroups.length > 0 && (
-                        <div className="inline-flex items-center gap-1 px-2 py-1 bg-blue-100 dark:bg-blue-900/30 text-blue-800 dark:text-blue-300 rounded text-xs">
-                          Sizes ({selectedSizeGroups.length})
-                          <button onClick={() => setSelectedSizeGroups([])} className="ml-0.5 text-blue-600 hover:text-blue-800 dark:text-blue-400 dark:hover:text-blue-200">
-                            <AsyncLucideIcon name="X" className="h-2.5 w-2.5 sm:h-3 sm:w-3" />
-                          </button>
-                        </div>
-                      )}
-                      {selectedGroupedTypes.length > 0 && (
-                        <div className="inline-flex items-center gap-1 px-2 py-1 bg-blue-100 dark:bg-blue-900/30 text-blue-800 dark:text-blue-300 rounded text-xs">
-                          Types ({selectedGroupedTypes.length})
-                          <button onClick={() => setSelectedGroupedTypes([])} className="ml-0.5 text-blue-600 hover:text-blue-800 dark:text-blue-400 dark:hover:text-blue-200">
-                            <AsyncLucideIcon name="X" className="h-2.5 w-2.5 sm:h-3 sm:w-3" />
-                          </button>
-                        </div>
-                      )}
-                      {selectedTopLevelCategories.length > 0 && (
-                        <div className="inline-flex items-center gap-1 px-2 py-1 bg-blue-100 dark:bg-blue-900/30 text-blue-800 dark:text-blue-300 rounded text-xs">
-                          Categories ({selectedTopLevelCategories.length})
-                          <button onClick={() => setSelectedTopLevelCategories([])} className="ml-0.5 text-blue-600 hover:text-blue-800 dark:text-blue-400 dark:hover:text-blue-200">
-                            <AsyncLucideIcon name="X" className="h-2.5 w-2.5 sm:h-3 sm:w-3" />
-                          </button>
-                        </div>
-                      )}
-                      {selectedGenderAges.length > 0 && (
-                        <div className="inline-flex items-center gap-1 px-2 py-1 bg-blue-100 dark:bg-blue-900/30 text-blue-800 dark:text-blue-300 rounded text-xs">
-                          Gender/Age ({selectedGenderAges.length})
-                          <button onClick={() => setSelectedGenderAges([])} className="ml-0.5 text-blue-600 hover:text-blue-800 dark:text-blue-400 dark:hover:text-blue-200">
-                            <AsyncLucideIcon name="X" className="h-2.5 w-2.5 sm:h-3 sm:w-3" />
-                          </button>
-                        </div>
-                      )}
-                      {(selectedPriceRange[0] !== PRICE_RANGE[0] || selectedPriceRange[1] !== PRICE_RANGE[1]) && (
-                        <div className="inline-flex items-center gap-1 px-2 py-1 bg-blue-100 dark:bg-blue-900/30 text-blue-800 dark:text-blue-300 rounded text-xs">
-                          ${selectedPriceRange[0]} - ${selectedPriceRange[1]}
-                          <button onClick={() => setSelectedPriceRange([...PRICE_RANGE])} className="ml-0.5 text-blue-600 hover:text-blue-800 dark:text-blue-400 dark:hover:text-blue-200">
-                            <AsyncLucideIcon name="X" className="h-2.5 w-2.5 sm:h-3 sm:w-3" />
-                          </button>
-                        </div>
-                      )}
-                      {onSaleOnly && (
-                        <div className="inline-flex items-center gap-1 px-2 py-1 bg-orange-100 dark:bg-orange-900/30 text-orange-800 dark:text-orange-300 rounded text-xs">
-                          On Sale
-                          <button onClick={() => setOnSaleOnly(false)} className="ml-0.5 text-orange-600 hover:text-orange-800 dark:text-orange-400 dark:hover:text-orange-200">
-                            <AsyncLucideIcon name="X" className="h-2.5 w-2.5 sm:h-3 sm:w-3" />
-                          </button>
-                        </div>
-                      )}
+                  {/* Sidebar Footer */}
+                  <div className="mt-8 pt-6 border-t border-gray-200 dark:border-gray-800 mb-8 lg:mb-0">
+                    <div className="flex flex-wrap gap-x-4 gap-y-2 text-xs text-gray-500 dark:text-gray-400">
+                      <Link to="/about" className="hover:text-gray-900 dark:hover:text-gray-200">About</Link>
+                      <Link to="/contact" className="hover:text-gray-900 dark:hover:text-gray-200">Contact</Link>
+                      <Link to="/privacy" className="hover:text-gray-900 dark:hover:text-gray-200">Privacy</Link>
+                      <Link to="/terms" className="hover:text-gray-900 dark:hover:text-gray-200">Terms</Link>
                     </div>
+                    <p className="mt-4 text-xs text-gray-400 dark:text-gray-600">
+                      © {new Date().getFullYear()} Curated Canada
+                    </p>
                   </div>
-                )}
-              </div>
-
-              {/* Sidebar Footer */}
-              <div className="mt-8 pt-6 border-t border-gray-200 dark:border-gray-800">
-                <div className="flex flex-wrap gap-x-4 gap-y-2 text-xs text-gray-500 dark:text-gray-400">
-                  <Link to="/about" className="hover:text-gray-900 dark:hover:text-gray-200">About</Link>
-                  <Link to="/contact" className="hover:text-gray-900 dark:hover:text-gray-200">Contact</Link>
-                  <Link to="/privacy" className="hover:text-gray-900 dark:hover:text-gray-200">Privacy</Link>
-                  <Link to="/terms" className="hover:text-gray-900 dark:hover:text-gray-200">Terms</Link>
-                </div>
-                <p className="mt-4 text-xs text-gray-400 dark:text-gray-600">
-                  © {new Date().getFullYear()} Curated Canada
-                </p>
-              </div>
+               </div>
             </div>
+          </div>
+          </div>
           </div>
 
           {/* Products Grid */}
