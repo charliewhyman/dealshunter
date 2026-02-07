@@ -261,6 +261,7 @@ function ProductPage() {
                         sizes="(max-width: 768px) 100vw, 50vw"
                         loading="eager"
                         decoding="async"
+                        fetchPriority="high"
                         width={dbWidth}
                         height={dbHeight}
                         alt={dbAlt || product?.title || 'Product image'}
