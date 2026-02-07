@@ -54,6 +54,14 @@ export const apiClient = {
         return response.json();
     },
 
+    async fetchProduct(id: string | number): Promise<ProductWithDetails> {
+        const response = await fetch(`${API_BASE}/products/${id}`);
+        if (!response.ok) {
+            throw new Error(`Failed to fetch product: ${await response.text()}`);
+        }
+        return response.json();
+    },
+
     async fetchPricing(ids: Array<number | string>): Promise<Array<{ product_id: number, price: string | number | null, compare_at_price: string | number | null }>> {
         const uniqueIds = Array.from(new Set(ids.map(id => String(id))));
         if (uniqueIds.length === 0) return [];
