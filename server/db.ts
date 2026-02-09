@@ -11,14 +11,38 @@ dotenv.config({ path: path.resolve(process.cwd(), '.env') });
 
 
 
-const connectionString = process.env.VITE_DATABASE_URL || process.env.VITE_POSTGREST_URL || process.env.DATABASE_URL;
 
-if (!connectionString) {
-    throw new Error('Database connection string is not set. Please set VITE_DATABASE_URL, VITE_POSTGREST_URL, or DATABASE_URL in your .env file.');
-}
+let cachedDb: Kysely<Database> | null = null;
 
-export const db = new Kysely<Database>({
-    dialect: new NeonDialect({
-        neon: neon(connectionString),
-    }),
+export const getDb = (connectionUrl: string) => {
+    if (cachedDb) return cachedDb;
+
+    cachedDb = new Kysely<Database>({
+        dialect: new NeonDialect({
+            neon: neon(connectionUrl),
+        }),
+    });
+
+    return cachedDb;
+};
+
+export const initDb = (url: string) => {
+    getDb(url);
+};
+
+// For backward compatibility / local dev where process.env is available
+export const db = new Proxy({} as Kysely<Database>, {
+    get: (_target, prop) => {
+        // If initialized explicitly (e.g. by Cloudflare middleware), use it
+        if (cachedDb) return (cachedDb as any)[prop];
+
+        // Fallback to process.env for Node.js
+        const url = process.env.VITE_DATABASE_URL || process.env.VITE_POSTGREST_URL || process.env.DATABASE_URL;
+        if (!url) {
+            throw new Error('Database connection string is not set.');
+        }
+        const instance = getDb(url);
+        return (instance as any)[prop];
+    }
 });
+
