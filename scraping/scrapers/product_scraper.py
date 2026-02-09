@@ -34,7 +34,7 @@ class ProductScraper(BaseScraper):
         self.inc_max_requests = 30  # Reduced concurrency for incremental
         self.batch_size = 50  # Smaller batches for incremental
         
-        # OOS filtering (NEW)
+        # OOS filtering
         self.skip_oos_in_incremental = True  # Skip out-of-stock products
         self.skip_oos_in_full = False  # Keep OOS in full scrapes for complete dataset
         
