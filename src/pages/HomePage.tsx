@@ -706,7 +706,7 @@ export function HomePage({ categoryConfig }: { categoryConfig?: CategoryConfig }
 
       // Meta Description
       let metaDesc = document.querySelector('meta[name="description"]');
-      let originalDesc = metaDesc?.getAttribute('content') || '';
+      const originalDesc = metaDesc?.getAttribute('content') || '';
       if (!metaDesc) {
         metaDesc = document.createElement('meta');
         metaDesc.setAttribute('name', 'description');

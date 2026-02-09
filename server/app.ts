@@ -3,14 +3,20 @@ import { cors } from 'hono/cors';
 import { db, initDb } from './db';
 import { sql } from 'kysely';
 
-export const app = new Hono<{ Bindings: { VITE_DATABASE_URL: string } }>();
+export const app = new Hono<{ Bindings: { VITE_DATABASE_URL: string; DATABASE_URL?: string } }>();
 
 app.use('/*', cors());
 
 // Middleware to initialize DB from Cloudflare env if available
 app.use('*', async (c, next) => {
-    if (c.env?.VITE_DATABASE_URL) {
-        initDb(c.env.VITE_DATABASE_URL);
+    try {
+        if (c.env?.VITE_DATABASE_URL) {
+            initDb(c.env.VITE_DATABASE_URL);
+        } else if (c.env?.DATABASE_URL) {
+            initDb(c.env.DATABASE_URL);
+        }
+    } catch (e) {
+        console.error('Failed to init DB:', e);
     }
     await next();
 });
@@ -133,15 +139,21 @@ app.get('/api/products', async (c) => {
 
         const products = await dbQuery.offset(offset).limit(limit).execute();
         return c.json(products);
-
-    } catch (error) {
+    } catch (error: any) {
         console.error('Error fetching products:', error);
-        return c.json({ error: 'Internal Server Error' }, 500);
+        return c.json({
+            error: 'Internal Server Error',
+            details: error.message,
+            stack: error.stack,
+            env_check: c.env ? 'Env available' : 'Env missing',
+            has_db_url: !!c.env?.VITE_DATABASE_URL
+        }, 500);
     }
 });
 
 app.get('/api/products/:id', async (c) => {
     try {
+
         const id = c.req.param('id');
         const product = await db
             .selectFrom('products_with_details_core')
@@ -153,14 +165,19 @@ app.get('/api/products/:id', async (c) => {
             return c.json({ error: 'Product not found' }, 404);
         }
         return c.json(product);
-    } catch (error) {
+    } catch (error: any) {
         console.error('Error fetching product:', error);
-        return c.json({ error: 'Internal Server Error' }, 500);
+        return c.json({
+            error: 'Internal Server Error',
+            details: error.message,
+            stack: error.stack
+        }, 500);
     }
 });
 
 app.get('/api/pricing', async (c) => {
     try {
+
         const ids = c.req.query('ids');
         if (!ids) return c.json([]);
 
@@ -174,9 +191,13 @@ app.get('/api/pricing', async (c) => {
             .execute();
 
         return c.json(prices);
-    } catch (error) {
+    } catch (error: any) {
         console.error('Error fetching pricing:', error);
-        return c.json({ error: 'Internal Server Error' }, 500);
+        return c.json({
+            error: 'Internal Server Error',
+            details: error.message,
+            stack: error.stack
+        }, 500);
     }
 });
 
@@ -188,8 +209,14 @@ app.get('/api/shops', async (c) => {
             .orderBy('shop_name')
             .execute();
         return c.json(data);
-    } catch (error) {
-        return c.json({ error: 'Internal Server Error' }, 500);
+    } catch (error: any) {
+        return c.json({
+            error: 'Internal Server Error',
+            details: error.message,
+            stack: error.stack,
+            // Debug info
+            has_db_url: !!c.env?.VITE_DATABASE_URL
+        }, 500);
     }
 });
 
@@ -197,8 +224,12 @@ app.get('/api/sizes', async (c) => {
     try {
         const data = await db.selectFrom('distinct_size_groups').select('size_group').execute();
         return c.json(data);
-    } catch (error) {
-        return c.json({ error: 'Internal Server Error' }, 500);
+    } catch (error: any) {
+        return c.json({
+            error: 'Internal Server Error',
+            details: error.message,
+            stack: error.stack
+        }, 500);
     }
 });
 
@@ -206,8 +237,12 @@ app.get('/api/types', async (c) => {
     try {
         const data = await db.selectFrom('distinct_grouped_types').select('grouped_product_type').execute();
         return c.json(data);
-    } catch (error) {
-        return c.json({ error: 'Internal Server Error' }, 500);
+    } catch (error: any) {
+        return c.json({
+            error: 'Internal Server Error',
+            details: error.message,
+            stack: error.stack
+        }, 500);
     }
 });
 
@@ -215,8 +250,12 @@ app.get('/api/categories', async (c) => {
     try {
         const data = await db.selectFrom('distinct_top_level_categories').select('top_level_category').execute();
         return c.json(data);
-    } catch (error) {
-        return c.json({ error: 'Internal Server Error' }, 500);
+    } catch (error: any) {
+        return c.json({
+            error: 'Internal Server Error',
+            details: error.message,
+            stack: error.stack
+        }, 500);
     }
 });
 
@@ -224,7 +263,12 @@ app.get('/api/genders', async (c) => {
     try {
         const data = await db.selectFrom('distinct_gender_ages').select('gender_age').execute();
         return c.json(data);
-    } catch (error) {
-        return c.json({ error: 'Internal Server Error' }, 500);
+    } catch (error: any) {
+        return c.json({
+            error: 'Internal Server Error',
+            details: error.message,
+            stack: error.stack
+        }, 500);
     }
 });
+
