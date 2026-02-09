@@ -3,11 +3,9 @@ import { Kysely } from 'kysely';
 import { NeonDialect } from 'kysely-neon';
 import { neon, neonConfig } from '@neondatabase/serverless';
 import { Database } from '../src/lib/types';
-import dotenv from 'dotenv';
-import path from 'path';
-
 // Load environment variables
-dotenv.config({ path: path.resolve(process.cwd(), '.env') });
+// dotenv is loaded by the runner (local) or platform (Cloudflare)
+// dotenv.config({ path: path.resolve(process.cwd(), '.env') });
 
 
 
