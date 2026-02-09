@@ -25,6 +25,7 @@ export const getDb = (connectionUrl: string) => {
 };
 
 export const initDb = (url: string) => {
+    console.log('initDb called with URL length:', url?.length);
     getDb(url);
 };
 

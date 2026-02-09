@@ -11,18 +11,29 @@ app.use('/*', cors());
 app.use('*', async (c, next) => {
     try {
         if (c.env?.VITE_DATABASE_URL) {
+            console.log('Initializing DB with VITE_DATABASE_URL');
             initDb(c.env.VITE_DATABASE_URL);
         } else if (c.env?.DATABASE_URL) {
+            console.log('Initializing DB with DATABASE_URL');
             initDb(c.env.DATABASE_URL);
+        } else {
+            console.log('No database URL found in env');
         }
-    } catch (e) {
+    } catch (e: any) {
         console.error('Failed to init DB:', e);
+        c.set('initDbError', e.message); // Store error for debugging
     }
     await next();
 });
 
 // Types
 type SortOrder = 'price_asc' | 'price_desc' | 'discount_desc';
+
+declare module 'hono' {
+    interface ContextVariableMap {
+        initDbError: string;
+    }
+}
 
 interface FilterOptions {
     selectedShopName?: string[];
@@ -146,7 +157,8 @@ app.get('/api/products', async (c) => {
             details: error.message,
             stack: error.stack,
             env_check: c.env ? 'Env available' : 'Env missing',
-            has_db_url: !!c.env?.VITE_DATABASE_URL
+            has_db_url: !!c.env?.VITE_DATABASE_URL,
+            init_db_error: c.get('initDbError'),
         }, 500);
     }
 });
