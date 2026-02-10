@@ -33,6 +33,8 @@ export const Header = ({ searchQuery, handleSearchSubmit }: HeaderProps) => {
           >
             <input
               type="text"
+              id="search-input"
+              name="search"
               placeholder="Search..."
               value={localSearchQuery}
               onChange={(e) => setLocalSearchQuery(e.target.value)}

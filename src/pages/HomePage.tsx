@@ -1201,20 +1201,22 @@ export function HomePage({ categoryConfig }: { categoryConfig?: CategoryConfig }
 
                       {/* Price Range Filter - Updated */}
                       <div>
-                        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                        <div className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
                           Price Range
-                        </label>
+                        </div>
                         <div className="space-y-3">
                           {/* Price Input Boxes */}
                           <div className="flex items-center justify-between gap-3">
                             <div className="flex-1">
-                              <label className="sr-only">Minimum price</label>
+                              <label htmlFor="price-min" className="sr-only">Minimum price</label>
                               <div className="relative">
                                 <div className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500 dark:text-gray-400">
                                   $
                                 </div>
                                 <input
                                   type="number"
+                                  id="price-min"
+                                  name="min-price"
                                   min={ABS_MIN_PRICE}
                                   max={ABS_MAX_PRICE}
                                   step="1"
@@ -1229,13 +1231,15 @@ export function HomePage({ categoryConfig }: { categoryConfig?: CategoryConfig }
                             </div>
                             <span className="text-gray-500 dark:text-gray-400">to</span>
                             <div className="flex-1">
-                              <label className="sr-only">Maximum price</label>
+                              <label htmlFor="price-max" className="sr-only">Maximum price</label>
                               <div className="relative">
                                 <div className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500 dark:text-gray-400">
                                   $
                                 </div>
                                 <input
                                   type="number"
+                                  id="price-max"
+                                  name="max-price"
                                   min={ABS_MIN_PRICE}
                                   max={ABS_MAX_PRICE}
                                   step="1"
