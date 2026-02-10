@@ -21,6 +21,12 @@ export const app = new Hono<{
 
 app.use('/*', cors());
 
+// Debug logger
+app.use('*', async (c, next) => {
+    console.log(`[${c.req.method}] ${c.req.path}`);
+    await next();
+});
+
 // Types
 type SortOrder = 'price_asc' | 'price_desc' | 'discount_desc';
 
@@ -357,6 +363,7 @@ app.get('/api/genders', async (c) => {
 
 // Manual static asset serving to ensure correct MIME types
 app.get('/assets/*', async (c) => {
+    console.log(`Matched asset handler: ${c.req.path}`);
     try {
         const filePath = c.req.path.replace('/assets/', '');
         const extraPath = c.req.path.split('/assets/')[1];
