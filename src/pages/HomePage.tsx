@@ -1140,10 +1140,11 @@ export function HomePage({ categoryConfig }: { categoryConfig?: CategoryConfig }
                     {/* Filter Dropdowns */}
                     <div className="space-y-3">
                       <div>
-                        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">
+                        <label htmlFor="filter-shop" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">
                           Shop
                         </label>
                         <MultiSelectDropdown
+                          id="filter-shop"
                           options={shopOptions}
                           selected={selectedShopName}
                           onChange={(val) => updateFilter('shop', val)}
@@ -1152,10 +1153,11 @@ export function HomePage({ categoryConfig }: { categoryConfig?: CategoryConfig }
                       </div>
 
                       <div>
-                        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">
+                        <label htmlFor="filter-size" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">
                           Size
                         </label>
                         <MultiSelectDropdown
+                          id="filter-size"
                           options={sizeOptions}
                           selected={selectedSizeGroups}
                           onChange={(val) => updateFilter('size', val)}
@@ -1164,10 +1166,11 @@ export function HomePage({ categoryConfig }: { categoryConfig?: CategoryConfig }
                       </div>
 
                       <div>
-                        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">
+                        <label htmlFor="filter-type" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">
                           Type
                         </label>
                         <MultiSelectDropdown
+                          id="filter-type"
                           options={typeOptions}
                           selected={selectedGroupedTypes}
                           onChange={(val) => updateFilter('type', val)}
@@ -1176,10 +1179,11 @@ export function HomePage({ categoryConfig }: { categoryConfig?: CategoryConfig }
                       </div>
 
                       <div>
-                        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">
+                        <label htmlFor="filter-category" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">
                           Category
                         </label>
                         <MultiSelectDropdown
+                          id="filter-category"
                           options={categoryOptions}
                           selected={selectedTopLevelCategories}
                           onChange={(val) => updateFilter('category', val)}
@@ -1188,10 +1192,11 @@ export function HomePage({ categoryConfig }: { categoryConfig?: CategoryConfig }
                       </div>
 
                       <div>
-                        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">
+                        <label htmlFor="filter-gender" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">
                           Gender/Age
                         </label>
                         <MultiSelectDropdown
+                          id="filter-gender"
                           options={genderOptions}
                           selected={selectedGenderAges}
                           onChange={(val) => updateFilter('gender', val)}
@@ -1403,6 +1408,7 @@ export function HomePage({ categoryConfig }: { categoryConfig?: CategoryConfig }
             <div className="mb-3 flex items-center justify-end sm:mb-4">
               <div className="w-40 sm:w-48">
                 <SingleSelectDropdown 
+                  id="sort-products"
                   options={sortOptions} 
                   selected={sortOrder} 
                   onChange={handleSortChange} 

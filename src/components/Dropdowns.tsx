@@ -14,6 +14,7 @@ interface MultiSelectDropdownProps {
   placeholder?: string;
   isLoading?: boolean;
   label?: string;
+  id?: string;
 }
 
 interface SingleSelectDropdownProps {
@@ -22,6 +23,7 @@ interface SingleSelectDropdownProps {
   onChange: (value: string) => void;
   placeholder?: string;
   className?: string;
+  id?: string;
 }
 
 // Multi-select dropdown for shops and sizes
@@ -31,6 +33,7 @@ const MultiSelectDropdown: React.FC<MultiSelectDropdownProps> = ({
   onChange, 
   placeholder = "Select options",
   isLoading = false,
+  id,
 }) => {
   const [isOpen, setIsOpen] = useState<boolean>(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
@@ -63,9 +66,13 @@ const MultiSelectDropdown: React.FC<MultiSelectDropdownProps> = ({
 
   return (
     <div ref={dropdownRef} className="relative">
-      <div
+      <button
+        type="button"
+        id={id}
+        aria-haspopup="listbox"
+        aria-expanded={isOpen}
         onClick={() => setIsOpen(!isOpen)}
-        className="w-full min-h-[36px] px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 cursor-pointer flex items-center justify-between hover:border-gray-400 dark:hover:border-gray-500 transition-colors"
+        className="w-full min-h-[36px] px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 cursor-pointer flex items-center justify-between hover:border-gray-400 dark:hover:border-gray-500 transition-colors text-left"
       >
         <div className="flex-1 flex flex-wrap gap-1">
           {selected.length > 0 ? (
@@ -83,17 +90,27 @@ const MultiSelectDropdown: React.FC<MultiSelectDropdownProps> = ({
                 <span
                   key={item}
                   className="inline-flex items-center gap-1 px-2 py-1 bg-gray-100 dark:bg-gray-700 text-gray-800 dark:text-gray-200 text-xs rounded-md"
+                  onClick={(e) => e.stopPropagation()} // Prevent opening dropdown when clicking tag
                 >
                   {displayLabel}
-                  <button
+                  <div
+                    role="button"
+                    tabIndex={0}
                     onClick={(e) => {
                       e.stopPropagation();
                       removeItem(item);
                     }}
-                    className="hover:text-red-500 dark:hover:text-red-400"
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter' || e.key === ' ') {
+                        e.stopPropagation();
+                        removeItem(item);
+                      }
+                    }}
+                    className="hover:text-red-500 dark:hover:text-red-400 cursor-pointer"
+                    aria-label={`Remove ${displayLabel}`}
                   >
                     <X className="h-3 w-3" />
-                  </button>
+                  </div>
                 </span>
               );
             })
@@ -108,10 +125,10 @@ const MultiSelectDropdown: React.FC<MultiSelectDropdownProps> = ({
             isOpen ? 'rotate-180' : ''
           }`}
         />
-      </div>
+      </button>
 
       {isOpen && (
-        <div className="absolute top-full left-0 right-0 mt-1 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-lg shadow-lg z-[60] max-h-60 overflow-y-auto">
+        <div className="absolute top-full left-0 right-0 mt-1 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-lg shadow-lg z-[60] max-h-60 overflow-y-auto" role="listbox">
           {options.length > 0 ? (
             options.map((option) => {
               const value = typeof option === 'string' ? option : option.value;
@@ -121,6 +138,8 @@ const MultiSelectDropdown: React.FC<MultiSelectDropdownProps> = ({
               return (
                 <div
                   key={value}
+                  role="option"
+                  aria-selected={isSelected}
                   onClick={() => handleOptionToggle(value)}
                   className={`px-3 py-2 cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors ${
                     isSelected ? 'bg-blue-50 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300' : 'text-gray-900 dark:text-gray-100'
@@ -153,6 +172,7 @@ const SingleSelectDropdown: React.FC<SingleSelectDropdownProps> = ({
   onChange, 
   placeholder = "Select option",
   className,
+  id,
 }) => {
   const [isOpen, setIsOpen] = useState<boolean>(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
@@ -181,9 +201,13 @@ const SingleSelectDropdown: React.FC<SingleSelectDropdownProps> = ({
 
   return (
     <div ref={dropdownRef} className="relative">
-      <div
+      <button
+        type="button"
+        id={id}
+        aria-haspopup="listbox"
+        aria-expanded={isOpen}
         onClick={() => setIsOpen(!isOpen)}
-        className="w-full min-h-[34px] px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 cursor-pointer flex items-center justify-between hover:border-gray-400 dark:hover:border-gray-500 transition-colors"
+        className="w-full min-h-[34px] px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 cursor-pointer flex items-center justify-between hover:border-gray-400 dark:hover:border-gray-500 transition-colors text-left"
       >
         <div className="flex items-center gap-2 min-w-0 flex-1">
           <ChevronsUpDown className="h-4 w-4 text-gray-500 dark:text-gray-400" />
@@ -196,13 +220,15 @@ const SingleSelectDropdown: React.FC<SingleSelectDropdownProps> = ({
             isOpen ? 'rotate-180' : ''
           }`}
         />
-      </div>
+      </button>
 
       {isOpen && (
-        <div className="absolute top-full left-0 right-0 mt-1 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-lg shadow-lg z-[60] max-h-60 overflow-y-auto">
+        <div className="absolute top-full left-0 right-0 mt-1 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-lg shadow-lg z-[60] max-h-60 overflow-y-auto" role="listbox">
           {options.map((option) => (
             <div
               key={option.value}
+              role="option"
+              aria-selected={selected === option.value}
               onClick={() => handleOptionSelect(option.value)}
               className={`px-3 py-2 cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors text-sm ${
                 selected === option.value 
