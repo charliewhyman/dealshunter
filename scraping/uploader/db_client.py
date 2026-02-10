@@ -41,6 +41,21 @@ class DatabaseClient:
         if not self.connection_string:
             raise ValueError("VITE_DATABASE_URL or DATABASE_URL not set")
 
+        # Clean connection string (handle "psql postgres://..." format from GitHub Actions)
+        cleaned_url = self.connection_string.strip()
+
+        # Remove "psql" prefix if present (case insensitive)
+        if cleaned_url.lower().startswith("psql"):
+            cleaned_url = cleaned_url[4:].strip()
+
+        # Remove wrapping quotes if present
+        if (cleaned_url.startswith("'") and cleaned_url.endswith("'")) or (
+            cleaned_url.startswith('"') and cleaned_url.endswith('"')
+        ):
+            cleaned_url = cleaned_url[1:-1].strip()
+
+        self.connection_string = cleaned_url
+
         # Initialize connection pool if not already exists
         if DatabaseClient._pool is None:
             try:
