@@ -6,6 +6,7 @@ import { sql, Kysely } from 'kysely';
 import { Database } from '../src/lib/types';
 import { serveStatic } from '@hono/node-server/serve-static';
 import { readFile } from 'fs/promises';
+import path from 'path';
 
 export const app = new Hono<{
     Bindings: {
@@ -354,10 +355,38 @@ app.get('/api/genders', async (c) => {
 // import { serveStatic } from '@hono/node-server/serve-static';  <-- Remove this
 // import { readFile } from 'fs/promises';  <-- Remove this
 
-// Serve static assets
-app.use('/assets/*', serveStatic({ root: './dist' }));
-app.use('/vite.svg', serveStatic({ root: './dist' })); // Explicitly serve known root files if needed, or let generic handler catch them if configured correctly.
-// Actually, serveStatic with root './dist' on '/*' might be better but could conflict with API?
+// Manual static asset serving to ensure correct MIME types
+app.get('/assets/*', async (c) => {
+    try {
+        const filePath = c.req.path.replace('/assets/', '');
+        const extraPath = c.req.path.split('/assets/')[1];
+        if (!extraPath) return c.text('Not Found', 404);
+
+        const fullPath = path.join('./dist/assets', extraPath);
+
+        // Basic extension check for Content-Type
+        let contentType = 'application/octet-stream';
+        if (fullPath.endsWith('.js')) {
+            contentType = 'application/javascript';
+        } else if (fullPath.endsWith('.css')) {
+            contentType = 'text/css';
+        } else if (fullPath.endsWith('.png')) {
+            contentType = 'image/png';
+        } else if (fullPath.endsWith('.jpg') || fullPath.endsWith('.jpeg')) {
+            contentType = 'image/jpeg';
+        } else if (fullPath.endsWith('.svg')) {
+            contentType = 'image/svg+xml';
+        }
+
+        const content = await readFile(fullPath);
+        return c.body(content, 200, { 'Content-Type': contentType });
+    } catch (e) {
+        console.error('Failed to serve asset:', e);
+        return c.text('Not Found', 404);
+    }
+});
+
+app.use('/vite.svg', serveStatic({ root: './dist' }));
 // Best practice: 
 // 1. API routes (defined above)
 // 2. Specific static assets
