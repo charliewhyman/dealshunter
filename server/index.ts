@@ -2,7 +2,6 @@
 import { serve } from '@hono/node-server';
 import { app } from './app';
 import dotenv from 'dotenv';
-import path from 'path';
 
 // Load .env explicitly if needed, though dotenv.config() typically finds it in cwd
 dotenv.config();

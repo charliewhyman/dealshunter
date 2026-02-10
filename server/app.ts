@@ -351,8 +351,3 @@ app.get('/api/genders', async (c) => {
         }, 500);
     }
 });
-
-
-// ... existing code ...
-
-
