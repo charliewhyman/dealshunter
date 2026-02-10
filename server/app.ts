@@ -1,23 +1,50 @@
+
 import { Hono } from 'hono';
 import { cors } from 'hono/cors';
-import { db, initDb } from './db';
-import { sql } from 'kysely';
+import { getDb } from './db';
+import { sql, Kysely } from 'kysely';
+import { Database } from '../src/lib/types';
 
-export const app = new Hono<{ Bindings: { VITE_DATABASE_URL: string; DATABASE_URL?: string } }>();
+export const app = new Hono<{
+    Bindings: {
+        VITE_DATABASE_URL: string;
+        DATABASE_URL?: string
+    },
+    Variables: {
+        db: Kysely<Database>;
+        initDbError: string;
+    }
+}>();
 
 app.use('/*', cors());
+
+// Types
+type SortOrder = 'price_asc' | 'price_desc' | 'discount_desc';
+
+declare module 'hono' {
+    interface ContextVariableMap {
+        initDbError: string;
+        db: Kysely<Database>;
+    }
+}
 
 // Middleware to initialize DB from Cloudflare env if available
 app.use('*', async (c, next) => {
     try {
+        let connectionString: string | undefined;
+
         if (c.env?.VITE_DATABASE_URL) {
-            console.log('Initializing DB with VITE_DATABASE_URL');
-            initDb(c.env.VITE_DATABASE_URL);
+            connectionString = c.env.VITE_DATABASE_URL;
         } else if (c.env?.DATABASE_URL) {
-            console.log('Initializing DB with DATABASE_URL');
-            initDb(c.env.DATABASE_URL);
+            connectionString = c.env.DATABASE_URL;
+        }
+
+        if (connectionString) {
+            const db = getDb(connectionString);
+            c.set('db', db);
         } else {
             console.log('No database URL found in env');
+            c.set('initDbError', 'No database URL found');
         }
     } catch (e: any) {
         console.error('Failed to init DB:', e);
@@ -26,14 +53,6 @@ app.use('*', async (c, next) => {
     await next();
 });
 
-// Types
-type SortOrder = 'price_asc' | 'price_desc' | 'discount_desc';
-
-declare module 'hono' {
-    interface ContextVariableMap {
-        initDbError: string;
-    }
-}
 
 interface FilterOptions {
     selectedShopName?: string[];
@@ -56,6 +75,9 @@ const ABS_MAX_PRICE = 500;
 
 app.get('/api/products', async (c) => {
     try {
+        const db = c.var.db;
+        if (!db) throw new Error('Database not initialized: ' + c.var.initDbError);
+
         const query = c.req.query();
 
         // Parse query params
@@ -165,6 +187,8 @@ app.get('/api/products', async (c) => {
 
 app.get('/api/products/:id', async (c) => {
     try {
+        const db = c.var.db;
+        if (!db) throw new Error('Database not initialized: ' + c.var.initDbError);
 
         const id = c.req.param('id');
         const product = await db
@@ -189,6 +213,8 @@ app.get('/api/products/:id', async (c) => {
 
 app.get('/api/pricing', async (c) => {
     try {
+        const db = c.var.db;
+        if (!db) throw new Error('Database not initialized: ' + c.var.initDbError);
 
         const ids = c.req.query('ids');
         if (!ids) return c.json([]);
@@ -215,6 +241,9 @@ app.get('/api/pricing', async (c) => {
 
 app.get('/api/shops', async (c) => {
     try {
+        const db = c.var.db;
+        if (!db) throw new Error('Database not initialized: ' + c.var.initDbError);
+
         const data = await db
             .selectFrom('shops')
             .select(['id', 'shop_name'])
@@ -234,6 +263,9 @@ app.get('/api/shops', async (c) => {
 
 app.get('/api/sizes', async (c) => {
     try {
+        const db = c.var.db;
+        if (!db) throw new Error('Database not initialized: ' + c.var.initDbError);
+
         const data = await db.selectFrom('distinct_size_groups').select('size_group').execute();
         return c.json(data);
     } catch (error: any) {
@@ -247,6 +279,9 @@ app.get('/api/sizes', async (c) => {
 
 app.get('/api/types', async (c) => {
     try {
+        const db = c.var.db;
+        if (!db) throw new Error('Database not initialized: ' + c.var.initDbError);
+
         const data = await db.selectFrom('distinct_grouped_types').select('grouped_product_type').execute();
         return c.json(data);
     } catch (error: any) {
@@ -260,6 +295,9 @@ app.get('/api/types', async (c) => {
 
 app.get('/api/categories', async (c) => {
     try {
+        const db = c.var.db;
+        if (!db) throw new Error('Database not initialized: ' + c.var.initDbError);
+
         const data = await db.selectFrom('distinct_top_level_categories').select('top_level_category').execute();
         return c.json(data);
     } catch (error: any) {
@@ -273,6 +311,9 @@ app.get('/api/categories', async (c) => {
 
 app.get('/api/genders', async (c) => {
     try {
+        const db = c.var.db;
+        if (!db) throw new Error('Database not initialized: ' + c.var.initDbError);
+
         const data = await db.selectFrom('distinct_gender_ages').select('gender_age').execute();
         return c.json(data);
     } catch (error: any) {
