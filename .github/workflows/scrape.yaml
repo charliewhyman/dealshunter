@@ -80,6 +80,13 @@ jobs:
             echo "Running MANUAL SCRAPE with custom parameters"
             echo "skip_shops=${{ github.event.inputs.skip_shops || 'false' }}" >> $GITHUB_OUTPUT
             echo "scrape_type=manual" >> $GITHUB_OUTPUT
+            # Add defaults for missing variables in manual mode to prevent syntax errors
+            echo "shop_update_days=0" >> $GITHUB_OUTPUT
+            echo "max_concurrent=5" >> $GITHUB_OUTPUT
+            echo "batch_size=10" >> $GITHUB_OUTPUT
+            echo "limit_shops=0" >> $GITHUB_OUTPUT
+            echo "full_product_scrape=false" >> $GITHUB_OUTPUT
+            echo "timeout_minutes=360" >> $GITHUB_OUTPUT
           fi
 
       - name: Run scraper
