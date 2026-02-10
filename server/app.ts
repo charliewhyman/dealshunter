@@ -4,6 +4,8 @@ import { cors } from 'hono/cors';
 import { getDb } from './db';
 import { sql, Kysely } from 'kysely';
 import { Database } from '../src/lib/types';
+import { serveStatic } from '@hono/node-server/serve-static';
+import { readFile } from 'fs/promises';
 
 export const app = new Hono<{
     Bindings: {
@@ -345,3 +347,31 @@ app.get('/api/genders', async (c) => {
     }
 });
 
+
+// ... existing code ...
+
+// Static file serving for production (dist)
+// import { serveStatic } from '@hono/node-server/serve-static';  <-- Remove this
+// import { readFile } from 'fs/promises';  <-- Remove this
+
+// Serve static assets
+app.use('/assets/*', serveStatic({ root: './dist' }));
+app.use('/vite.svg', serveStatic({ root: './dist' })); // Explicitly serve known root files if needed, or let generic handler catch them if configured correctly.
+// Actually, serveStatic with root './dist' on '/*' might be better but could conflict with API?
+// Best practice: 
+// 1. API routes (defined above)
+// 2. Specific static assets
+// 3. Fallback to index.html
+
+// Generic static file serving
+app.get('/*', serveStatic({ root: './dist' }));
+
+// SPA Fallback: Serve index.html for any unmatched non-API routes
+app.get('*', async (c) => {
+    try {
+        const indexHtml = await readFile('./dist/index.html', 'utf-8');
+        return c.html(indexHtml);
+    } catch (e) {
+        return c.text('Not Found', 404);
+    }
+});
