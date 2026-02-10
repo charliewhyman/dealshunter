@@ -28,6 +28,21 @@ declare module 'hono' {
     }
 }
 
+// Helper to clean connection string (remove 'psql' command and quotes if present)
+const cleanConnectionString = (url: string): string => {
+    let cleaned = url.trim();
+    // Remove 'psql' prefix if present
+    if (cleaned.startsWith('psql ')) {
+        cleaned = cleaned.substring(5).trim();
+    }
+    // Remove wrapping quotes
+    if ((cleaned.startsWith("'") && cleaned.endsWith("'")) ||
+        (cleaned.startsWith('"') && cleaned.endsWith('"'))) {
+        cleaned = cleaned.substring(1, cleaned.length - 1);
+    }
+    return cleaned;
+};
+
 // Middleware to initialize DB from Cloudflare env if available
 app.use('*', async (c, next) => {
     try {
@@ -40,7 +55,8 @@ app.use('*', async (c, next) => {
         }
 
         if (connectionString) {
-            const db = getDb(connectionString);
+            const cleanedUrl = cleanConnectionString(connectionString);
+            const db = getDb(cleanedUrl);
             c.set('db', db);
         } else {
             console.log('No database URL found in env');
@@ -48,7 +64,11 @@ app.use('*', async (c, next) => {
         }
     } catch (e: any) {
         console.error('Failed to init DB:', e);
-        c.set('initDbError', e.message); // Store error for debugging
+        // Redact sensitive info from error message
+        const safeError = e.message
+            .replace(/postgres:\/\/.*@/, 'postgres://[REDACTED]@')
+            .replace(/postgresql:\/\/.*@/, 'postgresql://[REDACTED]@');
+        c.set('initDbError', safeError); // Store error for debugging
     }
     await next();
 });
