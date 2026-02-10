@@ -4,9 +4,7 @@ import { cors } from 'hono/cors';
 import { getDb } from './db';
 import { sql, Kysely } from 'kysely';
 import { Database } from '../src/lib/types';
-import { serveStatic } from '@hono/node-server/serve-static';
-import { readFile } from 'fs/promises';
-import path from 'path';
+
 
 export const app = new Hono<{
     Bindings: {
@@ -357,57 +355,4 @@ app.get('/api/genders', async (c) => {
 
 // ... existing code ...
 
-// Static file serving for production (dist)
-// import { serveStatic } from '@hono/node-server/serve-static';  <-- Remove this
-// import { readFile } from 'fs/promises';  <-- Remove this
 
-// Manual static asset serving to ensure correct MIME types
-app.get('/assets/*', async (c) => {
-    console.log(`Matched asset handler: ${c.req.path}`);
-    try {
-        const filePath = c.req.path.replace('/assets/', '');
-        const extraPath = c.req.path.split('/assets/')[1];
-        if (!extraPath) return c.text('Not Found', 404);
-
-        const fullPath = path.join('./dist/assets', extraPath);
-
-        // Basic extension check for Content-Type
-        let contentType = 'application/octet-stream';
-        if (fullPath.endsWith('.js')) {
-            contentType = 'application/javascript';
-        } else if (fullPath.endsWith('.css')) {
-            contentType = 'text/css';
-        } else if (fullPath.endsWith('.png')) {
-            contentType = 'image/png';
-        } else if (fullPath.endsWith('.jpg') || fullPath.endsWith('.jpeg')) {
-            contentType = 'image/jpeg';
-        } else if (fullPath.endsWith('.svg')) {
-            contentType = 'image/svg+xml';
-        }
-
-        const content = await readFile(fullPath);
-        return c.body(content, 200, { 'Content-Type': contentType });
-    } catch (e) {
-        console.error('Failed to serve asset:', e);
-        return c.text('Not Found', 404);
-    }
-});
-
-app.use('/vite.svg', serveStatic({ root: './dist' }));
-// Best practice: 
-// 1. API routes (defined above)
-// 2. Specific static assets
-// 3. Fallback to index.html
-
-// Generic static file serving
-app.get('/*', serveStatic({ root: './dist' }));
-
-// SPA Fallback: Serve index.html for any unmatched non-API routes
-app.get('*', async (c) => {
-    try {
-        const indexHtml = await readFile('./dist/index.html', 'utf-8');
-        return c.html(indexHtml);
-    } catch (e) {
-        return c.text('Not Found', 404);
-    }
-});
