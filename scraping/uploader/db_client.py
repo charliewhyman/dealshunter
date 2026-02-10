@@ -66,7 +66,16 @@ class DatabaseClient:
                     self.connection_string,
                     min_size=min_size,
                     max_size=max_size,
-                    kwargs={"row_factory": dict_row, "autocommit": True},
+                    kwargs={
+                        "row_factory": dict_row,
+                        "autocommit": True,
+                        "keepalives": 1,
+                        "keepalives_idle": 30,
+                        "keepalives_interval": 10,
+                        "keepalives_count": 5,
+                        "connect_timeout": 10,
+                    },
+                    check=ConnectionPool.check_connection,
                     open=True,
                 )
                 uploader_logger.info(
@@ -114,6 +123,19 @@ class DatabaseClient:
             except Exception as e:
                 error_msg = str(e)
                 is_last = attempt == max_retries - 1
+
+                # Check for SSL connection closed error which often happens with idle connections
+                is_ssl_error = (
+                    "SSL connection has been closed unexpectedly" in error_msg
+                )
+
+                if is_ssl_error and not is_last:
+                    uploader_logger.warning(
+                        f"Targeted SSL retry for {operation_name} (attempt {attempt + 1}/{max_retries})"
+                    )
+                    # Immediate retry for SSL errors as it might be a stale connection that needs refreshing
+                    time.sleep(0.5)
+                    continue
 
                 if is_last:
                     uploader_logger.error(
