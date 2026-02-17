@@ -136,7 +136,8 @@ app.get('/api/products', async (c) => {
         // Size Groups
         const sizeGroups = filters.selectedSizeGroups?.filter(s => s.trim()) || [];
         if (sizeGroups.length > 0) {
-            dbQuery = dbQuery.where('size_groups', '&&', sizeGroups);
+            // Fix for malformed array literal error with Neon
+            dbQuery = dbQuery.where(sql<boolean>`size_groups && ${sizeGroups}`);
         }
 
         // Grouped Types
