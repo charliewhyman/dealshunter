@@ -294,7 +294,11 @@ app.get('/api/sizes', async (c) => {
         const db = c.var.db;
         if (!db) throw new Error('Database not initialized: ' + c.var.initDbError);
 
-        const data = await db.selectFrom('distinct_size_groups').select('size_group').execute();
+        const data = await db
+            .selectFrom('distinct_size_groups')
+            .select(['size_group', 'sort_order_1'])
+            .orderBy('sort_order_1', 'asc')
+            .execute();
         return c.json(data);
     } catch (error: any) {
         return c.json({
