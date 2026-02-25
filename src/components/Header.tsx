@@ -27,7 +27,7 @@ export const Header = ({ searchQuery, handleSearchSubmit }: HeaderProps) => {
 
           <form
             onSubmit={handleSearchSubmit}
-            className="relative flex-1 max-w-xs sm:max-w-md ml-2 sm:ml-4"
+            className="relative flex flex-1 items-center max-w-xs sm:max-w-md ml-2 sm:ml-4"
             role="search"
             aria-label="Search"
           >
@@ -42,7 +42,7 @@ export const Header = ({ searchQuery, handleSearchSubmit }: HeaderProps) => {
             />
             <button
               type="submit"
-              className="absolute inset-y-0 right-0 px-3 flex items-center text-gray-500 dark:text-gray-400 hover:text-blue-600 dark:hover:text-blue-400 transition-colors"
+              className="absolute inset-y-0 right-0 px-3 bg-transparent border-none hover:border-transparent hover:bg-transparent focus:outline-none flex items-center text-gray-500 dark:text-gray-400 hover:text-blue-600 dark:hover:text-blue-400 transition-colors"
               aria-label="Submit search"
             >
               <AsyncLucideIcon name="Search" className="h-4 w-4" />

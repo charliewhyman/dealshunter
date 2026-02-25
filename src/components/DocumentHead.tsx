@@ -12,7 +12,7 @@ export function DocumentHead({
   title = 'Curated Canada | Discover Best Deals & Products Across Canadian Retailers',
   description = 'Discover the best deals and curated products in Canada. Find discounts, compare prices, and shop smart.',
   canonical = 'https://curatedcanada.ca',
-  ogImage = 'https://curatedcanada.ca/tag.svg'
+  ogImage = 'https://curatedcanada.ca/og.png'
 }: DocumentHeadProps) {
   // Update document title
   React.useEffect(() => {
