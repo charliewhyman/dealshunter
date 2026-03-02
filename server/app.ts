@@ -246,6 +246,7 @@ app.get('/api/out/:id', async (c) => {
         if (!db) throw new Error('Database not initialized: ' + c.var.initDbError);
 
         const productIdStr = c.req.param('id');
+        const source = c.req.query('src') || null;
 
         // Fetch the product's destination URL
         const product = await db.selectFrom('products_with_details_core')
@@ -254,27 +255,32 @@ app.get('/api/out/:id', async (c) => {
             .executeTakeFirst();
 
         if (!product || !product.url) {
-            return c.redirect('/404', 302); // Redirect to 404 or a safe fallback
+            return c.redirect('/404', 302);
         }
 
-        const ip = c.req.header('cf-connecting-ip') || c.req.header('x-forwarded-for') || '';
-        const userAgent = c.req.header('user-agent') || '';
+        // Cloudflare sets cf-connecting-ip in production.
+        // x-real-ip is a common Node.js reverse-proxy header for local dev.
+        const ip = c.req.header('cf-connecting-ip')
+            || c.req.header('x-real-ip')
+            || c.req.header('x-forwarded-for')?.split(',')[0].trim()
+            || '';
 
-        // Fire and forget logging
+        // Fire and forget logging — don't block the redirect
         db.insertInto('product_clicks')
             .values({
                 product_id: productIdStr as any,
-                ip_address: ip.substring(0, 255), // ensure it fits
-                user_agent: userAgent
-            })
+                ip_address: ip.substring(0, 255),
+                user_agent: c.req.header('user-agent') || null,
+                referrer: c.req.header('referer') || null,
+                country: c.req.header('cf-ipcountry') || null,
+                source,
+            } as any)
             .execute()
             .catch(e => console.error("Click logging failed", e));
 
-        // Redirect to the actual destination
         return c.redirect(product.url, 302);
     } catch (error) {
         console.error('Error handling outbound click:', error);
-        // Fallback redirect to home if something crashes hard
         return c.redirect('/', 302);
     }
 });

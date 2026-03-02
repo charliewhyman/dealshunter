@@ -3,6 +3,7 @@ import AsyncLucideIcon from './AsyncLucideIcon';
 import { ProductWithDetails } from '../types';
 import { useNavigate } from 'react-router-dom';
 import { useProductPricing } from '../hooks/useProductPricing';
+import ReactGA from 'react-ga4';
 import '../index.css';
 
 interface ProductCardProps {
@@ -166,6 +167,21 @@ function ProductCardComponent({ product, pricing, isLcp }: ProductCardProps) {
 
   const handleCardClick = () => navigate(`/products/${product.id}`);
 
+  const handleOutboundClick = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    ReactGA.event('select_item', {
+      item_list_id: 'outbound_click',
+      item_list_name: 'Outbound Clicks',
+      items: [{
+        item_id: String(product.id),
+        item_name: product.title ?? '',
+        item_brand: product.shop_name ?? '',
+        item_category: product.grouped_product_type ?? '',
+        price: product.min_price ?? undefined,
+      }],
+    });
+  };
+
   const discountPercentage = useMemo(() => {
     if (typeof compareAtPrice === 'number' && compareAtPrice > 0) {
       const price = variantPrice ?? 0;
@@ -247,11 +263,11 @@ function ProductCardComponent({ product, pricing, isLcp }: ProductCardProps) {
             {product.title}
           </h3>
           <a
-            href={`/api/out/${product.id}`}
+            href={`/api/out/${product.id}?src=card`}
             target="_blank"
             rel="noopener noreferrer"
             className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 flex-shrink-0 mt-0.5"
-            onClick={(e) => e.stopPropagation()}
+            onClick={handleOutboundClick}
             title="View on original site"
           >
             <AsyncLucideIcon name="ExternalLink" className="w-4 h-4 sm:w-5 sm:h-5" />

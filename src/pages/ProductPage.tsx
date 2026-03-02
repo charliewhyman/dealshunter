@@ -5,6 +5,7 @@ import { ProductWithDetails } from '../types';
 import AsyncLucideIcon from '../components/AsyncLucideIcon';
 import { useProductPricing } from '../hooks/useProductPricing';
 import { format } from 'date-fns/format';
+import ReactGA from 'react-ga4';
 import '../index.css';
 
 function ProductPage() {
@@ -14,6 +15,21 @@ function ProductPage() {
   const [imgLoaded, setImgLoaded] = useState(false);
   const [showFullDescription, setShowFullDescription] = useState(false);
   const { variantPrice, compareAtPrice } = useProductPricing(productId || '');
+
+  const handleOutboundClick = () => {
+    if (!product) return;
+    ReactGA.event('select_item', {
+      item_list_id: 'outbound_click',
+      item_list_name: 'Outbound Clicks',
+      items: [{
+        item_id: String(product.id),
+        item_name: product.title ?? '',
+        item_brand: product.shop_name ?? '',
+        item_category: product.grouped_product_type ?? '',
+        price: product.min_price ?? undefined,
+      }],
+    });
+  };
 
   // Add noindex meta tag to prevent indexing of product pages
 
@@ -326,7 +342,7 @@ function ProductPage() {
               {/* Purchase Button */}
               <div className="pt-2">
                 <a
-                  href={`/api/out/${product.id}`}
+                  href={`/api/out/${product.id}?src=page`}
                   target="_blank"
                   rel="noopener noreferrer"
                   className={`inline-flex items-center justify-center gap-2 w-full px-6 py-4 text-base sm:text-lg font-semibold rounded-lg transition-all duration-200 ${
@@ -334,7 +350,7 @@ function ProductPage() {
                       ? 'text-white bg-blue-600 hover:bg-blue-700 dark:bg-blue-500 dark:hover:bg-blue-600 shadow-md hover:shadow-lg'
                       : 'text-gray-500 bg-gray-200 dark:bg-gray-700 dark:text-gray-400 cursor-not-allowed'
                   }`}
-                  {...(!isAvailable && { onClick: (e: React.MouseEvent) => e.preventDefault() })}
+                  onClick={isAvailable ? handleOutboundClick : (e: React.MouseEvent) => e.preventDefault()}
                 >
                   <span>{isAvailable ? 'View on Store' : 'Currently Unavailable'}</span>
                   {isAvailable && <AsyncLucideIcon name="ExternalLink" className="w-5 h-5" />}

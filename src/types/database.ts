@@ -212,6 +212,9 @@ export type Database = {
           ip_address: string | null
           user_agent: string | null
           clicked_at: string
+          referrer: string | null
+          country: string | null
+          source: string | null
         }
         Insert: {
           id?: number
@@ -219,6 +222,9 @@ export type Database = {
           ip_address?: string | null
           user_agent?: string | null
           clicked_at?: string
+          referrer?: string | null
+          country?: string | null
+          source?: string | null
         }
         Update: {
           id?: number
@@ -226,6 +232,9 @@ export type Database = {
           ip_address?: string | null
           user_agent?: string | null
           clicked_at?: string
+          referrer?: string | null
+          country?: string | null
+          source?: string | null
         }
         Relationships: [
           {
