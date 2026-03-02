@@ -215,7 +215,12 @@ class ProductScraper(BaseScraper):
 
                 # Use retry logic for fetching
                 url = f"{base_url}/products.json"
-                params = {"limit": 250, "page": page}
+                params = {
+                    "limit": 250,
+                    "page": page,
+                    "currency": "CAD",
+                    "country": "CA",
+                }
 
                 data = self._fetch_page_with_retry(session, url, params, shop_id, page)
 
@@ -360,7 +365,12 @@ class ProductScraper(BaseScraper):
 
                 # Use retry logic for fetching
                 url = f"{base_url}/products.json"
-                params = {"limit": 250, "page": page}
+                params = {
+                    "limit": 250,
+                    "page": page,
+                    "currency": "CAD",
+                    "country": "CA",
+                }
 
                 data = self._fetch_page_with_retry(session, url, params, shop_id, page)
 
