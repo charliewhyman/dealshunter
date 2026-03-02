@@ -12,6 +12,7 @@ export interface Database {
     products_enriched_data: PublicTables['products_enriched_data']['Row'];
     profiles: PublicTables['profiles']['Row'];
     size_groups: PublicTables['size_groups']['Row'];
+    product_clicks: PublicTables['product_clicks']['Row'];
 
     // Views
     distinct_size_groups: PublicViews['distinct_size_groups']['Row'];
@@ -28,6 +29,7 @@ export type Images = Database['images'];
 export type ProductsEnrichedData = Database['products_enriched_data'];
 export type Profiles = Database['profiles'];
 export type SizeGroups = Database['size_groups'];
+export type ProductClicks = Database['product_clicks'];
 export type DistinctSizeGroups = Database['distinct_size_groups'];
 export type DistinctGroupedTypes = Database['distinct_grouped_types'];
 export type DistinctTopLevelCategories = Database['distinct_top_level_categories'];

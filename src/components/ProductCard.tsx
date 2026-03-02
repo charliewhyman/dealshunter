@@ -247,7 +247,7 @@ function ProductCardComponent({ product, pricing, isLcp }: ProductCardProps) {
             {product.title}
           </h3>
           <a
-            href={product.url || '#'}
+            href={`/api/out/${product.id}`}
             target="_blank"
             rel="noopener noreferrer"
             className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 flex-shrink-0 mt-0.5"

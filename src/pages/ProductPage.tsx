@@ -326,7 +326,7 @@ function ProductPage() {
               {/* Purchase Button */}
               <div className="pt-2">
                 <a
-                  href={product.url ?? '#'}
+                  href={`/api/out/${product.id}`}
                   target="_blank"
                   rel="noopener noreferrer"
                   className={`inline-flex items-center justify-center gap-2 w-full px-6 py-4 text-base sm:text-lg font-semibold rounded-lg transition-all duration-200 ${

@@ -222,7 +222,8 @@ app.get('/api/products/:id', async (c) => {
         const product = await db
             .selectFrom('products_with_details_core')
             .selectAll()
-            .where('id', '=', Number(id))
+            // Cast to any to handle bigint/number mismatch from Kysely types
+            .where('id', '=', id as any)
             .executeTakeFirst();
 
         if (!product) {
@@ -236,6 +237,45 @@ app.get('/api/products/:id', async (c) => {
             details: error.message,
             stack: error.stack
         }, 500);
+    }
+});
+
+app.get('/api/out/:id', async (c) => {
+    try {
+        const db = c.var.db;
+        if (!db) throw new Error('Database not initialized: ' + c.var.initDbError);
+
+        const productIdStr = c.req.param('id');
+
+        // Fetch the product's destination URL
+        const product = await db.selectFrom('products_with_details_core')
+            .select(['url', 'id'])
+            .where('id', '=', productIdStr as any)
+            .executeTakeFirst();
+
+        if (!product || !product.url) {
+            return c.redirect('/404', 302); // Redirect to 404 or a safe fallback
+        }
+
+        const ip = c.req.header('cf-connecting-ip') || c.req.header('x-forwarded-for') || '';
+        const userAgent = c.req.header('user-agent') || '';
+
+        // Fire and forget logging
+        db.insertInto('product_clicks')
+            .values({
+                product_id: productIdStr as any,
+                ip_address: ip.substring(0, 255), // ensure it fits
+                user_agent: userAgent
+            })
+            .execute()
+            .catch(e => console.error("Click logging failed", e));
+
+        // Redirect to the actual destination
+        return c.redirect(product.url, 302);
+    } catch (error) {
+        console.error('Error handling outbound click:', error);
+        // Fallback redirect to home if something crashes hard
+        return c.redirect('/', 302);
     }
 });
 
