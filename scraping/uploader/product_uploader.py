@@ -479,6 +479,7 @@ class ProductProcessor:
                     "available": variant_entry["available"],
                     "price": variant_entry["price"],
                     "compare_at_price": variant_entry["compare_at_price"],
+                    "updated_at": product.get("updated_at") or datetime.now().isoformat(),
                 }
                 self.collections["variants"].append(variant_db_entry)
 
@@ -492,6 +493,7 @@ class ProductProcessor:
                     "position": img_entry["position"],
                     "width": img_entry["width"],
                     "height": img_entry["height"],
+                    "updated_at": product.get("updated_at") or datetime.now().isoformat(),
                 }
                 self.collections["images"].append(image_db_entry)
 
