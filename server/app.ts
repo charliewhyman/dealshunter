@@ -265,8 +265,9 @@ app.get('/api/out/:id', async (c) => {
             || c.req.header('x-forwarded-for')?.split(',')[0].trim()
             || '';
 
-        // Fire and forget logging — don't block the redirect
-        db.insertInto('product_clicks')
+        // Await the insert so it completes before the response is returned.
+        // Fire-and-forget gets killed by Cloudflare Workers before it resolves.
+        await db.insertInto('product_clicks')
             .values({
                 product_id: productIdStr as any,
                 ip_address: ip.substring(0, 255),
