@@ -1025,11 +1025,52 @@ export function HomePage({ categoryConfig }: { categoryConfig?: CategoryConfig }
     label: shop.shop_name
   }));
 
-  // Fixed code (preserve database order)
+  // Custom sort for sizes
+  const sizeOrderMap: Record<string, number> = {
+    'XXS': 10,
+    'XS': 20,
+    'S': 30,
+    'M': 40,
+    'L': 50,
+    'XL': 60,
+    '1X': 70,
+    '2XL': 80,
+    '2X': 90,
+    '3XL': 100,
+    '3X': 110,
+    '4XL': 120,
+    '4X': 130,
+    'ONE SIZE': 500,
+  };
+
+  const sortSizes = (a: string, b: string) => {
+    const orderA = sizeOrderMap[a.toUpperCase()];
+    const orderB = sizeOrderMap[b.toUpperCase()];
+
+    if (orderA !== undefined && orderB !== undefined) {
+      return orderA - orderB;
+    }
+    if (orderA !== undefined) return -1;
+    if (orderB !== undefined) return 1;
+
+    // Handle numeric sizes
+    const numA = parseInt(a);
+    const numB = parseInt(b);
+    if (!isNaN(numA) && !isNaN(numB)) {
+      return numA - numB;
+    }
+    if (!isNaN(numA)) return -1;
+    if (!isNaN(numB)) return 1;
+
+    // Fallback to alphabetical
+    return a.localeCompare(b);
+  };
+
   const sizeOptions = allSizeData
       .map(item => item.size_group)
       .filter((s): s is string => !!s)
       .filter((value, index, self) => self.indexOf(value) === index) // Remove duplicates
+      .sort(sortSizes)
       .map(sg => ({ value: sg, label: sg }));
 
   const typeOptions = Array.from(new Set(allGroupedTypes.map(t => t.grouped_product_type)))
