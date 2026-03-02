@@ -239,6 +239,7 @@ class ProductProcessor:
             "price": price,
             "available": available,
             "compare_at_price": compare_price,
+            "size": self.processor.extract_size(variant.get("title", "")),
         }
 
     def _extract_image_data(self, image: Dict[str, Any]) -> Optional[Dict[str, Any]]:
@@ -285,6 +286,7 @@ class ProductProcessor:
             variant_available = []
             variant_discounts = []
             variant_data = []
+            available_sizes = set()
 
             for variant in variants:
                 variant_entry = self._extract_variant_data(variant)
@@ -297,6 +299,8 @@ class ProductProcessor:
 
                     if variant_entry["available"]:
                         variant_available.append(True)
+                        if variant_entry.get("size"):
+                            available_sizes.add(variant_entry["size"])
 
                     # Calculate discount
                     price = variant_entry["price"]
@@ -441,6 +445,7 @@ class ProductProcessor:
                 "top_level_category": category_info.get("top_level_category", ""),
                 "subcategory": category_info.get("subcategory"),
                 "gender_age": category_info.get("gender_age", "Unisex"),
+                "size_groups": list(available_sizes),
                 # NEW: Gender categories for filtering
                 "gender_categories": category_info.get("gender_categories", []),
                 "is_unisex": category_info.get("is_unisex", False),
@@ -479,7 +484,9 @@ class ProductProcessor:
                     "available": variant_entry["available"],
                     "price": variant_entry["price"],
                     "compare_at_price": variant_entry["compare_at_price"],
-                    "updated_at": product.get("updated_at") or datetime.now().isoformat(),
+                    "size": variant_entry.get("size"),
+                    "updated_at": product.get("updated_at")
+                    or datetime.now().isoformat(),
                 }
                 self.collections["variants"].append(variant_db_entry)
 
@@ -493,7 +500,8 @@ class ProductProcessor:
                     "position": img_entry["position"],
                     "width": img_entry["width"],
                     "height": img_entry["height"],
-                    "updated_at": product.get("updated_at") or datetime.now().isoformat(),
+                    "updated_at": product.get("updated_at")
+                    or datetime.now().isoformat(),
                 }
                 self.collections["images"].append(image_db_entry)
 
