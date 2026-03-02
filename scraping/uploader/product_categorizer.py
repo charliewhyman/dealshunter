@@ -254,7 +254,7 @@ class ProductCategorizer:
         weights = {
             'product_type': 1.5,
             'title': 1.2,
-            'description': 0.8,
+            'description': 0.3,  # Reduced: long descriptions caused false positives
             'vendor': 0.5
         }
         

@@ -34,7 +34,8 @@
                 "lounge", "active", "yoga", "athletic", "performance",
                 "hoodie", "sweatshirt", "zip hoodie", "terry", "fleece",
                 "training", "workout", "gym", "tracksuit", "sports bra",
-                "set", "apparel"
+                "activewear set", "lounge set", "matching set", "apparel",
+                "zip-up", "quarter-zip"
             ],
             "exclude": []
         },
@@ -55,8 +56,9 @@
         },
         "Accessories - Headwear": {
             "keywords": [
-                "hat", "toque", "beanie", "cap", "headband", "headwear", 
-                "balaclava", "bonnet", "baseball"
+                "hat", "toque", "beanie", "headband", "headwear",
+                "balaclava", "bonnet", "baseball cap", "snapback",
+                "fitted cap", "trucker cap", "bucket hat", "sun hat"
             ],
             "exclude": []
         },
@@ -109,7 +111,7 @@
             "exclude": ["sock", "socks"]
         },
         "Footwear - Sandals & Summer": {
-            "keywords": ["sandal", "sandals", "summer"],
+            "keywords": ["sandal", "sandals", "espadrille", "flip flop", "slides", "mule"],
             "exclude": ["boot", "sock", "socks"]
         },
         "Footwear - Slippers": {
@@ -125,7 +127,7 @@
             "exclude": ["sock", "socks"]
         },
         "Home & Living - Decor": {
-            "keywords": ["decor", "cushion", "pillow", "vase", "clock", "ornament", "wall art", "print", "poster", "frame"],
+            "keywords": ["home decor", "wall decor", "cushion", "pillow", "vase", "clock", "ornament", "wall art", "poster", "picture frame"],
             "exclude": []
         },
         "Home & Living - Candles & Fragrance": {
@@ -137,8 +139,9 @@
         },
         "Home & Living - Kitchen & Bar": {
             "keywords": [
-                "kitchen", "bar", "mug", "cup", "glass", "kettle", "dish", 
-                "utensil", "tabletop"
+                "kitchen", "home bar", "cocktail bar", "bar cart", "bar tool",
+                "mug", "cup", "glassware", "kettle", "dish",
+                "utensil", "tabletop", "dinnerware", "serveware", "cookware"
             ],
             "exclude": []
         },
@@ -157,7 +160,7 @@
             "exclude": ["hair", "face", "oral"]
         },
         "Beauty & Personal Care - Skincare": {
-            "keywords": ["face", "skin", "serum", "face mask", "face mist", "face pad", "skincare"],
+            "keywords": ["face", "skincare", "skin serum", "skin cream", "skin toner", "skin oil", "serum", "face mask", "face mist", "face pad", "face wash", "face cream"],
             "exclude": []
         },
         "Beauty & Personal Care - Haircare": {
@@ -216,15 +219,19 @@
             "exclude": []
         },
         "Food & Beverages - Coffee & Tea": {
-            "keywords": ["coffee", "tea"],
+            "keywords": [
+                "coffee", "coffee bean", "ground coffee", "instant coffee",
+                "loose leaf tea", "herbal tea", "tea blend", "matcha",
+                "cold brew", "espresso"
+            ],
             "exclude": []
         },
         "Food & Beverages - Snacks": {
-            "keywords": ["snack", "candy", "chocolate"],
+            "keywords": ["snack", "candy", "chocolate", "granola bar", "protein bar", "energy bar"],
             "exclude": []
         },
         "Food & Beverages - Other": {
-            "keywords": ["food", "preserve", "grain"],
+            "keywords": ["food", "granola", "protein powder", "supplement", "hot sauce", "condiment", "spice blend"],
             "exclude": []
         },
         "Pet Accessories": {
