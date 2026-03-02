@@ -5,7 +5,7 @@ export function PrivacyPolicy() {
     document.title = 'Privacy Policy - Curated Canada';
     const metaDescription = document.querySelector('meta[name="description"]');
     if (metaDescription) {
-      metaDescription.setAttribute('content', 'Privacy Policy for Curated Canada detailing data collection, cookies, user rights, and GDPR/CCPA compliance. Learn about our use of Google AdSense and your privacy choices.');
+      metaDescription.setAttribute('content', 'Privacy Policy for Curated Canada detailing data collection, cookies, user rights, and GDPR/CCPA compliance.');
     }
 
     // Add index, follow meta tag
@@ -100,17 +100,10 @@ export function PrivacyPolicy() {
                 Help us understand how visitors interact with our website by collecting and reporting information anonymously.
               </p>
             </div>
-            <div className="bg-gray-50 dark:bg-gray-800 p-4 rounded-lg">
-              <h4 className="font-medium text-gray-900 dark:text-white mb-2">Advertising Cookies</h4>
-              <p className="text-sm text-gray-700 dark:text-gray-300">
-                Used by Google AdSense and other advertising partners to deliver relevant advertisements.
-              </p>
-            </div>
           </div>
           
           <h3 className="text-lg font-medium mb-2">How We Use Cookies</h3>
           <ul className="list-disc pl-5 space-y-2 text-gray-700 dark:text-gray-300 mb-4">
-            <li>To enable Google AdSense to display personalized advertisements</li>
             <li>To remember your preferences and settings (like sort order, filters, etc.)</li>
             <li>To understand how users interact with our site and improve user experience</li>
             <li>To maintain website security and prevent fraud</li>
@@ -153,23 +146,7 @@ export function PrivacyPolicy() {
           </ul>
         </section>
 
-        <section>
-          <h2 className="text-xl font-semibold mb-3">5. Third-Party Advertising and Google AdSense</h2>
-          
-          <div className="bg-yellow-50 dark:bg-yellow-900/20 p-4 rounded-lg border border-yellow-200 dark:border-yellow-800 mb-4">
-            <h4 className="font-medium text-gray-900 dark:text-white mb-2">Google AdSense</h4>
-            <p className="text-sm text-gray-700 dark:text-gray-300 mb-2">
-              We use Google AdSense to display advertisements on our website. Google AdSense is an advertising 
-              service provided by Google LLC. This service uses cookies to serve ads based on your prior visits 
-              to our website or other websites.
-            </p>
-            <p className="text-sm text-gray-700 dark:text-gray-300">
-              Google's use of advertising cookies enables it and its partners to serve ads to you based on your 
-              visit to our site and/or other sites on the Internet. You may opt out of personalized advertising 
-              by visiting <a href="https://adssettings.google.com" target="_blank" rel="noopener noreferrer nofollow" className="text-blue-600 dark:text-blue-400 hover:underline">Google Ads Settings</a>.
-            </p>
-          </div>
-          
+        <section>        
           <h3 className="text-lg font-medium mb-2">Other Third-Party Services</h3>
           <p className="text-gray-700 dark:text-gray-300 mb-2">
             We may use other third-party services for various purposes:
@@ -197,19 +174,6 @@ export function PrivacyPolicy() {
                   <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
                 </svg>
               </div>
-              <div className="ml-3">
-                <a 
-                  href="https://adssettings.google.com" 
-                  target="_blank" 
-                  rel="noopener noreferrer nofollow"
-                  className="font-medium text-blue-600 dark:text-blue-400 hover:underline"
-                >
-                  Google AdSense Opt-Out
-                </a>
-                <p className="text-sm text-gray-600 dark:text-gray-400">
-                  Control how Google uses your information to show you ads
-                </p>
-              </div>
             </div>
             
             <div className="flex items-start">
@@ -217,40 +181,6 @@ export function PrivacyPolicy() {
                 <svg className="h-5 w-5 text-blue-600" fill="currentColor" viewBox="0 0 20 20">
                   <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
                 </svg>
-              </div>
-              <div className="ml-3">
-                <a 
-                  href="https://optout.aboutads.info/?c=2&lang=EN" 
-                  target="_blank" 
-                  rel="noopener noreferrer nofollow"
-                  className="font-medium text-blue-600 dark:text-blue-400 hover:underline"
-                >
-                  Digital Advertising Alliance (DAA) Opt-Out
-                </a>
-                <p className="text-sm text-gray-600 dark:text-gray-400">
-                  Opt out from participating companies in the Digital Advertising Alliance
-                </p>
-              </div>
-            </div>
-            
-            <div className="flex items-start">
-              <div className="flex-shrink-0 mt-1">
-                <svg className="h-5 w-5 text-blue-600" fill="currentColor" viewBox="0 0 20 20">
-                  <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
-                </svg>
-              </div>
-              <div className="ml-3">
-                <a 
-                  href="https://youradchoices.ca/en/" 
-                  target="_blank" 
-                  rel="noopener noreferrer nofollow"
-                  className="font-medium text-blue-600 dark:text-blue-400 hover:underline"
-                >
-                  Your Ad Choices (Canada)
-                </a>
-                <p className="text-sm text-gray-600 dark:text-gray-400">
-                  Canadian Digital Advertising Alliance's opt-out page
-                </p>
               </div>
             </div>
           </div>

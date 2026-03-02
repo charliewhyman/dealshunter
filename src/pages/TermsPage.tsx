@@ -119,14 +119,6 @@ export function TermsPage() {
             <li>Third-party sites have their own terms and privacy policies that govern your use</li>
             <li>We shall not be liable for any damage or loss caused by or in connection with use of any third-party content</li>
           </ul>
-          
-          <div className="mt-4 p-4 bg-yellow-50 dark:bg-yellow-900/20 rounded-lg">
-            <h4 className="font-medium text-gray-900 dark:text-white mb-2">Advertising</h4>
-            <p className="text-sm text-gray-700 dark:text-gray-300">
-              We use Google AdSense to display advertisements. These third-party advertisers may use cookies 
-              and similar technologies. We have no control over these third-party advertisers or their practices.
-            </p>
-          </div>
         </section>
         
         <section>

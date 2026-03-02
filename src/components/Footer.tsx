@@ -120,36 +120,6 @@ export function Footer() {
                   Your Privacy Choices
                 </a>
               </li>
-              <li>
-                <a 
-                  href="https://adssettings.google.com" 
-                  target="_blank" 
-                  rel="noopener noreferrer nofollow"
-                  className="text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white text-sm transition-colors duration-200"
-                >
-                  Google Ad Settings
-                </a>
-              </li>
-              <li>
-                <a 
-                  href="https://optout.aboutads.info/?c=2&lang=EN" 
-                  target="_blank" 
-                  rel="noopener noreferrer nofollow"
-                  className="text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white text-sm transition-colors duration-200"
-                >
-                  Opt Out of Ads (US)
-                </a>
-              </li>
-              <li>
-                <a 
-                  href="https://youradchoices.ca/en/" 
-                  target="_blank" 
-                  rel="noopener noreferrer nofollow"
-                  className="text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white text-sm transition-colors duration-200"
-                >
-                  Your Ad Choices (CA)
-                </a>
-              </li>
             </ul>
           </div>
         </div>
