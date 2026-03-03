@@ -113,9 +113,8 @@ export function AboutPage() {
           
           <div className="mt-6 p-4 bg-gray-50 dark:bg-gray-900 rounded-lg">
             <p className="text-sm text-gray-600 dark:text-gray-400">
-              <strong>Our Promise:</strong> We only feature genuine Canadian businesses. 
-              We aim to ensure that every brand on our platform is independently owned and operated in Canada, 
-              with products made or designed here whenever possible.
+              <strong>Our Promise:</strong> Every brand on our platform is Canadian-owned and operated. 
+              While not all products are manufactured in Canada, we aim to feature brands with strong Canadian roots.
             </p>
           </div>
         </section>
