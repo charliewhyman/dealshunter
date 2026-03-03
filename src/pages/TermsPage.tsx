@@ -5,7 +5,7 @@ export function TermsPage() {
     document.title = 'Terms of Service - Curated Canada';
     const metaDescription = document.querySelector('meta[name="description"]');
     if (metaDescription) {
-      metaDescription.setAttribute('content', 'Terms of Service for Curated Canada. Learn about user responsibilities, limitations, and conditions for using our product comparison platform.');
+      metaDescription.setAttribute('content', 'Terms of Service for Curated Canada. Learn about user responsibilities, limitations, and conditions for using our platform.');
     }
 
     // Add index, follow meta tag
@@ -21,11 +21,7 @@ export function TermsPage() {
     };
   }, []);
 
-  const lastUpdated = new Date().toLocaleDateString('en-CA', { 
-    year: 'numeric', 
-    month: 'long', 
-    day: 'numeric' 
-  });
+  const lastUpdated = 'March 2, 2026';
 
   return (
     <div className="max-w-4xl mx-auto px-4 py-8">
@@ -56,9 +52,9 @@ export function TermsPage() {
             from various Canadian retailers. Our service includes:
           </p>
           <ul className="list-disc pl-5 mt-2 space-y-2 text-gray-700 dark:text-gray-300">
-            <li>Product price comparison across multiple retailers</li>
-            <li>Product availability information</li>
+            <li>Product discovery across independent Canadian brands</li>
             <li>Search and filtering capabilities</li>
+            <li>Links to purchase directly from brand websites</li>
             <li>User preference saving (via browser storage)</li>
           </ul>
           <p className="text-gray-700 dark:text-gray-300 mt-3">
@@ -133,7 +129,6 @@ export function TermsPage() {
               <ul className="list-disc pl-5 mt-2 space-y-1">
                 <li>Website design, layout, and user interface</li>
                 <li>Software code and algorithms</li>
-                <li>Brand names, logos, and trademarks</li>
                 <li>Original content and compilations</li>
               </ul>
             </div>

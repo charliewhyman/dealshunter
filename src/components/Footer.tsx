@@ -43,8 +43,7 @@ export function Footer() {
               <span className="text-xl font-bold text-gray-900 dark:text-white">Curated Canada</span>
             </Link>
             <p className="text-gray-600 dark:text-gray-400 text-sm">
-              Discover and compare products across Canadian retailers. 
-              Find the best deals, track prices, and shop smarter.
+              Discover and support independent Canadian fashion and footwear brands.
             </p>
           </div>
           
@@ -128,10 +127,10 @@ export function Footer() {
           <div className="flex flex-col md:flex-row justify-between items-center">
             <div className="mb-4 md:mb-0">
               <p className="text-gray-600 dark:text-gray-400 text-sm">
-                © {currentYear} Curated Canada. All rights reserved.
+                © {currentYear} Curated Canada.
               </p>
               <p className="text-xs text-gray-500 dark:text-gray-500 mt-1">
-                All trademarks, logos, and brand names are property of their respective owners.
+                All trademarks, logos, brand names, and product content are property of their respective owners.
               </p>
             </div>
             
@@ -145,9 +144,6 @@ export function Footer() {
                   >
                     contact@curatedcanada.ca
                   </a>
-                </div>
-                <div className="text-xs text-gray-500 dark:text-gray-500">
-                  Based in Canada
                 </div>
               </div>
             </div>

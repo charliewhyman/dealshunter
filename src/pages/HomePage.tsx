@@ -1631,19 +1631,6 @@ export function HomePage({ categoryConfig }: { categoryConfig?: CategoryConfig }
           </div>
         </div>
       </div>
-
-      <footer className="mt-12 border-t border-gray-200 dark:border-gray-800 bg-gray-50 dark:bg-gray-900">
-        <div className="mx-auto px-4 py-8 sm:px-6 lg:px-8 max-w-screen-2xl">
-          <div className="text-center">
-            <p className="text-sm text-gray-600 dark:text-gray-400">
-              © {new Date().getFullYear()} Product Comparison. All rights reserved.
-            </p>
-            <p className="text-xs text-gray-500 dark:text-gray-500 mt-2">
-              Compare prices and find the best deals from top retailers
-            </p>
-          </div>
-        </div>
-      </footer>
     </div>
   );
 }

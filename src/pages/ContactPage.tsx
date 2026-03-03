@@ -38,7 +38,7 @@ export function ContactPage() {
         
         <div className="pt-4 border-t">
           <p className="text-sm text-gray-600">
-            We're an independent platform helping Canadians compare products and find deals.
+            We're an independent platform helping Canadians discover and support Canadian brands.
           </p>
         </div>
       </div>

@@ -30,14 +30,12 @@ export function AboutPage() {
         <section className="bg-white dark:bg-gray-800 rounded-lg p-6 shadow-sm">
           <h2 className="text-2xl font-semibold mb-4 text-gray-900 dark:text-white">Our Mission</h2>
           <p className="text-gray-700 dark:text-gray-300 mb-4">
-            Curated Canada was created with a clear purpose: to help shoppers discover and support 
-            independent Canadian fashion, footwear, and accessory brands. In a market dominated by 
-            international fast fashion chains, we believe Canadian-made products deserve visibility.
+            Curated Canada was created to help shoppers discover and support 
+            independent Canadian fashion, footwear, and accessory brands.
           </p>
           <p className="text-gray-700 dark:text-gray-300">
-            Our platform makes it easy to find quality Canadian clothing, compare styles across 
-            different local designers, and support the creative entrepreneurs who are building 
-            Canada's fashion industry from the ground up.
+            Our platform makes it easy to find quality Canadian clothing, compare products across 
+            different vendors, and support Canadian businesses.
           </p>
         </section>
 
@@ -45,47 +43,13 @@ export function AboutPage() {
           <h2 className="text-2xl font-semibold mb-4 text-gray-900 dark:text-white">What We Focus On</h2>
           <p className="text-gray-700 dark:text-gray-300 mb-4">
             Unlike generic shopping platforms, Curated Canada specializes exclusively in 
-            Canadian-made products. We feature independent brands that manufacture in Canada, 
+            Canadian-owned businesses. We feature independent brands that manufacture or sell in Canada, 
             offering everything from premium footwear to sustainable clothing and unique accessories.
           </p>
-          
-          <div className="grid md:grid-cols-2 gap-6 mt-6">
-            <div className="bg-red-50 dark:bg-red-900/20 p-4 rounded-lg">
-              <h3 className="font-semibold text-red-800 dark:text-red-300 mb-2">🇨🇦 Canadian Footwear</h3>
-              <p className="text-sm text-red-700 dark:text-red-400">
-                Discover premium shoes and boots made by Canadian craftspeople, from heritage 
-                work boots to contemporary designs.
-              </p>
-            </div>
-            
-            <div className="bg-blue-50 dark:bg-blue-900/20 p-4 rounded-lg">
-              <h3 className="font-semibold text-blue-800 dark:text-blue-300 mb-2">👕 Canadian Clothing</h3>
-              <p className="text-sm text-blue-700 dark:text-blue-400">
-                Find clothing from independent Canadian designers across all categories - 
-                from everyday basics to statement pieces.
-              </p>
-            </div>
-            
-            <div className="bg-green-50 dark:bg-green-900/20 p-4 rounded-lg">
-              <h3 className="font-semibold text-green-800 dark:text-green-300 mb-2">🌿 Sustainable Fashion</h3>
-              <p className="text-sm text-green-700 dark:text-green-400">
-                Many featured brands prioritize ethical manufacturing, sustainable materials, 
-                and responsible business practices.
-              </p>
-            </div>
-            
-            <div className="bg-purple-50 dark:bg-purple-900/20 p-4 rounded-lg">
-              <h3 className="font-semibold text-purple-800 dark:text-purple-300 mb-2">✨ Unique Designs</h3>
-              <p className="text-sm text-purple-700 dark:text-purple-400">
-                Discover clothing and accessories with distinct Canadian design aesthetics 
-                you won't find in chain stores.
-              </p>
-            </div>
-          </div>
         </section>
 
         <section className="bg-white dark:bg-gray-800 rounded-lg p-6 shadow-sm">
-          <h2 className="text-2xl font-semibold mb-4 text-gray-900 dark:text-white">Why Canadian-Made Matters</h2>
+          <h2 className="text-2xl font-semibold mb-4 text-gray-900 dark:text-white">Why Buy Canadian?</h2>
           
           <div className="space-y-6">
             <div>
@@ -122,7 +86,7 @@ export function AboutPage() {
         <section className="bg-white dark:bg-gray-800 rounded-lg p-6 shadow-sm">
           <h2 className="text-2xl font-semibold mb-4 text-gray-900 dark:text-white">Featured Canadian Brands</h2>
           <p className="text-gray-700 dark:text-gray-300 mb-4">
-            We proudly feature independent Canadian businesses from coast to coast:
+            We proudly feature independent Canadian businesses from coast to coast, for example:
           </p>
           
           <div className="grid md:grid-cols-2 gap-6 mt-4">
@@ -137,7 +101,7 @@ export function AboutPage() {
             </div>
             
             <div>
-              <h3 className="text-lg font-medium text-gray-900 dark:text-white mb-2">Clothing Innovators</h3>
+              <h3 className="text-lg font-medium text-gray-900 dark:text-white mb-2">Clothing Trendsetters</h3>
               <ul className="space-y-1 text-gray-700 dark:text-gray-300">
                 <li>• Reigning Champ - Athletic wear manufactured in Canada</li>
                 <li>• Naked & Famous - Japanese denim crafted in Montreal</li>
@@ -150,8 +114,8 @@ export function AboutPage() {
           <div className="mt-6 p-4 bg-gray-50 dark:bg-gray-900 rounded-lg">
             <p className="text-sm text-gray-600 dark:text-gray-400">
               <strong>Our Promise:</strong> We only feature genuine Canadian businesses. 
-              Every brand on our platform is independently owned and operated in Canada, 
-              with products made or designed here.
+              We aim to ensure that every brand on our platform is independently owned and operated in Canada, 
+              with products made or designed here whenever possible.
             </p>
           </div>
         </section>
@@ -168,7 +132,7 @@ export function AboutPage() {
               independent Canadian fashion and footwear businesses across the country.
             </li>
             <li className="pl-2">
-              <span className="font-medium">Showcase Products:</span> We feature current collections 
+              <span className="font-medium">Showcase Products:</span> We collate current collections 
               and products from these brands in an easy-to-browse format.
             </li>
             <li className="pl-2">
@@ -177,47 +141,15 @@ export function AboutPage() {
             </li>
             <li className="pl-2">
               <span className="font-medium">Support Direct Sales:</span> When you find something you love, 
-              you purchase directly from the brand's website - your money goes straight to the Canadian business.
+              you purchase directly from the brand's website - your money goes straight to the Canadian business, without ads.
             </li>
           </ol>
           
           <div className="mt-6 p-4 bg-blue-50 dark:bg-blue-900/20 rounded-lg">
             <p className="text-sm text-blue-700 dark:text-blue-400">
-              <strong>Transparency Note:</strong> We are not affiliated with any brands we feature. 
+              <strong>Transparency Note:</strong> We are not affiliated with any brands we feature, and do not display ads. 
               We don't accept payments for placement or favorable treatment. Our goal is simply 
               to help Canadian shoppers discover Canadian brands.
-            </p>
-          </div>
-        </section>
-
-        <section className="bg-red-50 dark:bg-red-900/20 rounded-lg p-6">
-          <h2 className="text-2xl font-semibold mb-4 text-red-900 dark:text-red-300">Join Our Mission</h2>
-          <p className="text-red-800 dark:text-red-400 mb-4">
-            Every time you choose Canadian-made, you're supporting local designers, craftspeople, 
-            and entrepreneurs. You're investing in quality products that last longer and choosing 
-            sustainability over fast fashion.
-          </p>
-          
-          <div className="mt-4">
-            <a 
-              href="/" 
-              className="inline-flex items-center px-4 py-2 bg-red-600 hover:bg-red-700 text-white font-medium rounded-md transition-colors duration-200"
-            >
-              Browse Canadian Brands
-              <svg className="ml-2 h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 8l4 4m0 0l-4 4m4-4H3" />
-              </svg>
-            </a>
-          </div>
-          
-          <div className="mt-6 pt-6 border-t border-red-200 dark:border-red-800">
-            <p className="text-sm text-red-700 dark:text-red-500">
-              Curated Canada is an independent project passionate about Canadian design and 
-              craftsmanship. Based in Toronto, we're committed to helping Canadian fashion 
-              brands thrive in a competitive global market.
-            </p>
-            <p className="text-sm text-red-700 dark:text-red-500 mt-2">
-              Proudly Canadian 🇨🇦
             </p>
           </div>
         </section>
