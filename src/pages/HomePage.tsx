@@ -1418,7 +1418,7 @@ export function HomePage({ categoryConfig }: { categoryConfig?: CategoryConfig }
           {/* Products Grid */}
           <div className="flex-1">
             {/* Category Header (H1 + Intro) */}
-            {categoryConfig && (
+            {categoryConfig ? (
               <div className="mb-8">
                 <h1 className="text-3xl font-bold text-gray-900 dark:text-gray-100 mb-4">
                   {categoryConfig.h1}
@@ -1440,6 +1440,19 @@ export function HomePage({ categoryConfig }: { categoryConfig?: CategoryConfig }
                     {selectedPriceRange[0] !== 0 || selectedPriceRange[1] !== 500 ? ` from $${selectedPriceRange[0]} to $${selectedPriceRange[1]}` : ''}.
                   </p>
                 )}
+              </div>
+            ) : (
+              /* Home page SEO content — visible to crawlers */
+              <div className="mb-6">
+                <h1 className="text-xl font-semibold text-gray-800 dark:text-gray-200 mb-1">
+                  Discover Canadian Fashion &amp; Footwear Brands
+                </h1>
+                <p className="text-sm text-gray-500 dark:text-gray-400 max-w-2xl">
+                  Find and compare clothing, shoes, and accessories from independent Canadian brands like:
+                </p>
+                <p className="text-sm text-gray-500 dark:text-gray-400 max-w-2xl mt-1">
+                  {['Reigning Champ', 'Anian', 'Ecologyst', 'Viberg', 'Encircled', 'Province of Canada', 'Knix', 'Muttonhead'].join(' · ')}
+                </p>
               </div>
             )}
 
