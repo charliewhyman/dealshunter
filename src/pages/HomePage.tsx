@@ -1461,10 +1461,10 @@ export function HomePage({ categoryConfig }: { categoryConfig?: CategoryConfig }
               <div>
                 <h3 className="text-base font-semibold text-blue-900 dark:text-blue-100 flex items-center gap-2">
                   <AsyncLucideIcon name="Mail" className="h-4 w-4" />
-                  Get new Canadian brands in your inbox weekly.
+                  Get selected Canadian brands and deals in your inbox weekly.
                 </h3>
                 <p className="text-sm text-blue-700 dark:text-blue-300 mt-1">
-                  Join other shoppers discovering local fashion and exclusive deals.
+                  Join other shoppers discovering Canadian fashion and exclusive deals.
                 </p>
               </div>
               <form 
