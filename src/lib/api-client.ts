@@ -111,5 +111,21 @@ export const apiClient = {
         const res = await fetch(`${API_BASE}/genders`);
         if (!res.ok) throw new Error('Failed to fetch genders');
         return res.json() as Promise<{ gender_age: string | null }[]>;
+    },
+
+    async subscribe(email: string, source: string, consentGiven: boolean) {
+        const res = await fetch(`${API_BASE}/subscribe`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({ email, source, consentGiven }),
+        });
+
+        const data = await res.json();
+        if (!res.ok) {
+            throw new Error(data.error || 'Failed to subscribe');
+        }
+        return data;
     }
 };

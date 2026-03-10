@@ -1456,6 +1456,90 @@ export function HomePage({ categoryConfig }: { categoryConfig?: CategoryConfig }
               </div>
             )}
 
+            {/* Email Capture */}
+            <div className="mb-6 p-4 sm:p-5 bg-blue-50 dark:bg-blue-900/20 rounded-xl border border-blue-100 dark:border-blue-800/30 flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
+              <div>
+                <h3 className="text-base font-semibold text-blue-900 dark:text-blue-100 flex items-center gap-2">
+                  <AsyncLucideIcon name="Mail" className="h-4 w-4" />
+                  Get new Canadian brands in your inbox weekly.
+                </h3>
+                <p className="text-sm text-blue-700 dark:text-blue-300 mt-1">
+                  Join other shoppers discovering local fashion and exclusive deals.
+                </p>
+              </div>
+              <form 
+                className="flex flex-col w-full md:w-auto gap-3"
+                onSubmit={async (e) => {
+                  e.preventDefault();
+                  const form = e.target as HTMLFormElement;
+                  const btn = form.querySelector('button');
+                  const input = form.querySelector('input[type="email"]') as HTMLInputElement;
+                  const checkbox = form.querySelector('input[type="checkbox"]') as HTMLInputElement;
+                  
+                  if (!checkbox.checked) {
+                    alert('Please check the box to confirm your consent.');
+                    return;
+                  }
+
+                  if (btn && input) {
+                    const originalText = btn.textContent;
+                    btn.disabled = true;
+                    btn.textContent = 'Subscribing...';
+                    
+                    try {
+                      await apiClient.subscribe(input.value, window.location.pathname, checkbox.checked);
+                      
+                      btn.textContent = 'Subscribed!';
+                      btn.classList.add('bg-green-600', 'hover:bg-green-700');
+                      btn.classList.remove('bg-blue-600', 'hover:bg-blue-700');
+                      input.value = '';
+                      checkbox.checked = false;
+                      
+                      setTimeout(() => {
+                        if (btn) {
+                          btn.textContent = originalText;
+                          btn.disabled = false;
+                          btn.classList.remove('bg-green-600', 'hover:bg-green-700');
+                          btn.classList.add('bg-blue-600', 'hover:bg-blue-700');
+                        }
+                      }, 3000);
+                    } catch (err: any) {
+                      alert(err.message || 'An error occurred. Please try again.');
+                      btn.textContent = originalText;
+                      btn.disabled = false;
+                    }
+                  }
+                }}
+              >
+                <div className="flex w-full gap-2">
+                  <label htmlFor="email-capture" className="sr-only">Email address</label>
+                  <input 
+                    id="email-capture"
+                    type="email" 
+                    placeholder="Your email address" 
+                    required
+                    className="px-3 py-2 text-sm border border-blue-200 dark:border-blue-700/50 rounded-md bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 flex-1 md:w-64 focus:outline-none focus:ring-2 focus:ring-blue-500 shadow-sm"
+                  />
+                  <button 
+                    type="submit"
+                    className="px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 transition-colors shadow-sm whitespace-nowrap disabled:opacity-75 disabled:cursor-not-allowed"
+                  >
+                    Subscribe
+                  </button>
+                </div>
+                <label className="flex items-start gap-2 cursor-pointer mt-1">
+                  <input
+                    type="checkbox"
+                    required
+                    className="mt-0.5 w-4 h-4 text-blue-600 bg-gray-100 border-gray-300 rounded focus:ring-blue-500 dark:focus:ring-blue-600 dark:bg-gray-700 dark:border-gray-600 shrink-0"
+                  />
+                  <span className="text-xs text-blue-800 dark:text-blue-200/80 leading-tight">
+                    I consent to receive weekly emails about new Canadian brands and deals. I can unsubscribe at any time.
+                  </span>
+                </label>
+              </form>
+            </div>
+
             <div className="mb-3 flex items-center justify-end sm:mb-4">
               <div className="w-40 sm:w-48">
                 <SingleSelectDropdown 

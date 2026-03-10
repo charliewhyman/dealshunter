@@ -286,6 +286,49 @@ app.get('/api/out/:id', async (c) => {
     }
 });
 
+app.post('/api/subscribe', async (c) => {
+    try {
+        const db = c.var.db;
+        if (!db) throw new Error('Database not initialized: ' + c.var.initDbError);
+
+        const body = await c.req.json();
+        const { email, source, consentGiven } = body;
+
+        if (!email || !email.includes('@')) {
+            return c.json({ error: 'Valid email is required' }, 400);
+        }
+
+        if (!consentGiven) {
+            return c.json({ error: 'Consent is required to subscribe' }, 400);
+        }
+
+        // Capture IP for CASL compliance
+        const ip = c.req.header('cf-connecting-ip')
+            || c.req.header('x-real-ip')
+            || c.req.header('x-forwarded-for')?.split(',')[0].trim()
+            || null;
+
+        await db.insertInto('subscribers')
+            .values({
+                email: email.trim().toLowerCase(),
+                ip_address: ip,
+                source: source || 'unknown',
+                consent_given: true, // We verified it above
+            })
+            // Ignore conflict if they already subscribed
+            .onConflict((oc) => oc.column('email').doNothing())
+            .execute();
+
+        return c.json({ success: true, message: 'Subscribed successfully' });
+    } catch (error: any) {
+        console.error('Error handling subscription:', error);
+        return c.json({
+            error: 'Internal Server Error',
+            details: error.message
+        }, 500);
+    }
+});
+
 app.get('/api/pricing', async (c) => {
     try {
         const db = c.var.db;

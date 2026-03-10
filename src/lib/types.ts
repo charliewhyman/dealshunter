@@ -1,5 +1,6 @@
 
 import { Database as NeonDB } from '../types/database';
+import { Generated } from 'kysely';
 
 type PublicTables = NeonDB['public']['Tables'];
 type PublicViews = NeonDB['public']['Views'];
@@ -13,6 +14,14 @@ export interface Database {
     profiles: PublicTables['profiles']['Row'];
     size_groups: PublicTables['size_groups']['Row'];
     product_clicks: PublicTables['product_clicks']['Row'];
+    subscribers: {
+        id: Generated<number>;
+        email: string;
+        ip_address: string | null;
+        source: string | null;
+        consent_given: boolean | null;
+        created_at: Generated<Date | null>;
+    };
 
     // Views
     distinct_size_groups: PublicViews['distinct_size_groups']['Row'];
