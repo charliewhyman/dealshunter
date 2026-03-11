@@ -283,6 +283,14 @@ function ProductPage() {
                   {!product.in_stock ? 'Out of Stock' : 'Currently Unavailable'}
                 </div>
               )}
+
+              {/* Made in Canada Badge */}
+              {product.made_in_canada && (
+                <div className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 text-red-700 dark:text-red-300 text-sm font-medium rounded-md">
+                  <span role="img" aria-label="Made in Canada">🍁</span>
+                  Made in Canada
+                </div>
+              )}
               
               {/* Price Section */}
               <div className="space-y-2">

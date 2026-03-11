@@ -128,7 +128,7 @@
     ],
     "shop_name": "Carmico",
     "location": "Toronto, Ontario",
-    "made_in_canada_only": null
+    "made_in_canada_only": false
   },
   {
     "id": 1513,

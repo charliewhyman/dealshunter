@@ -102,6 +102,7 @@ interface FilterOptions {
   selectedTopLevelCategories: string[];
   selectedGenderAges: string[];
   onSaleOnly: boolean;
+  madeInCanadaOnly: boolean;
   searchQuery: string;
   selectedPriceRange: [number, number];
 }
@@ -139,7 +140,8 @@ export function HomePage({ categoryConfig }: { categoryConfig?: CategoryConfig }
 
   // Price range constants
   const ABS_MIN_PRICE = 0;
-  const ABS_MAX_PRICE = 500; 
+  const ABS_MAX_PRICE = 99999; 
+  const DEFAULT_VIEW_MAX_PRICE = 500;
   const PRICE_RANGE = useMemo<[number, number]>(() => [15, 200], []); 
 
   // ============================================================================
@@ -187,6 +189,13 @@ export function HomePage({ categoryConfig }: { categoryConfig?: CategoryConfig }
   
   const [onSaleOnly, setOnSaleOnly] = useState<boolean>(() => {
     const fromUrl = searchParams.get('sale');
+    if (fromUrl === 'true') return true;
+    if (fromUrl === 'false') return false;
+    return false;
+  });
+
+  const [madeInCanadaOnly, setMadeInCanadaOnly] = useState<boolean>(() => {
+    const fromUrl = searchParams.get('made_in_canada');
     if (fromUrl === 'true') return true;
     if (fromUrl === 'false') return false;
     return false;
@@ -312,6 +321,9 @@ export function HomePage({ categoryConfig }: { categoryConfig?: CategoryConfig }
 
     const urlSale = searchParams.get('sale') === 'true';
     if (urlSale !== onSaleOnly) setOnSaleOnly(urlSale);
+
+    const urlMadeInCanada = searchParams.get('made_in_canada') === 'true';
+    if (urlMadeInCanada !== madeInCanadaOnly) setMadeInCanadaOnly(urlMadeInCanada);
 
     const urlPrice = parsePriceRange(searchParams.get('price'), ABS_MIN_PRICE, ABS_MAX_PRICE);
     if (urlPrice) {
@@ -698,7 +710,7 @@ export function HomePage({ categoryConfig }: { categoryConfig?: CategoryConfig }
       setSelectedSizeGroups([]); 
       setSelectedShopName([]); 
       setSearchQuery(defaults.query || ''); 
-      setSelectedPriceRange([0, 500]); 
+      setSelectedPriceRange([...PRICE_RANGE]); 
       
       setIsCategoryInitialized(true);
     } else {
@@ -921,6 +933,7 @@ export function HomePage({ categoryConfig }: { categoryConfig?: CategoryConfig }
     selectedTopLevelCategories,
     selectedGenderAges,
     onSaleOnly,
+    madeInCanadaOnly,
     searchQuery,
     selectedPriceRange
   }), [
@@ -930,6 +943,7 @@ export function HomePage({ categoryConfig }: { categoryConfig?: CategoryConfig }
     selectedTopLevelCategories,
     selectedGenderAges,
     onSaleOnly,
+    madeInCanadaOnly,
     searchQuery,
     selectedPriceRange
   ]);
@@ -1177,6 +1191,22 @@ export function HomePage({ categoryConfig }: { categoryConfig?: CategoryConfig }
 
                     {/* Filter Dropdowns */}
                     <div className="space-y-3">
+
+                      {/* Made in Canada at top */}
+                      <div className="pb-1">
+                        <label className="flex items-center gap-2 cursor-pointer">
+                          <input
+                            type="checkbox"
+                            checked={madeInCanadaOnly}
+                            onChange={(e) => updateFilter('made_in_canada', e.target.checked ? 'true' : null)}
+                            className="w-4 h-4 text-red-600 bg-gray-100 border-gray-300 rounded focus:ring-red-500 dark:focus:ring-red-600 dark:bg-gray-700 dark:border-gray-600"
+                          />
+                          <span className="text-sm text-gray-700 dark:text-gray-300 flex items-center gap-1">
+                            Made in Canada <span role="img" aria-label="Made in Canada">🍁</span>
+                          </span>
+                        </label>
+                      </div>
+
                       <div>
                         <label htmlFor="filter-shop" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">
                           Shop
@@ -1298,27 +1328,35 @@ export function HomePage({ categoryConfig }: { categoryConfig?: CategoryConfig }
                           </div>
                           
                           {/* Slider */}
-                          <TransformSlider
-                            min={ABS_MIN_PRICE}
-                            max={ABS_MAX_PRICE}
-                            value={selectedPriceRange}
-                            onFinalChange={(values) => {
-                              if (Array.isArray(values) && values.length === 2) {
-                                // Update URL directly
-                                updateFilter('price', `${values[0]}-${values[1]}`);
-                              }
-                            }}
-                          />
-                          
-                          {/* Price Range Labels */}
-                          <div className="flex justify-between text-xs text-gray-500 dark:text-gray-400">
-                            <span>${ABS_MIN_PRICE}</span>
-                            <span>${ABS_MAX_PRICE}</span>
-                          </div>
+                          {(() => {
+                            const dynamicMaxPrice = Math.max(DEFAULT_VIEW_MAX_PRICE, selectedPriceRange[1]);
+                            return (
+                              <>
+                                <TransformSlider
+                                  min={ABS_MIN_PRICE}
+                                  max={dynamicMaxPrice}
+                                  value={selectedPriceRange}
+                                  onFinalChange={(values) => {
+                                    if (Array.isArray(values) && values.length === 2) {
+                                      // Update URL directly
+                                      updateFilter('price', `${values[0]}-${values[1]}`);
+                                    }
+                                  }}
+                                />
+                                
+                                {/* Price Range Labels */}
+                                <div className="flex justify-between text-xs text-gray-500 dark:text-gray-400">
+                                  <span>${ABS_MIN_PRICE}</span>
+                                  <span>${dynamicMaxPrice}</span>
+                                </div>
+                              </>
+                            );
+                          })()}
                         </div>
                       </div>
 
-                      <div className="pt-2">
+                      {/* On sale only at bottom */}
+                      <div>
                         <label className="flex items-center gap-2 cursor-pointer">
                           <input
                             type="checkbox"
@@ -1329,6 +1367,7 @@ export function HomePage({ categoryConfig }: { categoryConfig?: CategoryConfig }
                           <span className="text-sm text-gray-700 dark:text-gray-300">On sale only</span>
                         </label>
                       </div>
+
                     </div>
 
                     {/* Active Filters Pills */}
@@ -1437,7 +1476,7 @@ export function HomePage({ categoryConfig }: { categoryConfig?: CategoryConfig }
                 {!loading && products.length > 0 && (
                   <p className="mt-4 text-sm text-gray-500 dark:text-gray-400">
                     Currently showing {products.length} {products.length === 1 ? 'item' : 'items'} 
-                    {selectedPriceRange[0] !== 0 || selectedPriceRange[1] !== 500 ? ` from $${selectedPriceRange[0]} to $${selectedPriceRange[1]}` : ''}.
+                    {selectedPriceRange[0] !== ABS_MIN_PRICE || selectedPriceRange[1] !== ABS_MAX_PRICE ? ` from $${selectedPriceRange[0]} to $${selectedPriceRange[1]}` : ''}.
                   </p>
                 )}
               </div>
@@ -1577,6 +1616,7 @@ export function HomePage({ categoryConfig }: { categoryConfig?: CategoryConfig }
                             selectedTopLevelCategories, 
                             selectedGenderAges, 
                             onSaleOnly, 
+                            madeInCanadaOnly,
                             searchQuery, 
                             selectedPriceRange 
                           },

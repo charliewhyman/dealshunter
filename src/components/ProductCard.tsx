@@ -220,6 +220,12 @@ function ProductCardComponent({ product, pricing, isLcp }: ProductCardProps) {
         </div>
       )}
 
+      {product.made_in_canada && (
+        <div className="absolute top-2 right-2 bg-white/90 dark:bg-gray-800/90 w-7 h-7 flex items-center justify-center rounded-full shadow-sm z-10" title="Made in Canada">
+          <span className="text-base leading-none" role="img" aria-label="Made in Canada">🍁</span>
+        </div>
+      )}
+
       <div className="relative w-full aspect-square overflow-hidden bg-gray-100 dark:bg-gray-900 flex-shrink-0 rounded-t-md border-b border-gray-100 dark:border-gray-700">
         {finalSrc ? (
           <picture>

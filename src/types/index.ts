@@ -23,6 +23,7 @@ export interface ProductWithDetails {
   description?: string;
   updated_at_external?: string;
   in_stock: boolean;
+  made_in_canada?: boolean;
   min_price?: number;
   max_discount_percentage?: number;
   on_sale: boolean;

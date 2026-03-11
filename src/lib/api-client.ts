@@ -10,6 +10,7 @@ export interface FilterOptions {
     selectedTopLevelCategories: string[];
     selectedGenderAges: string[];
     onSaleOnly: boolean;
+    madeInCanadaOnly: boolean;
     searchQuery: string;
     selectedPriceRange: [number, number];
 }
@@ -34,6 +35,7 @@ export const apiClient = {
         if (filters.selectedGenderAges.length) params.append('selectedGenderAges', JSON.stringify(filters.selectedGenderAges));
 
         if (filters.onSaleOnly) params.append('onSaleOnly', 'true');
+        if (filters.madeInCanadaOnly) params.append('madeInCanadaOnly', 'true');
         if (filters.searchQuery) params.append('searchQuery', filters.searchQuery);
 
         if (filters.selectedPriceRange) {

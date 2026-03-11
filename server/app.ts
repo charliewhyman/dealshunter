@@ -88,6 +88,7 @@ interface FilterOptions {
     selectedTopLevelCategories?: string[];
     selectedGenderAges?: string[];
     onSaleOnly?: boolean;
+    madeInCanadaOnly?: boolean;
     searchQuery?: string;
     minPrice?: number;
     maxPrice?: number;
@@ -98,7 +99,7 @@ interface FilterOptions {
 
 // Constants
 const ABS_MIN_PRICE = 0;
-const ABS_MAX_PRICE = 500;
+const ABS_MAX_PRICE = 99999;
 
 app.get('/api/products', async (c) => {
     try {
@@ -115,6 +116,7 @@ app.get('/api/products', async (c) => {
             selectedTopLevelCategories: query.selectedTopLevelCategories ? JSON.parse(query.selectedTopLevelCategories) : [],
             selectedGenderAges: query.selectedGenderAges ? JSON.parse(query.selectedGenderAges) : [],
             onSaleOnly: query.onSaleOnly === 'true',
+            madeInCanadaOnly: query.madeInCanadaOnly === 'true',
             searchQuery: query.searchQuery || '',
             minPrice: query.minPrice ? Number(query.minPrice) : undefined,
             maxPrice: query.maxPrice ? Number(query.maxPrice) : undefined,
@@ -125,12 +127,20 @@ app.get('/api/products', async (c) => {
         const offset = query.offset ? Number(query.offset) : 0;
         const limit = query.limit ? Number(query.limit) : 31;
 
-        let dbQuery = db.selectFrom('products_with_details_core').selectAll();
+        let dbQuery = db.selectFrom('products_with_details_core')
+            .leftJoin('shops', 'products_with_details_core.shop_id', 'shops.id')
+            .selectAll('products_with_details_core')
+            .select(['shops.made_in_canada as made_in_canada'] as any);
 
         // Shops
         const shopIds = filters.selectedShopName?.map(id => parseInt(id)).filter(id => !isNaN(id) && id > 0) || [];
         if (shopIds.length > 0) {
-            dbQuery = dbQuery.where('shop_id', 'in', shopIds);
+            dbQuery = dbQuery.where('products_with_details_core.shop_id', 'in', shopIds);
+        }
+
+        // Made in Canada
+        if (filters.madeInCanadaOnly) {
+            dbQuery = dbQuery.where('shops.made_in_canada' as any, '=', true);
         }
 
         // Size Groups
@@ -221,9 +231,11 @@ app.get('/api/products/:id', async (c) => {
         const id = c.req.param('id');
         const product = await db
             .selectFrom('products_with_details_core')
-            .selectAll()
+            .leftJoin('shops', 'products_with_details_core.shop_id', 'shops.id')
+            .selectAll('products_with_details_core')
+            .select(['shops.made_in_canada as made_in_canada'] as any)
             // Cast to any to handle bigint/number mismatch from Kysely types
-            .where('id', '=', id as any)
+            .where('products_with_details_core.id', '=', id as any)
             .executeTakeFirst();
 
         if (!product) {
