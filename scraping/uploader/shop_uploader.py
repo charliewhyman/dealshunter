@@ -59,6 +59,12 @@ class ShopUploader(BaseUploader):
                 # Default to True for new shops
                 safe_shop['is_shopify'] = True
             
+            # Handle made_in_canada flag
+            if 'made_in_canada' in shop:
+                safe_shop['made_in_canada'] = None if shop.get('made_in_canada') is None else bool(shop.get('made_in_canada'))
+            elif 'made_in_canada_only' in shop:
+                safe_shop['made_in_canada'] = None if shop.get('made_in_canada_only') is None else bool(shop.get('made_in_canada_only'))
+            
             # Handle updated_at timestamp
             if shop.get('updated_at'):
                 safe_shop['updated_at'] = shop.get('updated_at')
