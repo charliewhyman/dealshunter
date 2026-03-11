@@ -1,4 +1,4 @@
-import { FormEvent, useState, useEffect } from 'react';
+import { FormEvent, useEffect, useRef } from 'react';
 import { Link } from 'react-router-dom';
 import AsyncLucideIcon from './AsyncLucideIcon';
 
@@ -8,10 +8,12 @@ interface HeaderProps {
 }
 
 export const Header = ({ searchQuery, handleSearchSubmit }: HeaderProps) => {
-  const [localSearchQuery, setLocalSearchQuery] = useState(searchQuery);
+  const inputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
-    setLocalSearchQuery(searchQuery);
+    if (inputRef.current && inputRef.current.value !== searchQuery) {
+      inputRef.current.value = searchQuery;
+    }
   }, [searchQuery]);
 
   return (
@@ -32,12 +34,12 @@ export const Header = ({ searchQuery, handleSearchSubmit }: HeaderProps) => {
             aria-label="Search"
           >
             <input
+              ref={inputRef}
               type="text"
               id="search-input"
               name="search"
               placeholder="Search..."
-              value={localSearchQuery}
-              onChange={(e) => setLocalSearchQuery(e.target.value)}
+              defaultValue={searchQuery}
               className="w-full pl-4 pr-10 py-1.5 border border-gray-300 dark:border-gray-600 rounded-md text-sm bg-white dark:bg-gray-700 placeholder-gray-500 dark:placeholder-gray-400 focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500 text-gray-900 dark:text-gray-100"
             />
             <button
