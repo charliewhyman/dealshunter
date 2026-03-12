@@ -1462,17 +1462,7 @@ export function HomePage({ categoryConfig }: { categoryConfig?: CategoryConfig }
                 <h1 className="text-3xl font-bold text-gray-900 dark:text-gray-100 mb-4">
                   {categoryConfig.h1}
                 </h1>
-                <div className="text-gray-600 dark:text-gray-300">
-                  {typeof categoryConfig.introText === 'function' 
-                    ? categoryConfig.introText({
-                        setGroupedTypes: setSelectedGroupedTypes,
-                        setTopLevelCategories: setSelectedTopLevelCategories,
-                        setGenderAges: setSelectedGenderAges,
-                        setSearchQuery: setSearchQuery
-                      }) 
-                    : (categoryConfig.introText as React.ReactNode)}
-                </div>
-                {/* Stats */}
+                {/* Stats moved closer to title */}
                 {!loading && products.length > 0 && (
                   <p className="mt-4 text-sm text-gray-500 dark:text-gray-400">
                     Currently showing {products.length} {products.length === 1 ? 'item' : 'items'} 
@@ -1481,17 +1471,11 @@ export function HomePage({ categoryConfig }: { categoryConfig?: CategoryConfig }
                 )}
               </div>
             ) : (
-              /* Home page SEO content — visible to crawlers */
+              /* Home page Header */
               <div className="mb-6">
                 <h1 className="text-xl font-semibold text-gray-800 dark:text-gray-200 mb-1">
                   Discover Canadian Fashion &amp; Footwear Brands
                 </h1>
-                <p className="text-sm text-gray-500 dark:text-gray-400 max-w-2xl">
-                  Find and compare clothing, shoes, and accessories from independent Canadian brands like:
-                </p>
-                <p className="text-sm text-gray-500 dark:text-gray-400 max-w-2xl mt-1">
-                  {['Reigning Champ', 'Anian', 'Ecologyst', 'Viberg', 'Encircled', 'Province of Canada', 'Knix', 'Muttonhead'].join(' · ')}
-                </p>
               </div>
             )}
 
@@ -1760,11 +1744,37 @@ export function HomePage({ categoryConfig }: { categoryConfig?: CategoryConfig }
             </div>
             
             {/* Category Bottom Content */}
-            {categoryConfig && categoryConfig.bottomContent && (
-              <div className="mt-16">
-                 {categoryConfig.bottomContent}
-              </div>
-            )}
+            {/* Bottom SEO Content Area */}
+            <div className="mt-16 border-t border-gray-200 dark:border-gray-800 pt-8">
+              {categoryConfig ? (
+                <div className="text-gray-600 dark:text-gray-300">
+                  {typeof categoryConfig.introText === 'function' 
+                    ? categoryConfig.introText({
+                        setGroupedTypes: setSelectedGroupedTypes,
+                        setTopLevelCategories: setSelectedTopLevelCategories,
+                        setGenderAges: setSelectedGenderAges,
+                        setSearchQuery: setSearchQuery
+                      }) 
+                    : (categoryConfig.introText as React.ReactNode)}
+                </div>
+              ) : (
+                /* Home page brand links relocated to bottom */
+                <div>
+                  <p className="text-sm text-gray-500 dark:text-gray-400 max-w-2xl">
+                    Find and compare clothing, shoes, and accessories from independent Canadian brands like:
+                  </p>
+                  <p className="text-sm text-gray-500 dark:text-gray-400 max-w-2xl mt-1">
+                    {['Reigning Champ', 'Anian', 'Ecologyst', 'Viberg', 'Encircled', 'Province of Canada', 'Knix', 'Muttonhead'].join(' · ')}
+                  </p>
+                </div>
+              )}
+
+              {categoryConfig && categoryConfig.bottomContent && (
+                <div className="mt-8">
+                   {categoryConfig.bottomContent}
+                </div>
+              )}
+            </div>
           </div>
         </div>
       </div>
