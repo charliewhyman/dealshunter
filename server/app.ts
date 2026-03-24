@@ -377,6 +377,19 @@ app.get('/api/shops', async (c) => {
         const data = await db
             .selectFrom('shops')
             .select(['id', 'shop_name'])
+            .where((eb) => 
+                eb(
+                    eb.selectFrom('products_with_details_core')
+                        .select(eb.fn.countAll().as('count'))
+                        .whereRef('shop_id', '=', 'shops.id')
+                        .where('in_stock', '=', true)
+                        .where('is_archived', '=', false)
+                        .where('product_type', '!=', 'Insurance')
+                        .where('product_type', '!=', 'Shipping'),
+                    '>=',
+                    2
+                )
+            )
             .orderBy('shop_name')
             .execute();
         return c.json(data);
