@@ -121,3 +121,12 @@ jobs:
             scraping/data/
             scraping/logs/
           retention-days: 7
+
+  # NEW: Add this job to keep the workflow alive
+  workflow-keepalive:
+    if: github.event_name == 'schedule'  # Only runs on scheduled triggers
+    runs-on: ubuntu-latest
+    permissions:
+      actions: write  # Required for the API call to re-enable workflow
+    steps:
+      - uses: liskin/gh-workflow-keepalive@v1
