@@ -270,7 +270,8 @@ export function HomePage({ categoryConfig }: { categoryConfig?: CategoryConfig }
   }, [selectedPriceRange, ABS_MIN_PRICE, ABS_MAX_PRICE]);
 
   const handlePriceInputBlur = useCallback(() => {
-    let [min, max] = selectedPriceRange;
+    let min = selectedPriceRange[0];
+    const max = selectedPriceRange[1];
     
     // Ensure min <= max
     if (min > max) {
@@ -341,7 +342,7 @@ export function HomePage({ categoryConfig }: { categoryConfig?: CategoryConfig }
 
     // Release lock after render cycle
     setTimeout(() => { isSyncingFromUrl.current = false; }, 0);
-  }, [searchParams]);
+  }, [PRICE_RANGE, madeInCanadaOnly, onSaleOnly, searchParams, searchQuery, selectedGenderAges, selectedGroupedTypes, selectedPriceRange, selectedShopName, selectedSizeGroups, selectedTopLevelCategories, sortOrder]);
 
   // ============================================================================
   // UTILITY FUNCTIONS
@@ -716,7 +717,7 @@ export function HomePage({ categoryConfig }: { categoryConfig?: CategoryConfig }
     } else {
       setIsCategoryInitialized(true);
     }
-  }, [categoryConfig?.slug]);
+  }, [PRICE_RANGE, categoryConfig, categoryConfig?.slug]);
 
   // ============================================================================
   // PRE-WARM CONNECTION ON APP START
@@ -830,13 +831,7 @@ export function HomePage({ categoryConfig }: { categoryConfig?: CategoryConfig }
        navigate('/', { replace: true });
     }
 
-  }, [
-    categoryConfig, 
-    selectedTopLevelCategories, 
-    selectedGenderAges, 
-    // We focus on the "Big" filters. Types can be cleared without leaving the category (e.g. searching).
-    navigate
-  ]);
+  }, [categoryConfig, selectedTopLevelCategories, selectedGenderAges, navigate, isCategoryInitialized]);
 
   // ============================================================================
   // FETCH INITIAL FILTER OPTIONS
@@ -1526,8 +1521,8 @@ export function HomePage({ categoryConfig }: { categoryConfig?: CategoryConfig }
                           btn.classList.add('bg-blue-600', 'hover:bg-blue-700');
                         }
                       }, 3000);
-                    } catch (err: any) {
-                      alert(err.message || 'An error occurred. Please try again.');
+                    } catch (err: unknown) {
+                      alert((err as Error).message || 'An error occurred. Please try again.');
                       btn.textContent = originalText;
                       btn.disabled = false;
                     }
