@@ -198,6 +198,8 @@ export function HomePage({ categoryConfig }: { categoryConfig?: CategoryConfig }
     const fromUrl = searchParams.get('made_in_canada');
     if (fromUrl === 'true') return true;
     if (fromUrl === 'false') return false;
+    // Default to true for made-in-canada category
+    if (categoryConfig?.slug === 'made-in-canada') return true;
     return false;
   });
 

@@ -638,5 +638,54 @@ export const CATEGORIES: Record<string, CategoryConfig> = {
     filterDefaults: {
       selectedTopLevelCategories: ['Home & Living']
     }
-  }
-};
+  },
+
+  // 10. Made in Canada
+  'made-in-canada': {
+    slug: 'made-in-canada',
+    title: "Made in Canada Products - Canadian Made Goods | Curated Canada",
+    metaDescription: "Shop products made in Canada. Find clothing, footwear, accessories, and home goods produced domestically by independent Canadian brands.",
+    h1: "Made in Canada Products",
+    introText: () => (
+      <div className="prose dark:prose-invert max-w-none mb-8">
+        <p className="text-lg text-gray-600 dark:text-gray-300">
+          Discover products proudly made in Canada. From clothing and footwear to accessories
+          and home goods, browse items produced domestically by independent Canadian brands.
+        </p>
+        <p className="text-gray-600 dark:text-gray-300">
+          Use the filters below to narrow by category, type, size, price, and more.
+          Sort by Best Discount to find deals on Canadian-made products.
+        </p>
+      </div>
+    ),
+    bottomContent: (
+      <div className="prose dark:prose-invert max-w-none mt-12 pt-8 border-t border-gray-200 dark:border-gray-800">
+        <h2>Supporting Canadian Manufacturing</h2>
+        <p>
+          When you buy products made in Canada, you are supporting domestic businesses,
+          contributing to the local economy, and reducing the carbon footprint associated
+          with international shipping. Canadian-made products often use higher quality
+          materials and traditional craftsmanship.
+        </p>
+
+        <h3>Made in Canada Across Categories</h3>
+        <p>
+          Canadian brands manufacture across all product categories. Independent retailers
+          like Encircled, Anian, and Province of Canada produce clothing entirely within
+          Canada. Viberg and Wohlford craft leather footwear in Victoria and Vancouver.
+          Jack and Marlo makes leather bags in Toronto, while KOTN and Carmico produce
+          home textiles with ethically sourced materials.        </p>
+
+        <h3>Filter Options</h3>
+        <p>
+          This category shows only products where the manufacturer is located in Canada.
+          Use additional filters to narrow by product type, shop, size, and price.
+        </p>
+      </div>
+    ),
+    filterDefaults: {
+      selectedTopLevelCategories: ['Clothing', 'Footwear', 'Accessories', 'Home & Living'],
+      query: ''
+    }
+  },
+}
