@@ -2,8 +2,7 @@
 export default {
   darkMode: 'media', // Enable system-level dark mode
   content: [
-    "./index.html",
-    "./src/**/*.{js,ts,jsx,tsx}",
+  './src/**/*.{astro,html,js,jsx,md,mdx,ts,tsx}',
   ],
   theme: {
     extend: {},
