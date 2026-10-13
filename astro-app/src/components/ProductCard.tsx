@@ -49,7 +49,7 @@ function ProductCardComponent({ product, pricing, isLcp }: ProductCardProps) {
           const parsed = new URL(url);
           const base = parsed.origin + parsed.pathname;
           const originalParams = parsed.searchParams;
-  
+
           const srcSet = sizes
             .map((w) => {
               const p = new URLSearchParams(originalParams.toString());
@@ -57,7 +57,7 @@ function ProductCardComponent({ product, pricing, isLcp }: ProductCardProps) {
               return `${base}?${p.toString()} ${w}w`;
             })
             .join(', ');
-  
+
           const webpSrcSet = sizes
             .map((w) => {
               const p = new URLSearchParams(originalParams.toString());
@@ -66,26 +66,31 @@ function ProductCardComponent({ product, pricing, isLcp }: ProductCardProps) {
               return `${base}?${p.toString()} ${w}w`;
             })
             .join(', ');
-  
+
           const fallbackParams = new URLSearchParams(originalParams.toString());
           fallbackParams.set('width', '220');
           const src = `${base}?${fallbackParams.toString()}`;
-  
+
           return { finalSrc: src, finalSrcSet: srcSet, finalWebpSrcSet: webpSrcSet };
         } catch {
           return { finalSrc: url, finalSrcSet: undefined, finalWebpSrcSet: undefined };
         }
       };
-  
+
       return buildSrcSets(imageSrc);
     }
-  
-    // Default if no image
+
     return { finalSrc: undefined, finalSrcSet: undefined, finalWebpSrcSet: undefined };
-  }, [imageSrc]);  
+  }, [imageSrc]);
 
   const sizesAttr = '(max-width: 640px) 50vw, (max-width: 1024px) 33vw, 316px';
   const imgRef = useRef<HTMLImageElement | null>(null);
+
+  useLayoutEffect(() => {
+    if (imgRef.current?.complete) {
+      setImgLoaded(true);
+    }
+  }, [finalSrc]);
 
   useLayoutEffect(() => {
     if (!isLcp || !finalSrc) return;

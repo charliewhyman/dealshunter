@@ -1,15 +1,19 @@
 import { useParams, Navigate } from 'react-router-dom';
 import { CATEGORIES } from '../data/categories';
 import { HomePage } from './HomePage';
+import type { ProductWithDetails } from '../types';
 
-export default function CategoryPage() {
+interface Props {
+  initialProducts?: ProductWithDetails[];
+}
+
+export default function CategoryPage({ initialProducts = [] }: Props) {
   const { slug } = useParams<{ slug: string }>();
   const config = slug ? CATEGORIES[slug] : undefined;
 
   if (!config) {
-    // Optionally redirect to 404 page or back to home
     return <Navigate to="/" replace />;
   }
 
-  return <HomePage categoryConfig={config} />;
+  return <HomePage categoryConfig={config} initialProducts={initialProducts} />;
 }

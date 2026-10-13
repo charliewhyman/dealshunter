@@ -37,7 +37,7 @@ export function AppRoutes({ initialProducts = [] }: Props) {
       <Header searchQuery={searchQuery} handleSearchSubmit={handleSearchSubmit} />
       <Routes>
         <Route path="/" element={<HomePage initialProducts={initialProducts} />} />
-        <Route path="/collections/:slug" element={<CategoryPage />} />
+        <Route path="/collections/:slug" element={<CategoryPage initialProducts={initialProducts} />} />
         <Route path="/products/:productId" element={<ProductPage />} />
         <Route path="/about" element={<AboutPage />} />
         <Route path="/privacy" element={<PrivacyPolicy />} />
