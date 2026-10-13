@@ -80,7 +80,6 @@ jobs:
             echo "Running MANUAL SCRAPE with custom parameters"
             echo "skip_shops=${{ github.event.inputs.skip_shops || 'false' }}" >> $GITHUB_OUTPUT
             echo "scrape_type=manual" >> $GITHUB_OUTPUT
-            # Add defaults for missing variables in manual mode to prevent syntax errors
             echo "shop_update_days=0" >> $GITHUB_OUTPUT
             echo "max_concurrent=5" >> $GITHUB_OUTPUT
             echo "batch_size=10" >> $GITHUB_OUTPUT
@@ -122,11 +121,16 @@ jobs:
             scraping/logs/
           retention-days: 7
 
-  # NEW: Add this job to keep the workflow alive
+      # <-- NEW STEP ADDED HERE
+      - name: Trigger Cloudflare deploy
+        if: success()
+        run: curl -fsS -X POST "${{ secrets.CF_DEPLOY_HOOK }}"
+
+  # Keepalive job unchanged
   workflow-keepalive:
-    if: github.event_name == 'schedule'  # Only runs on scheduled triggers
+    if: github.event_name == 'schedule'
     runs-on: ubuntu-latest
     permissions:
-      actions: write  # Required for the API call to re-enable workflow
+      actions: write
     steps:
       - uses: liskin/gh-workflow-keepalive@v1
