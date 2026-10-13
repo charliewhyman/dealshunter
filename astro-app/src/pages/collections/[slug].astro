@@ -1,6 +1,8 @@
 ---
 import Layout from '@/layouts/Layout.astro';
-import { COLLECTION_SLUGS, getCollectionMeta } from '@/data/collections';
+import { ProductGrid } from '@/components/ProductGrid';
+import { COLLECTION_SLUGS, COLLECTION_FILTERS, getCollectionMeta } from '@/data/collections';
+import { sql } from '@/lib/db';
 
 export function getStaticPaths() {
   return COLLECTION_SLUGS.map(slug => ({ params: { slug } }));
@@ -12,12 +14,49 @@ if (!slug || !(COLLECTION_SLUGS as readonly string[]).includes(slug)) {
 }
 
 const meta = getCollectionMeta(slug);
+const filter = COLLECTION_FILTERS[slug as CollectionSlug];
+
+const products = await sql.query(
+  `SELECT
+     id,
+     title,
+     handle,
+     shop_id,
+     shop_name,
+     min_price,
+     max_discount_percentage,
+     on_sale,
+     in_stock,
+     images,
+     top_level_category,
+     subcategory,
+     grouped_product_type
+   FROM products_with_details_core
+   WHERE in_stock = true
+     AND is_archived = false
+     AND ${filter.sql}
+   ORDER BY max_discount_percentage DESC NULLS LAST, id
+   LIMIT 60`,
+  filter.params
+);
+
 const canonical = new URL(Astro.url.pathname, Astro.site);
+
+const jsonLd = {
+  '@context': 'https://schema.org',
+  '@type': 'ItemList',
+  itemListElement: products.slice(0, 20).map((p, i) => ({
+    '@type': 'ListItem',
+    position: i + 1,
+    url: `${Astro.site}products/${p.handle}`,
+  })),
+};
 ---
 
 <Layout title={meta.title} description={meta.description} canonical={canonical}>
+  <script type="application/ld+json" set:html={JSON.stringify(jsonLd)} />
   <main>
     <h1>{meta.h1}</h1>
-    <!-- product grid to come -->
+    <ProductGrid client:visible products={products} />
   </main>
 </Layout>

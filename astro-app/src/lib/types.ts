@@ -43,3 +43,19 @@ export type DistinctSizeGroups = Database['distinct_size_groups'];
 export type DistinctGroupedTypes = Database['distinct_grouped_types'];
 export type DistinctTopLevelCategories = Database['distinct_top_level_categories'];
 export type DistinctGenderAges = Database['distinct_gender_ages'];
+
+export interface Product {
+  id: number;
+  title: string | null;
+  handle: string | null;
+  shop_id: number | null;
+  shop_name: string | null;
+  min_price: string | number | null;
+  max_discount_percentage: string | number | null;
+  on_sale: boolean | null;
+  in_stock: boolean | null;
+  images: Array<{ src: string; width?: number; height?: number; alt?: string }> | null;
+  top_level_category: string | null;
+  subcategory: string | null;
+  grouped_product_type: string | null;
+}
