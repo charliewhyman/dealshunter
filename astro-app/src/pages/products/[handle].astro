@@ -1,4 +1,7 @@
 ---
+
+Astro.response.headers.set('Cache-Control', 'public, max-age=300, s-maxage=600');
+
 import Layout from '@/layouts/Layout.astro';
 import { sql } from '@/lib/db';
 
