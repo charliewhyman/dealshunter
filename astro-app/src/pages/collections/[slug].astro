@@ -1,0 +1,23 @@
+---
+import Layout from '@/layouts/Layout.astro';
+import { COLLECTION_SLUGS, getCollectionMeta } from '@/data/collections';
+
+export function getStaticPaths() {
+  return COLLECTION_SLUGS.map(slug => ({ params: { slug } }));
+}
+
+const { slug } = Astro.params;
+if (!slug || !(COLLECTION_SLUGS as readonly string[]).includes(slug)) {
+  return Astro.redirect('/404');
+}
+
+const meta = getCollectionMeta(slug);
+const canonical = new URL(Astro.url.pathname, Astro.site);
+---
+
+<Layout title={meta.title} description={meta.description} canonical={canonical}>
+  <main>
+    <h1>{meta.h1}</h1>
+    <!-- product grid to come -->
+  </main>
+</Layout>
