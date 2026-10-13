@@ -4,6 +4,7 @@ export const prerender = false;
 import Layout from '@/layouts/Layout.astro';
 import { AppWrapper } from '@/AppWrapper';
 import { sql } from '@/lib/db';
+import { CATEGORY_META } from '@/data/categoryMeta';
 
 const rawPath = Astro.url.pathname;
 const pathname = rawPath === '/' ? '/' : rawPath.replace(/\/$/, '');
@@ -41,16 +42,24 @@ if (pathname === '/' || pathname.startsWith('/collections/')) {
 
 if (pathname.startsWith('/collections/')) {
   const slug = pathname.replace(/^\/collections\//, '').replace(/\/$/, '');
-  const label = slug.replace(/-/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
-  title = `${label} Deals – Canadian Brands | Curated Canada`;
-  description = `Compare prices on ${label.toLowerCase()} from independent Canadian brands. Updated daily.`;
+  const meta = CATEGORY_META[slug];
+
+  if (meta) {
+    title = meta.title;
+    description = meta.metaDescription;
+  } else {
+    // Fallback for unknown collection slugs
+    const label = slug.replace(/-/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+    title = `${label} Deals – Canadian Brands | Curated Canada`;
+    description = `Compare prices on ${label.toLowerCase()} from independent Canadian brands. Updated daily.`;
+  }
 } else if (pathname.startsWith('/products/')) {
   title = 'Product – Curated Canada';
   description = 'View product details on Curated Canada.';
   noindex = true;
 } else if (pathname === '/about') {
   title = 'About Curated Canada';
-  description = 'Learn about Curated Canada.';
+  description = 'Learn about Curated Canada, a Canadian deal aggregator for independent brands.';
 } else if (pathname === '/contact') {
   title = 'Contact Curated Canada';
   description = 'Get in touch with Curated Canada.';
