@@ -2,8 +2,9 @@
 import { Hono } from 'hono';
 import { cors } from 'hono/cors';
 import { getDb } from './db';
-import { sql, Kysely } from 'kysely';
-import { Database } from '../src/lib/types';
+import { sql } from 'kysely';
+import type { Kysely } from 'kysely';
+import type { Database } from '../src/lib/types';
 
 
 export const app = new Hono<{

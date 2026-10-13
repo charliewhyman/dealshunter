@@ -1,0 +1,68 @@
+---
+export const prerender = false;
+
+import Layout from '@/layouts/Layout.astro';
+import { AppWrapper } from '@/AppWrapper';
+import { sql } from '@/lib/db';
+
+const rawPath = Astro.url.pathname;
+const pathname = rawPath === '/' ? '/' : rawPath.replace(/\/$/, '');
+const canonical = new URL(pathname, Astro.site);
+
+let title = 'Curated Canada – Canadian Independent Brand Deals';
+let description = 'Compare deals on clothing, footwear, accessories, and home goods from independent Canadian brands. Prices updated daily.';
+let noindex = false;
+
+// Server-render initial products for home and collection pages
+let initialProducts: any[] = [];
+
+if (pathname === '/' || pathname.startsWith('/collections/')) {
+  try {
+    console.log('[SSR] Querying products for', pathname);
+    initialProducts = await sql`
+      SELECT
+        p.id, p.title, p.handle, p.shop_id, p.shop_name,
+        p.min_price, p.max_discount_percentage, p.on_sale, p.in_stock,
+        p.images, p.top_level_category, p.subcategory, p.grouped_product_type,
+        p.variants, p.size_groups,
+        COALESCE(s.made_in_canada, false) AS made_in_canada
+      FROM products_with_details_core p
+      LEFT JOIN shops s ON s.id = p.shop_id
+      WHERE p.in_stock = true AND p.is_archived = false
+      ORDER BY p.max_discount_percentage DESC NULLS LAST
+      LIMIT 31
+    `;
+    console.log('[SSR] Got', initialProducts.length, 'products');
+  } catch (err) {
+    console.error('[SSR] Query failed:', err);
+    initialProducts = [];
+  }
+}
+
+if (pathname.startsWith('/collections/')) {
+  const slug = pathname.replace(/^\/collections\//, '').replace(/\/$/, '');
+  const label = slug.replace(/-/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+  title = `${label} Deals – Canadian Brands | Curated Canada`;
+  description = `Compare prices on ${label.toLowerCase()} from independent Canadian brands. Updated daily.`;
+} else if (pathname.startsWith('/products/')) {
+  title = 'Product – Curated Canada';
+  description = 'View product details on Curated Canada.';
+  noindex = true;
+} else if (pathname === '/about') {
+  title = 'About Curated Canada';
+  description = 'Learn about Curated Canada.';
+} else if (pathname === '/contact') {
+  title = 'Contact Curated Canada';
+  description = 'Get in touch with Curated Canada.';
+} else if (pathname === '/privacy') {
+  title = 'Privacy Policy | Curated Canada';
+  description = 'Privacy policy for Curated Canada.';
+} else if (pathname === '/terms') {
+  title = 'Terms of Service | Curated Canada';
+  description = 'Terms of service for Curated Canada.';
+}
+---
+
+<Layout title={title} description={description} canonical={canonical} noindex={noindex}>
+  <AppWrapper client:load url={pathname} initialProducts={initialProducts} />
+</Layout>
