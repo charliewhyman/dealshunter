@@ -128,7 +128,7 @@ export function getCollectionMeta(slug: string) {
   const override = collectionOverrides[slug as CollectionSlug] ?? {};
   const label = SLUG_LABELS[slug] ?? slug.replace(/-/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
   return {
-    title: override.title ?? `${label} Deals – Canadian Brands | DealsHunter`,
+    title: override.title ?? `${label} Deals – Canadian Brands | Curated Canada`,
     description: override.description ?? `Compare prices on ${label.toLowerCase()} from independent Canadian brands. Updated daily.`,
     h1: override.h1 ?? `${label} Deals`,
   };

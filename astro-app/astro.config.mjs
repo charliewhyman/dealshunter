@@ -5,9 +5,11 @@ import sitemap from '@astrojs/sitemap';
 import tailwindcss from '@tailwindcss/vite';
 
 export default defineConfig({
-  site: 'https://dealshunter.ca',
-  output: 'static',
-  integrations: [react(), cloudflare({ imageService: 'compile' }), sitemap()],
+  site: 'https://curatedcanada.ca',
+  trailingSlash: 'never',
+  output: 'server',
+  adapter: cloudflare({ imageService: 'compile' }),
+  integrations: [react(), sitemap()],
   vite: {
     plugins: [tailwindcss()],
     resolve: {

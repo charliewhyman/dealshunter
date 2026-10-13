@@ -1,4 +1,6 @@
 ---
+export const prerender = true;
+
 import Layout from '@/layouts/Layout.astro';
 import { ProductGrid } from '@/components/ProductGrid';
 import { sql } from '@/lib/db';
@@ -20,7 +22,7 @@ const canonical = new URL('/', Astro.site);
 ---
 
 <Layout
-  title="DealsHunter – Canadian Independent Brand Deals"
+  title="Curated Canada – Canadian Independent Brand Deals"
   description="Compare deals on clothing, footwear, accessories, and home goods from independent Canadian brands. Prices updated daily."
   canonical={canonical}
 >

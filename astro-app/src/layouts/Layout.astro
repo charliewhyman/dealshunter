@@ -1,10 +1,13 @@
 ---
+import '@/styles/global.css';
+
 interface Props {
   title: string;
   description: string;
   canonical: URL;
+  noindex?: boolean;
 }
-const { title, description, canonical } = Astro.props;
+const { title, description, canonical, noindex = false } = Astro.props;
 ---
 <!DOCTYPE html>
 <html lang="en">
@@ -13,12 +16,13 @@ const { title, description, canonical } = Astro.props;
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>{title}</title>
   <meta name="description" content={description} />
+  {noindex && <meta name="robots" content="noindex,follow" />}
   <link rel="canonical" href={canonical} />
   <meta property="og:title" content={title} />
   <meta property="og:description" content={description} />
   <meta property="og:url" content={canonical} />
   <meta property="og:type" content="website" />
-  <meta property="og:site_name" content="DealsHunter" />
+  <meta property="og:site_name" content="Curated Canada" />
   <link rel="icon" type="image/svg+xml" href="/tag.svg" />
 </head>
 <body>
