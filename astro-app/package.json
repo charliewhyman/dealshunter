@@ -25,6 +25,7 @@
     "astro": "^7.3.8",
     "hono": "^4.13.13",
     "kysely": "^0.29.6",
+    "kysely-neon": "^3.0.0",
     "react": "^19.3.0",
     "react-dom": "^19.3.0",
     "react-router-dom": "^7.18.4",
