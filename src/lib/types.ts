@@ -1,6 +1,6 @@
 
-import { Database as NeonDB } from '../types/database';
-import { Generated } from 'kysely';
+import type { Database as NeonDB } from '../types/database';
+import type { Generated } from 'kysely';
 
 type PublicTables = NeonDB['public']['Tables'];
 type PublicViews = NeonDB['public']['Views'];

@@ -1,0 +1,62 @@
+[
+  {
+    "shop_id": 1507,
+    "scraped_at": "2026-01-27T14:42:19.476885",
+    "id": "165518278755",
+    "handle": "bamboo-scrunchie",
+    "title": "Bamboo Scrunchie",
+    "collection_url": "https://ashabiwears.ca/collections/bamboo-scrunchie",
+    "description": "<ul>\n<li>Our Scrunchies are made with Bamboo French Terry and Organic Cotton.</li>\n<li>Variety of beautiful colors for gorgeous look.</li>\n<li>It is soft and durable - won't hurt your hair.</li>\n<li>Suitable for all hair types - feels great and stylish.</li>\n<li>Machine and hand washable.</li>\n<li>66% Rayon from Bamboo, 28% Cotton, 6% Spandex</li>\n</ul>",
+    "products_count": 0,
+    "published_at": "2020-07-17T06:19:45-06:00",
+    "updated_at": "2023-03-20T06:58:36-06:00"
+  },
+  {
+    "shop_id": 1507,
+    "scraped_at": "2026-01-27T14:42:19.476885",
+    "id": "164459544675",
+    "handle": "face-mask",
+    "title": "Face Mask",
+    "collection_url": "https://ashabiwears.ca/collections/face-mask",
+    "description": "2-Pack Reusable Bamboo Face Mask",
+    "products_count": 0,
+    "published_at": "2020-06-05T14:44:42-06:00",
+    "updated_at": "2023-03-20T06:58:36-06:00"
+  },
+  {
+    "shop_id": 1507,
+    "scraped_at": "2026-01-27T14:42:19.476885",
+    "id": "154871267427",
+    "handle": "kids-reversible-neck-gaiter",
+    "title": "Kids",
+    "collection_url": "https://ashabiwears.ca/collections/kids-reversible-neck-gaiter",
+    "description": "",
+    "products_count": 8,
+    "published_at": "2019-11-05T21:08:49-07:00",
+    "updated_at": "2025-03-30T13:38:55-06:00"
+  },
+  {
+    "shop_id": 1507,
+    "scraped_at": "2026-01-27T14:42:19.476885",
+    "id": "154871169123",
+    "handle": "men",
+    "title": "Men",
+    "collection_url": "https://ashabiwears.ca/collections/men",
+    "description": "",
+    "products_count": 7,
+    "published_at": "2019-11-05T21:08:49-07:00",
+    "updated_at": "2025-03-06T17:56:45-07:00"
+  },
+  {
+    "shop_id": 1507,
+    "scraped_at": "2026-01-27T14:42:19.476885",
+    "id": "154871136355",
+    "handle": "women",
+    "title": "Women",
+    "collection_url": "https://ashabiwears.ca/collections/women",
+    "description": "",
+    "products_count": 19,
+    "published_at": "2019-11-05T21:08:49-07:00",
+    "updated_at": "2025-11-28T14:21:49-07:00"
+  }
+]

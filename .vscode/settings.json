@@ -1,0 +1,6 @@
+{
+    "python.analysis.extraPaths": [
+        "./scraping"
+    ],
+    "python.analysis.autoSearchPaths": true
+}

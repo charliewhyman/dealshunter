@@ -1,5 +1,5 @@
 
-import { ProductWithDetails } from '../types';
+import type { ProductWithDetails } from "../types";
 
 type SortOrder = 'price_asc' | 'price_desc' | 'discount_desc';
 
@@ -17,7 +17,7 @@ export interface FilterOptions {
 
 
 
-const API_BASE = '/api';
+const API_BASE = import.meta.env.PUBLIC_API_BASE ?? '/api';
 
 export const apiClient = {
     async fetchProducts(

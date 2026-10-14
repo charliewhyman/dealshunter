@@ -1,4 +1,5 @@
 User-agent: *
-Disallow: /api/out/
+Allow: /
+Disallow: /api/
 
-Sitemap: https://curatedcanada.ca/sitemap.xml
+Sitemap: https://curatedcanada.ca/sitemap-index.xml

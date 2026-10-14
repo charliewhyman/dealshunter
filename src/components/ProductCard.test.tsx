@@ -2,7 +2,7 @@ import { render, screen } from '@testing-library/react';
 import { ProductCard } from './ProductCard';
 import { describe, it, expect } from 'vitest';
 import { BrowserRouter } from 'react-router-dom';
-import { ProductWithDetails } from '../types';
+import type { ProductWithDetails } from '../types';
 
 // Mock ProductWithDetails type structure
 const mockProduct: ProductWithDetails = {

@@ -1,14 +1,19 @@
 import { Routes, Route, useSearchParams, useNavigate } from 'react-router-dom';
 import { FormEvent, useCallback } from 'react';
 import { Header } from './components/Header';
-import { HomePage } from './pages/HomePage';
-import ProductPage from './pages/ProductPage';
-import { AboutPage } from './pages/AboutPage';
-import { PrivacyPolicy } from './pages/PrivacyPolicy';
-import { TermsPage } from './pages/TermsPage';
-import CategoryPage from './pages/CategoryPage';
+import { HomePage } from './react-pages/HomePage';
+import ProductPage from './react-pages/ProductPage';
+import { AboutPage } from './react-pages/AboutPage';
+import { PrivacyPolicy } from './react-pages/PrivacyPolicy';
+import { TermsPage } from './react-pages/TermsPage';
+import CategoryPage from './react-pages/CategoryPage';
+import type { ProductWithDetails } from './types';
 
-export function AppRoutes() {
+interface Props {
+  initialProducts?: ProductWithDetails[];
+}
+
+export function AppRoutes({ initialProducts = [] }: Props) {
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
   const searchQuery = searchParams.get('search') || '';
@@ -29,13 +34,10 @@ export function AppRoutes() {
 
   return (
     <>
-      <Header
-        searchQuery={searchQuery}
-        handleSearchSubmit={handleSearchSubmit}
-      />
+      <Header searchQuery={searchQuery} handleSearchSubmit={handleSearchSubmit} />
       <Routes>
-        <Route path="/" element={<HomePage />} />
-        <Route path="/collections/:slug" element={<CategoryPage />} />
+        <Route path="/" element={<HomePage initialProducts={initialProducts} />} />
+        <Route path="/collections/:slug" element={<CategoryPage initialProducts={initialProducts} />} />
         <Route path="/products/:productId" element={<ProductPage />} />
         <Route path="/about" element={<AboutPage />} />
         <Route path="/privacy" element={<PrivacyPolicy />} />

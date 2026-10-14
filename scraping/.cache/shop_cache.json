@@ -1,0 +1,260 @@
+{
+  "shops": {},
+  "verification": {
+    "https://www.goodnbr.com/": {
+      "is_shopify": true,
+      "expiry": "2026-02-03T14:07:13.129690",
+      "checked": "2026-01-27T14:07:13.129690"
+    },
+    "https://lacanadienneshoes.com": {
+      "is_shopify": true,
+      "expiry": "2026-02-03T14:07:13.382589",
+      "checked": "2026-01-27T14:07:13.382589"
+    },
+    "https://boutiquemartino.com": {
+      "is_shopify": true,
+      "expiry": "2026-02-03T14:07:13.603266",
+      "checked": "2026-01-27T14:07:13.603266"
+    },
+    "https://padraigcottage.com": {
+      "is_shopify": true,
+      "expiry": "2026-02-03T14:07:22.355424",
+      "checked": "2026-01-27T14:07:22.355424"
+    },
+    "https://viberg.ca": {
+      "is_shopify": true,
+      "expiry": "2026-02-03T14:07:25.917638",
+      "checked": "2026-01-27T14:07:25.917638"
+    },
+    "https://wohlford.ca": {
+      "is_shopify": true,
+      "expiry": "2026-02-03T14:42:02.764242",
+      "checked": "2026-01-27T14:42:02.764242"
+    },
+    "https://18waits.com": {
+      "is_shopify": true,
+      "expiry": "2026-02-03T14:42:02.778830",
+      "checked": "2026-01-27T14:42:02.778830"
+    },
+    "https://anianmfg.com": {
+      "is_shopify": true,
+      "expiry": "2026-03-08T19:03:08.824533",
+      "checked": "2026-03-01T19:03:08.824533"
+    },
+    "https://ashabiwears.ca": {
+      "is_shopify": true,
+      "expiry": "2026-02-03T14:42:11.001580",
+      "checked": "2026-01-27T14:42:11.001580"
+    },
+    "https://blondieapparel.com": {
+      "is_shopify": true,
+      "expiry": "2026-02-03T14:42:11.952691",
+      "checked": "2026-01-27T14:42:11.953209"
+    },
+    "https://gilmourclothing.com": {
+      "is_shopify": true,
+      "expiry": "2026-02-03T14:55:05.995484",
+      "checked": "2026-01-27T14:55:05.995484"
+    },
+    "https://birdsofnorthamerica.com": {
+      "is_shopify": true,
+      "expiry": "2026-02-03T14:55:05.985578",
+      "checked": "2026-01-27T14:55:05.985578"
+    },
+    "https://carmico.ca": {
+      "is_shopify": true,
+      "expiry": "2026-02-03T14:55:05.992840",
+      "checked": "2026-01-27T14:55:05.992840"
+    },
+    "https://commonmanufacturing.com": {
+      "is_shopify": true,
+      "expiry": "2026-02-03T14:55:14.304120",
+      "checked": "2026-01-27T14:55:14.304120"
+    },
+    "https://ecologyst.com": {
+      "is_shopify": true,
+      "expiry": "2026-02-03T14:55:22.479074",
+      "checked": "2026-01-27T14:55:22.479074"
+    },
+    "https://evegravel.com": {
+      "is_shopify": true,
+      "expiry": "2026-02-03T15:13:17.615390",
+      "checked": "2026-01-27T15:13:17.615390"
+    },
+    "https://freredunord.com": {
+      "is_shopify": true,
+      "expiry": "2026-02-03T15:13:17.525660",
+      "checked": "2026-01-27T15:13:17.525660"
+    },
+    "https://goodforsunday.com": {
+      "is_shopify": true,
+      "expiry": "2026-02-03T15:13:17.592238",
+      "checked": "2026-01-27T15:13:17.592238"
+    },
+    "https://happinessisinc.com": {
+      "is_shopify": true,
+      "expiry": "2026-02-03T15:13:25.803566",
+      "checked": "2026-01-27T15:13:25.803566"
+    },
+    "https://knockthrice.ca": {
+      "is_shopify": true,
+      "expiry": "2026-02-03T15:13:26.867695",
+      "checked": "2026-01-27T15:13:26.867695"
+    },
+    "https://littleandlively.com": {
+      "is_shopify": true,
+      "expiry": "2026-02-03T15:30:32.755453",
+      "checked": "2026-01-27T15:30:32.755453"
+    },
+    "https://locallaundry.ca/": {
+      "is_shopify": true,
+      "expiry": "2026-02-03T15:30:32.753427",
+      "checked": "2026-01-27T15:30:32.753427"
+    },
+    "https://nakedandfamousdenim.com": {
+      "is_shopify": true,
+      "expiry": "2026-02-03T15:30:33.073067",
+      "checked": "2026-01-27T15:30:33.073067"
+    },
+    "https://northstandard.com": {
+      "is_shopify": true,
+      "expiry": "2026-02-03T15:30:41.021080",
+      "checked": "2026-01-27T15:30:41.021080"
+    },
+    "https://polarpiece.com": {
+      "is_shopify": true,
+      "expiry": "2026-02-03T15:30:41.144531",
+      "checked": "2026-01-27T15:30:41.144531"
+    },
+    "https://provinceofcanada.com": {
+      "is_shopify": true,
+      "expiry": "2026-02-03T15:59:30.232477",
+      "checked": "2026-01-27T15:59:30.232477"
+    },
+    "https://rebeccarowe.ca": {
+      "is_shopify": true,
+      "expiry": "2026-02-03T15:59:30.249312",
+      "checked": "2026-01-27T15:59:30.249312"
+    },
+    "https://ridenf.com": {
+      "is_shopify": true,
+      "expiry": "2026-02-03T15:59:30.470023",
+      "checked": "2026-01-27T15:59:30.470023"
+    },
+    "https://ca.reigningchamp.com": {
+      "is_shopify": true,
+      "expiry": "2026-02-03T15:59:38.960432",
+      "checked": "2026-01-27T15:59:38.960432"
+    },
+    "https://simplymerino.ca": {
+      "is_shopify": true,
+      "expiry": "2026-02-03T15:59:39.174233",
+      "checked": "2026-01-27T15:59:39.174233"
+    },
+    "https://stanfields.com": {
+      "is_shopify": true,
+      "expiry": "2026-02-03T16:19:00.564801",
+      "checked": "2026-01-27T16:19:00.564801"
+    },
+    "https://tateandyoko.com": {
+      "is_shopify": true,
+      "expiry": "2026-02-03T16:19:00.664240",
+      "checked": "2026-01-27T16:19:00.664240"
+    },
+    "https://thisisj.com/": {
+      "is_shopify": true,
+      "expiry": "2026-02-03T16:19:00.896108",
+      "checked": "2026-01-27T16:19:00.896108"
+    },
+    "https://victoireboutique.com": {
+      "is_shopify": true,
+      "expiry": "2026-02-03T16:19:25.264606",
+      "checked": "2026-01-27T16:19:25.264606"
+    },
+    "https://wearerowe.ca": {
+      "is_shopify": true,
+      "expiry": "2026-02-03T16:19:29.612690",
+      "checked": "2026-01-27T16:19:29.612690"
+    },
+    "https://www.mtnhead.com": {
+      "is_shopify": true,
+      "expiry": "2026-02-03T16:51:06.933219",
+      "checked": "2026-01-27T16:51:06.933219"
+    },
+    "https://www.encircled.ca": {
+      "is_shopify": true,
+      "expiry": "2026-02-03T16:51:06.849343",
+      "checked": "2026-01-27T16:51:06.849343"
+    },
+    "https://freelabel.com": {
+      "is_shopify": true,
+      "expiry": "2026-02-03T16:51:06.853942",
+      "checked": "2026-01-27T16:51:06.853942"
+    },
+    "https://buttercreamclothing.com": {
+      "is_shopify": true,
+      "expiry": "2026-02-03T16:51:19.669082",
+      "checked": "2026-01-27T16:51:19.669082"
+    },
+    "https://rudsak.com": {
+      "is_shopify": true,
+      "expiry": "2026-02-03T16:51:28.006340",
+      "checked": "2026-01-27T16:51:28.006340"
+    },
+    "https://ecksand.com": {
+      "is_shopify": true,
+      "expiry": "2026-02-03T17:21:02.280238",
+      "checked": "2026-01-27T17:21:02.280238"
+    },
+    "http://www.wheatandwildflower.ca": {
+      "is_shopify": true,
+      "expiry": "2026-02-03T17:21:02.579334",
+      "checked": "2026-01-27T17:21:02.579334"
+    },
+    "https://knix.ca": {
+      "is_shopify": true,
+      "expiry": "2026-02-03T17:21:02.215778",
+      "checked": "2026-01-27T17:21:02.215778"
+    },
+    "https://www.pranavidastyle.com/": {
+      "is_shopify": true,
+      "expiry": "2026-02-03T17:21:11.420790",
+      "checked": "2026-01-27T17:21:11.420790"
+    },
+    "https://typebooks.ca/": {
+      "is_shopify": true,
+      "expiry": "2026-01-10T14:22:20.206232",
+      "checked": "2026-01-03T14:22:20.206232"
+    },
+    "https://kotn.com": {
+      "is_shopify": true,
+      "expiry": "2026-02-03T17:21:19.407282",
+      "checked": "2026-01-27T17:21:19.407282"
+    },
+    "https://frankandoak.com": {
+      "is_shopify": true,
+      "expiry": "2026-01-26T12:18:08.307666",
+      "checked": "2026-01-19T12:18:08.307666"
+    },
+    "https://bodyofwork-studio.com": {
+      "is_shopify": true,
+      "expiry": "2026-02-03T17:53:10.600412",
+      "checked": "2026-01-27T17:53:10.600412"
+    },
+    "https://jackandmarlo.com": {
+      "is_shopify": false,
+      "expiry": "2026-01-26T12:18:30.091464",
+      "checked": "2026-01-19T12:18:30.091464"
+    },
+    "https://arraeicollective.com": {
+      "is_shopify": true,
+      "expiry": "2026-02-03T17:53:10.489425",
+      "checked": "2026-01-27T17:53:10.489425"
+    },
+    "https://harlyjae.com": {
+      "is_shopify": true,
+      "expiry": "2026-02-03T17:53:10.608082",
+      "checked": "2026-01-27T17:53:10.608082"
+    }
+  }
+}

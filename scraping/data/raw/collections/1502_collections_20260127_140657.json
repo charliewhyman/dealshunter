@@ -1,0 +1,50 @@
+[
+  {
+    "shop_id": 1502,
+    "scraped_at": "2026-01-27T14:07:30.463771",
+    "id": "263138443366",
+    "handle": "adutls",
+    "title": "Adult",
+    "collection_url": "https://padraigcottage.com/collections/adutls",
+    "description": "",
+    "products_count": 4,
+    "published_at": "2022-02-08T13:20:52-08:00",
+    "updated_at": "2026-01-27T04:00:19-08:00"
+  },
+  {
+    "shop_id": 1502,
+    "scraped_at": "2026-01-27T14:07:30.463771",
+    "id": "16501293",
+    "handle": "kids",
+    "title": "Kids' & Baby",
+    "collection_url": "https://padraigcottage.com/collections/kids",
+    "description": "",
+    "products_count": 5,
+    "published_at": "2014-02-12T17:11:05-08:00",
+    "updated_at": "2026-01-27T04:00:19-08:00"
+  },
+  {
+    "shop_id": 1502,
+    "scraped_at": "2026-01-27T14:07:30.463771",
+    "id": "16630433",
+    "handle": "mens",
+    "title": "Men's",
+    "collection_url": "https://padraigcottage.com/collections/mens",
+    "description": "",
+    "products_count": 2,
+    "published_at": "2014-02-15T14:28:35-08:00",
+    "updated_at": "2026-01-26T04:00:26-08:00"
+  },
+  {
+    "shop_id": 1502,
+    "scraped_at": "2026-01-27T14:07:30.463771",
+    "id": "16630425",
+    "handle": "womens",
+    "title": "Women's",
+    "collection_url": "https://padraigcottage.com/collections/womens",
+    "description": "",
+    "products_count": 2,
+    "published_at": "2014-02-15T14:28:07-08:00",
+    "updated_at": "2026-01-27T04:00:19-08:00"
+  }
+]

@@ -1,0 +1,49 @@
+{
+  "timestamp": "20260127_200332",
+  "steps": {
+    "products": {
+      "processed_files": 25,
+      "failed_files": 0,
+      "total_files": 25,
+      "total_products_processed": 7362,
+      "total_products_uploaded": 7362,
+      "shop_ids": [
+        1536,
+        1537,
+        1538,
+        1539,
+        1540,
+        1541,
+        1542,
+        1546,
+        1548,
+        1519,
+        1520,
+        1521,
+        1522,
+        1524,
+        1525,
+        1526,
+        1527,
+        1528,
+        1529,
+        1530,
+        1531,
+        1532,
+        1533,
+        1534,
+        1535
+      ],
+      "filter_stats": {
+        "total_processed": 7362,
+        "uploaded": 7362,
+        "skipped": 0
+      },
+      "description_stats": {
+        "html_descriptions": 6113,
+        "plain_text_descriptions": 11,
+        "total_with_descriptions": 6124
+      }
+    }
+  }
+}
