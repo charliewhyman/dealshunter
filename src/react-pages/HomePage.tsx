@@ -7,7 +7,7 @@ import AsyncLucideIcon from '../components/AsyncLucideIcon';
 import { ProductCard } from '../components/ProductCard';
 import { MultiSelectDropdown, SingleSelectDropdown } from '../components/Dropdowns';
 import TransformSlider from '../components/TransformSlider';
-import type { CategoryConfig } from '../data/categories';
+import type { CategoryConfig, FilterActions } from '../data/categories'; // ── FIX: import FilterActions
 
 // ============================================================================
 // CONSTANTS
@@ -67,7 +67,6 @@ function sortSizes(a: string, b: string): number {
 // UTILITY FUNCTIONS
 // ============================================================================
 
-// Debounce utility
 function createDebounced<Args extends unknown[]>(fn: (...args: Args) => void, wait: number) {
   let timer: number | undefined;
   const debounced = ((...args: Args) => {
@@ -84,32 +83,21 @@ const parseArrayParam = (param: string | null) => {
 };
 
 const parsePriceRange = (
-    param: string | null,
-    absMin: number,
-    absMax: number
-  ): [number, number] | null => {
-    if (!param) return null;
-
-    const parts = param.split('-');
-
-    if (parts.length !== 2) return null;
-
-    const min = Number(parts[0]);
-    const max = Number(parts[1]);
-
-    if (
-      !Number.isFinite(min) ||
-      !Number.isFinite(max) ||
-      min > max
-    ) {
-      return null;
-    }
-
-    return [
-      Math.max(absMin, Math.min(absMax, min)),
-      Math.max(absMin, Math.min(absMax, max)),
-    ];
-  };
+  param: string | null,
+  absMin: number,
+  absMax: number
+): [number, number] | null => {
+  if (!param) return null;
+  const parts = param.split('-');
+  if (parts.length !== 2) return null;
+  const min = Number(parts[0]);
+  const max = Number(parts[1]);
+  if (!Number.isFinite(min) || !Number.isFinite(max) || min > max) return null;
+  return [
+    Math.max(absMin, Math.min(absMax, min)),
+    Math.max(absMin, Math.min(absMax, max)),
+  ];
+};
 
 interface FilterOptions {
   selectedShopName: string[];
@@ -146,35 +134,36 @@ export function HomePage({
   const [isFilterChanging, setIsFilterChanging] = useState(false);
   const navigate = useNavigate();
 
-  // Hybrid loading state
   const autoLoadCountRef = useRef(0);
   const [showLoadMoreButton, setShowLoadMoreButton] = useState(false);
   const [showFilters, setShowFilters] = useState(false);
 
+  // ── FIX 1: only trust SSR products on the homepage; collection pages
+  //    always fetch client-side so stale initialProducts from a previous
+  //    route can't leak through after client-side navigation.
   const hasSkippedInitialFetch = useRef(initialProducts.length > 0 && !categoryConfig);
 
   // ============================================================================
   // STATE - Filter Options (Dropdowns)
   // ============================================================================
-  const [shopList, setShopList] = useState<Array<{id: number; shop_name: string}>>([]);
-  const [allSizeData, setAllSizeData] = useState<{size_group: string | null}[]>([]);
-  const [allGroupedTypes, setAllGroupedTypes] = useState<Array<{grouped_product_type: string | null}>>([]);
-  const [allTopLevelCategories, setAllTopLevelCategories] = useState<Array<{top_level_category: string | null}>>([]);
-  const [allGenderAges, setAllGenderAges] = useState<Array<{gender_age: string | null}>>([]);
+  const [shopList, setShopList] = useState<Array<{ id: number; shop_name: string }>>([]);
+  const [allSizeData, setAllSizeData] = useState<{ size_group: string | null }[]>([]);
+  const [allGroupedTypes, setAllGroupedTypes] = useState<Array<{ grouped_product_type: string | null }>>([]);
+  const [allTopLevelCategories, setAllTopLevelCategories] = useState<Array<{ top_level_category: string | null }>>([]);
+  const [allGenderAges, setAllGenderAges] = useState<Array<{ gender_age: string | null }>>([]);
 
-  // Price range constants
   const ABS_MIN_PRICE = 0;
-  const ABS_MAX_PRICE = 99999; 
+  const ABS_MAX_PRICE = 99999;
   const DEFAULT_VIEW_MAX_PRICE = 500;
-  const PRICE_RANGE = useMemo<[number, number]>(() => [15, 200], []); 
+  const PRICE_RANGE = useMemo<[number, number]>(() => [15, 200], []);
 
   // ============================================================================
   // STATE - User Selections (Synced with URL)
   // ============================================================================
-  
+
   const [sortOrder, setSortOrder] = useState<SortOrder>(() => {
     const fromUrl = searchParams.get('sort');
-    if (fromUrl === 'price_asc' || fromUrl === 'price_desc' || fromUrl === 'discount_desc') 
+    if (fromUrl === 'price_asc' || fromUrl === 'price_desc' || fromUrl === 'discount_desc')
       return fromUrl as SortOrder;
     return 'discount_desc';
   });
@@ -210,7 +199,7 @@ export function HomePage({
     if (categoryConfig?.filterDefaults?.selectedGenderAges) return categoryConfig.filterDefaults.selectedGenderAges;
     return [];
   });
-  
+
   const [onSaleOnly, setOnSaleOnly] = useState<boolean>(() => {
     const fromUrl = searchParams.get('sale');
     if (fromUrl === 'true') return true;
@@ -222,7 +211,6 @@ export function HomePage({
     const fromUrl = searchParams.get('made_in_canada');
     if (fromUrl === 'true') return true;
     if (fromUrl === 'false') return false;
-    // Default to true for made-in-canada category
     if (categoryConfig?.slug === 'made-in-canada') return true;
     return false;
   });
@@ -238,8 +226,8 @@ export function HomePage({
   });
 
   const [productPricings, setProductPricings] = useState<Record<string, {
-    variantPrice: number | null; 
-    compareAtPrice: number | null; 
+    variantPrice: number | null;
+    compareAtPrice: number | null;
   }>>({});
 
   // ============================================================================
@@ -257,13 +245,14 @@ export function HomePage({
   const CACHE_TTL = 5 * 60 * 1000;
   const canLoadMoreRef = useRef(true);
   const prevFilterKeyRef = useRef<string>('');
-  
-  // Ref to track if we are syncing from URL to avoid loop
+
   const isSyncingFromUrl = useRef(false);
+  const userInteractedRef = useRef(false);
+
 
   const updateFilter = useCallback((key: string, value: string | string[] | null) => {
+    userInteractedRef.current = true;
     const newParams = new URLSearchParams(searchParams);
-    
     if (value === null || (Array.isArray(value) && value.length === 0) || value === '') {
       newParams.delete(key);
     } else if (Array.isArray(value)) {
@@ -271,14 +260,13 @@ export function HomePage({
     } else {
       newParams.set(key, value);
     }
-    
     setSearchParams(newParams, { replace: true });
   }, [searchParams, setSearchParams]);
 
   // ============================================================================
   // PRICE RANGE INPUT HANDLERS
   // ============================================================================
-  
+
   const handleMinPriceChange = useCallback((e: ChangeEvent<HTMLInputElement>) => {
     const value = parseFloat(e.target.value);
     if (!isNaN(value) && value >= ABS_MIN_PRICE && value <= ABS_MAX_PRICE) {
@@ -298,30 +286,21 @@ export function HomePage({
   const handlePriceInputBlur = useCallback(() => {
     let min = selectedPriceRange[0];
     const max = selectedPriceRange[1];
-    
-    // Ensure min <= max
     if (min > max) {
       min = max;
       setSelectedPriceRange([min, max]);
     }
-    
-    // Sync to URL
     if (min !== PRICE_RANGE[0] || max !== PRICE_RANGE[1]) {
       updateFilter('price', `${min}-${max}`);
     } else {
-      updateFilter('price', null); // Reset to default
+      updateFilter('price', null);
     }
   }, [selectedPriceRange, PRICE_RANGE, updateFilter]);
 
   // ============================================================================
   // EFFECTS - URL Sync
   // ============================================================================
-  
-  // Sync State -> URL - REMOVED TO PREVENT LOOPS and enforce URL source of truth
-  // useEffect(() => { ... }, [...]); 
-  // We now update URL directly in handlers.
 
-  // Sync URL -> State (Handle Back/Forward)
   useEffect(() => {
     isSyncingFromUrl.current = true;
 
@@ -377,52 +356,41 @@ export function HomePage({
     }
 
     setTimeout(() => { isSyncingFromUrl.current = false; }, 0);
-  }, [
-    PRICE_RANGE, madeInCanadaOnly, onSaleOnly, searchParams, searchQuery,
-    selectedGenderAges, selectedGroupedTypes, selectedPriceRange,
-    selectedShopName, selectedSizeGroups, selectedTopLevelCategories, sortOrder,
-  ]);
+  }, [PRICE_RANGE, madeInCanadaOnly, onSaleOnly, searchParams, searchQuery, selectedGenderAges, selectedGroupedTypes, selectedPriceRange, selectedShopName, selectedSizeGroups, selectedTopLevelCategories, sortOrder]);
+
   // ============================================================================
   // UTILITY FUNCTIONS
   // ============================================================================
 
-
-  
   const scheduleIdle = useCallback((task: () => void) => {
     const w = window as unknown as { requestIdleCallback?: (cb: () => void, opts?: { timeout?: number }) => number };
     if (w.requestIdleCallback) {
       try {
         w.requestIdleCallback(() => {
-          try { task(); } catch (error) {
-            console.error('Error in scheduled idle callback:', error);
-          }
+          try { task(); } catch (error) { console.error('Error in scheduled idle callback:', error); }
         }, { timeout: 2000 });
         return;
       } catch (error) {
         console.error('Failed to schedule idle callback:', error);
       }
     }
-    setTimeout(() => { try { task(); } catch (error) {
-      console.error('Error in setTimeout callback:', error);
-    } }, 200);
+    setTimeout(() => { try { task(); } catch (error) { console.error('Error in setTimeout callback:', error); } }, 200);
   }, []);
 
   // ============================================================================
   // PRICING FETCH
   // ============================================================================
-  
+
   const fetchBatchPricingFor = useCallback(async (ids: Array<number | string>) => {
     const uniqueIds = Array.from(new Set(ids.map(String))).filter(Boolean);
     if (uniqueIds.length === 0) return;
-    
     const idsToFetch = uniqueIds.filter(id => !(id in productPricings));
     if (idsToFetch.length === 0) return;
-    
-    const pricingMap: Record<string, {variantPrice: number | null; compareAtPrice: number | null;}> = {};
-    
+
+    const pricingMap: Record<string, { variantPrice: number | null; compareAtPrice: number | null; }> = {};
+
     try {
       const prices = await apiClient.fetchPricing(idsToFetch);
-
       for (const row of prices) {
         const pid = String(row.product_id);
         const price = row.price != null ? Number(row.price) : null;
@@ -436,11 +404,10 @@ export function HomePage({
           }
         }
       }
-      
     } catch (error) {
       console.error('Error fetching pricing:', error);
     }
-    
+
     setProductPricings(prev => ({ ...prev, ...pricingMap }));
   }, [productPricings]);
 
@@ -452,19 +419,16 @@ export function HomePage({
     }, PRICING_DEBOUNCE_MS)
   ).current;
 
-  // Clean up debounced function on unmount
   useEffect(() => {
     return () => {
-      if (fetchPricingDebounced.cancel) {
-        fetchPricingDebounced.cancel();
-      }
+      if (fetchPricingDebounced.cancel) fetchPricingDebounced.cancel();
     };
   }, [fetchPricingDebounced]);
 
   // ============================================================================
   // PRICING INTERSECTION OBSERVER
   // ============================================================================
-  
+
   useEffect(() => {
     const io = new IntersectionObserver(
       (entries) => {
@@ -480,25 +444,17 @@ export function HomePage({
       },
       { rootMargin: INTERSECTION_ROOT_MARGIN, threshold: INTERSECTION_THRESHOLD }
     );
-    
-    // Initial observation
+
     const observeCurrentCards = () => {
       for (const el of cardRefs.current.values()) {
-        try { 
-          io.observe(el); 
-        } catch (error) {
-          console.error('Failed to observe element:', error);
-        }
+        try { io.observe(el); } catch (error) { console.error('Failed to observe element:', error); }
       }
     };
-    
+
     observeCurrentCards();
-    
-    // Set up periodic re-observation for new cards
-    const intervalId = setInterval(() => {
-      observeCurrentCards();
-    }, OBSERVER_CHECK_INTERVAL_MS);
-    
+
+    const intervalId = setInterval(() => { observeCurrentCards(); }, OBSERVER_CHECK_INTERVAL_MS);
+
     return () => {
       clearInterval(intervalId);
       io.disconnect();
@@ -508,24 +464,21 @@ export function HomePage({
   // ============================================================================
   // DATA FETCHING
   // ============================================================================
-  
+
   const fetchWithCache = useCallback(async <T,>(key: string, fetchFn: () => Promise<T[]>): Promise<T[]> => {
     const cached = filterCacheRef.current.get(key);
     if (cached && Date.now() - cached.timestamp < CACHE_TTL) {
       return cached.data as T[];
     }
-    
     const data = await fetchFn();
     filterCacheRef.current.set(key, { data: data as unknown[], timestamp: Date.now() });
     return data;
   }, [CACHE_TTL]);
 
-
-
   // ============================================================================
   // MAIN FETCH FUNCTION
   // ============================================================================
-  
+
   const fetchFilteredProducts = useCallback(async (
     filters: FilterOptions,
     offset: number,
@@ -533,36 +486,27 @@ export function HomePage({
     isFilterChange: boolean = false
   ) => {
     const requestKey = `${JSON.stringify(filters)}-${offset}-${sortOrder}`;
-    
-    if (!isFilterChange && inFlightRequestsRef.current.has(requestKey)) {
-      return;
-    }
-    
+
+    if (!isFilterChange && inFlightRequestsRef.current.has(requestKey)) return;
+
     inFlightRequestsRef.current.add(requestKey);
-    
+
     if (isFilterChange) {
       autoLoadCountRef.current = 0;
       setShowLoadMoreButton(false);
-      
-      if (currentRequestRef.current) {
-        currentRequestRef.current.abort();
-      }
+      if (currentRequestRef.current) currentRequestRef.current.abort();
       currentRequestRef.current = null;
-      
-      const keysToDelete = Object.keys(prefetchCacheRef.current).filter(key => 
+      const keysToDelete = Object.keys(prefetchCacheRef.current).filter(key =>
         key.startsWith(`${JSON.stringify(filters)}-`)
       );
-      keysToDelete.forEach(key => {
-        delete prefetchCacheRef.current[key];
-      });
+      keysToDelete.forEach(key => { delete prefetchCacheRef.current[key]; });
     }
-    
+
     if (!isFilterChange) {
       const cached = prefetchCacheRef.current[requestKey];
       if (cached) {
         const hasMoreData = cached.data.length > ITEMS_PER_PAGE;
         const productsToShow = hasMoreData ? cached.data.slice(0, ITEMS_PER_PAGE) : cached.data;
-                
         startTransition(() => {
           setProducts(prev => isFilterChange ? productsToShow : [...prev, ...productsToShow]);
           setHasMore(hasMoreData);
@@ -571,37 +515,25 @@ export function HomePage({
           setLoading(false);
           setIsFilterChanging(false);
         });
-        
         isFetchingRef.current = false;
         observerLockRef.current = false;
         inFlightRequestsRef.current.delete(requestKey);
-        
         canLoadMoreRef.current = false;
-        setTimeout(() => {
-          canLoadMoreRef.current = true;
-        }, LOAD_COOLDOWN);
-        
+        setTimeout(() => { canLoadMoreRef.current = true; }, LOAD_COOLDOWN);
         if (!isFilterChange) {
           autoLoadCountRef.current += 1;
           const newCount = autoLoadCountRef.current;
-          
           startTransition(() => {
-            if (newCount >= MAX_AUTO_LOADS) {
-              setShowLoadMoreButton(true);
-            }
+            if (newCount >= MAX_AUTO_LOADS) setShowLoadMoreButton(true);
           });
         }
-        
-        // Prefetch next page
         if (hasMoreData && autoLoadCountRef.current < MAX_AUTO_LOADS) {
           scheduleIdle(async () => {
             const nextOffset = offset + ITEMS_PER_PAGE;
             const nextKey = `${JSON.stringify(filters)}-${nextOffset}-${sortOrder}`;
             if (!prefetchCacheRef.current[nextKey]) {
               try {
-                // Prefetch next page: default limit is 31 in api client which is essentially page + 1
                 const nextData = await apiClient.fetchProducts(filters, nextOffset, sortOrder);
-                
                 if (Array.isArray(nextData)) {
                   prefetchCacheRef.current[nextKey] = { data: nextData as unknown as ProductWithDetails[] };
                   const ids = nextData.slice(0, ITEMS_PER_PAGE).map(p => p.id).filter(Boolean);
@@ -613,30 +545,25 @@ export function HomePage({
             }
           });
         }
-        
         return;
       }
     }
-    
+
     isFetchingRef.current = true;
-    
+
     if (isFilterChange) {
       setLoading(true);
       setIsFilterChanging(true);
     }
-    
+
     try {
       const controller = new AbortController();
       currentRequestRef.current = controller;
-      
       const timeoutId = setTimeout(() => controller.abort(), REGULAR_LOAD_TIMEOUT_MS);
-      
-      
-      // Call API
+
       const data = await apiClient.fetchProducts(filters, offset, sortOrder);
-      
       clearTimeout(timeoutId);
-      
+
       const newData = (data as unknown as ProductWithDetails[]) || [];
       const hasMoreData = newData.length > ITEMS_PER_PAGE;
       const productsToShow = hasMoreData ? newData.slice(0, ITEMS_PER_PAGE) : newData;
@@ -644,44 +571,36 @@ export function HomePage({
       if (!isFilterChange || productsToShow.length > 0) {
         prefetchCacheRef.current[requestKey] = { data: newData };
       }
-      
+
       const cacheKeys = Object.keys(prefetchCacheRef.current);
       if (cacheKeys.length > MAX_CACHE_ENTRIES) {
         const toRemove = cacheKeys.slice(0, cacheKeys.length - MAX_CACHE_ENTRIES);
-        for (const key of toRemove) {
-          delete prefetchCacheRef.current[key];
-        }
+        for (const key of toRemove) delete prefetchCacheRef.current[key];
       }
-      
+
       startTransition(() => {
-        if (isFilterChange) {
-          setProducts(productsToShow);
-        } else {
-          setProducts(prev => [...prev, ...productsToShow]);
-        }
+        if (isFilterChange) setProducts(productsToShow);
+        else setProducts(prev => [...prev, ...productsToShow]);
         setHasMore(hasMoreData);
         setInitialLoad(false);
         setError(null);
         setLoading(false);
         setIsFilterChanging(false);
       });
-      
+
       if (productsToShow.length > 0) {
         const ids = productsToShow.map(p => p.id).filter(Boolean);
         scheduleIdle(() => fetchBatchPricingFor(ids));
       }
-      
+
       if (!isFilterChange) {
         autoLoadCountRef.current += 1;
         const newCount = autoLoadCountRef.current;
-        
         startTransition(() => {
-          if (newCount >= MAX_AUTO_LOADS) {
-            setShowLoadMoreButton(true);
-          }
+          if (newCount >= MAX_AUTO_LOADS) setShowLoadMoreButton(true);
         });
       }
-      
+
       if (hasMoreData && autoLoadCountRef.current < MAX_AUTO_LOADS) {
         scheduleIdle(async () => {
           const nextOffset = offset + ITEMS_PER_PAGE;
@@ -689,7 +608,6 @@ export function HomePage({
           if (!prefetchCacheRef.current[nextKey]) {
             try {
               const nextData = await apiClient.fetchProducts(filters, nextOffset, sortOrder);
-              
               if (Array.isArray(nextData)) {
                 prefetchCacheRef.current[nextKey] = { data: nextData as unknown as ProductWithDetails[] };
                 const nextIds = nextData.slice(0, ITEMS_PER_PAGE).map(p => p.id).filter(Boolean);
@@ -704,19 +622,15 @@ export function HomePage({
 
     } catch (err) {
       const maybeErr = err as { name?: string; message?: string; code?: string };
-      
       if (maybeErr.name === 'AbortError' || maybeErr.message?.includes('AbortError')) {
         console.warn('Request was aborted:', maybeErr);
         return;
       }
-      
       console.error('Fetch error in fetchFilteredProducts:', err);
-      
       let errorMessage = 'Failed to load products. Please try again.';
       if (maybeErr.code === '57014') {
         errorMessage = 'Request timed out. The server might be experiencing high load. Please try again.';
       }
-      
       startTransition(() => {
         setError(errorMessage);
         setHasMore(false);
@@ -726,14 +640,8 @@ export function HomePage({
       });
     } finally {
       inFlightRequestsRef.current.delete(requestKey);
-
-      if (currentRequestRef.current?.signal.aborted) {
-        isFetchingRef.current = false;
-        observerLockRef.current = false;
-      } else {
-        isFetchingRef.current = false;
-        observerLockRef.current = false;
-      }
+      isFetchingRef.current = false;
+      observerLockRef.current = false;
     }
   }, [scheduleIdle, fetchBatchPricingFor]);
 
@@ -743,79 +651,60 @@ export function HomePage({
   const [isCategoryInitialized, setIsCategoryInitialized] = useState(false);
 
   useEffect(() => {
-    if (!categoryConfig) { setIsCategoryInitialized(true); return; }
-    const defaults = categoryConfig.filterDefaults;
-
-    if (!searchParams.has('category') && defaults.selectedTopLevelCategories) {
-      setSelectedTopLevelCategories(defaults.selectedTopLevelCategories);
+    if (categoryConfig) {
+      const defaults = categoryConfig.filterDefaults;
+      setSelectedTopLevelCategories(defaults.selectedTopLevelCategories || []);
+      setSelectedGenderAges(defaults.selectedGenderAges || []);
+      setSelectedGroupedTypes(defaults.selectedGroupedTypes || []);
+      setSelectedSizeGroups([]);
+      setSelectedShopName([]);
+      setSearchQuery(defaults.query || '');
+      setSelectedPriceRange([...PRICE_RANGE]);
+      setIsCategoryInitialized(true);
+    } else {
+      setIsCategoryInitialized(true);
     }
-    if (!searchParams.has('gender') && defaults.selectedGenderAges) {
-      setSelectedGenderAges(defaults.selectedGenderAges);
-    }
-    if (!searchParams.has('type') && defaults.selectedGroupedTypes) {
-      setSelectedGroupedTypes(defaults.selectedGroupedTypes);
-    }
-    if (!searchParams.has('search') && defaults.query) {
-      setSearchQuery(defaults.query);
-    }
-    // Intentionally reset size/shop/price when *navigating* between categories,
-    // but not on first mount if the URL carries them.
-    // (Add a "previous slug" ref if you want to distinguish.)
-
-    setIsCategoryInitialized(true);
-  }, [categoryConfig, searchParams]);
+  }, [PRICE_RANGE, categoryConfig, categoryConfig?.slug]);
 
   // ============================================================================
   // PRE-WARM CONNECTION ON APP START
   // ============================================================================
 
   useEffect(() => {
-    // Pre-warm Neon connection on component mount
-    // Connection pre-warming removed as we are now using HTTP API
-    const prewarmConnection = async () => {
-      // no-op
-    };
-
-    // Small delay to not block initial render
-    const timer = setTimeout(() => {
-      prewarmConnection();
-    }, 500);
-
+    const prewarmConnection = async () => { /* no-op */ };
+    const timer = setTimeout(() => { prewarmConnection(); }, 500);
     return () => clearTimeout(timer);
   }, []);
 
-  // Add index, follow meta tag (and other SEO tags for categories)
+  // ============================================================================
+  // SEO META (client-side; canonical should also be emitted SSR by Layout)
+  // ============================================================================
+
   useEffect(() => {
     const tags: HTMLElement[] = [];
 
-    // Robots
     const metaRobots = document.createElement('meta');
     metaRobots.name = 'robots';
     metaRobots.content = 'index, follow';
     document.head.appendChild(metaRobots);
     tags.push(metaRobots);
 
-    // Category SEO
     if (categoryConfig) {
-      // Title
       const originalTitle = document.title;
       document.title = categoryConfig.title;
 
-      // Meta Description
       let metaDesc = document.querySelector('meta[name="description"]');
       const originalDesc = metaDesc?.getAttribute('content') || '';
       if (!metaDesc) {
         metaDesc = document.createElement('meta');
         metaDesc.setAttribute('name', 'description');
         document.head.appendChild(metaDesc);
-        tags.push(metaDesc as HTMLElement); // Mark for removal if we created it? Actually better not to remove existing description element, just revert content.
+        tags.push(metaDesc as HTMLElement);
       }
       metaDesc.setAttribute('content', categoryConfig.metaDescription);
 
-      // Canonical
       const linkCanonical = document.createElement('link');
       linkCanonical.rel = 'canonical';
-      // Assuming slug matches URL path segment
       linkCanonical.href = `https://curatedcanada.ca/collections/${categoryConfig.slug}`;
       document.head.appendChild(linkCanonical);
       tags.push(linkCanonical);
@@ -823,16 +712,11 @@ export function HomePage({
       return () => {
         document.title = originalTitle;
         if (metaDesc) metaDesc.setAttribute('content', originalDesc);
-        tags.forEach(t => {
-          if (document.head.contains(t)) document.head.removeChild(t);
-        });
+        tags.forEach(t => { if (document.head.contains(t)) document.head.removeChild(t); });
       };
     } else {
-      // Cleanup robots only if not category page logic (which handles cleanup above)
-       return () => {
-        tags.forEach(t => {
-          if (document.head.contains(t)) document.head.removeChild(t);
-        });
+      return () => {
+        tags.forEach(t => { if (document.head.contains(t)) document.head.removeChild(t); });
       };
     }
   }, [categoryConfig]);
@@ -840,53 +724,33 @@ export function HomePage({
   // ============================================================================
   // EFFECT - Redirect to Home if Category Filters Cleared
   // ============================================================================
+
   useEffect(() => {
-    if (!categoryConfig || !categoryConfig.filterDefaults) return;
-    
-    // Prevent redirect if we are in the process of initializing defaults
+    // Never redirect on initial mount / hydration
+    if (!userInteractedRef.current) return;
+    if (!categoryConfig?.filterDefaults) return;
     if (!isCategoryInitialized) return;
 
-    // Check if we are still 'in' the category
-    // Logic: If the category has defaults, at least one of them must be active.
-    // Actually, user might want to clear specific filters, but if they clear EVERYTHING that defines the category, they should probably go home.
-    
-    // We only check the defaults that are arrays (the multi-selects).
-    // If a default exists (e.g. selectedTopLevelCategories=['Footwear']), 
-    // we require that the current selection overlaps with it or contains it?
-    // No, usually "Footwear" is pre-selected. If user unchecks "Footwear", selectedTopLevelCategories becomes empty.
-    
-    // So: if filterDefaults has a key, and the corresponding state is empty, redirect.
-    
     const defaults = categoryConfig.filterDefaults;
     let shouldRedirect = false;
 
-    if (defaults.selectedTopLevelCategories && defaults.selectedTopLevelCategories.length > 0) {
-      if (selectedTopLevelCategories.length === 0) shouldRedirect = true;
+    if (defaults.selectedTopLevelCategories?.length && selectedTopLevelCategories.length === 0) {
+      shouldRedirect = true;
     }
-    
-    // Sometimes gender is the defining feature (Women's Clothing)
-    if (defaults.selectedGenderAges && defaults.selectedGenderAges.length > 0) {
-       // Ideally we check if "Women" is still selected for Women's Clothing.
-       // But user might filter for "Women" + "Sales". If they remove "Women", they are seeing sales of Men's too?
-       // Yes.
-       if (selectedGenderAges.length === 0) shouldRedirect = true;
+    if (defaults.selectedGenderAges?.length && selectedGenderAges.length === 0) {
+      shouldRedirect = true;
     }
 
     if (shouldRedirect) {
-       // Use replace to avoid back-button loops
-       navigate('/', { replace: true });
+      userInteractedRef.current = false;
+      navigate('/', { replace: true });
     }
-
   }, [categoryConfig, selectedTopLevelCategories, selectedGenderAges, navigate, isCategoryInitialized]);
 
   // ============================================================================
   // FETCH INITIAL FILTER OPTIONS
   // ============================================================================
-  
-  // ============================================================================
-  // FETCH INITIAL FILTER OPTIONS
-  // ============================================================================
-  
+
   useEffect(() => {
     let cancelled = false;
 
@@ -899,45 +763,24 @@ export function HomePage({
           categoriesResult,
           gendersResult
         ] = await Promise.all([
-          // ------------------------------
-          // Shops (real table)
-          // ------------------------------
           fetchWithCache<{ id: number; shop_name: string }>('shops', async () => {
             const data = await apiClient.fetchShops();
-
-            // Filter out any shops with null names to satisfy the type definition
             return (data ?? [])
               .filter(s => s.shop_name !== null)
               .map(s => ({ id: Number(s.id), shop_name: s.shop_name! }));
           }),
-
-          // ------------------------------
-          // Sizes (View)
-          // ------------------------------
           fetchWithCache<{ size_group: string | null }>('sizes', async () => {
             const data = await apiClient.fetchSizes();
             return data ?? [];
           }),
-
-          // ------------------------------
-          // Grouped types (View)
-          // ------------------------------
           fetchWithCache<{ grouped_product_type: string | null }>('types', async () => {
             const data = await apiClient.fetchTypes();
             return data ?? [];
           }),
-
-          // ------------------------------
-          // Top-level categories (View)
-          // ------------------------------
           fetchWithCache<{ top_level_category: string | null }>('categories', async () => {
             const data = await apiClient.fetchCategories();
             return data ?? [];
           }),
-
-          // ------------------------------
-          // Gender / age (View)
-          // ------------------------------
           fetchWithCache<{ gender_age: string | null }>('genders', async () => {
             const data = await apiClient.fetchGenders();
             return data ?? [];
@@ -958,9 +801,7 @@ export function HomePage({
 
     fetchInitialData();
 
-    return () => {
-      cancelled = true;
-    };
+    return () => { cancelled = true; };
   }, [fetchWithCache]);
 
   // ============================================================================
@@ -990,23 +831,16 @@ export function HomePage({
   ]);
 
   useEffect(() => {
-    // Include sortOrder in the filter key
     const currentFilterKey = JSON.stringify({ ...currentFilters, sortOrder });
-    
-    //skip the very first fetch when SSR already provided products
+
     if (hasSkippedInitialFetch.current) {
       hasSkippedInitialFetch.current = false;
-      // Mark current filter key as already-applied so we don't re-fetch on unrelated renders
       prevFilterKeyRef.current = currentFilterKey;
       return;
     }
 
-    // Skip if this is the same filter key (no actual change)
-    if (prevFilterKeyRef.current === currentFilterKey) {
-      return;
-    }
-    
-    // Reset everything for new filter/sort
+    if (prevFilterKeyRef.current === currentFilterKey) return;
+
     startTransition(() => {
       setProducts([]);
       setShowLoadMoreButton(false);
@@ -1016,62 +850,46 @@ export function HomePage({
       setInitialLoad(false);
       setLoading(true);
     });
-    
-    // Cancel any ongoing request
-    if (currentRequestRef.current) {
-      currentRequestRef.current.abort();
-    }
-    
-    // Reset counters and cache
+
+    if (currentRequestRef.current) currentRequestRef.current.abort();
+
     autoLoadCountRef.current = 0;
     inFlightRequestsRef.current.clear();
-    
-    // Store current filter key
+
     prevFilterKeyRef.current = currentFilterKey;
-    
-    // Fetch first page
+
     fetchFilteredProducts(currentFilters, 0, sortOrder, true);
-    
+
   }, [currentFilters, sortOrder, fetchFilteredProducts]);
 
   // ============================================================================
   // INFINITE SCROLL OBSERVER
   // ============================================================================
-  
+
   useEffect(() => {
     const target = observerRef.current;
-    
-    if (!target || !hasMore || loading || showLoadMoreButton || isFilterChanging || products.length === 0) {
-      return;
-    }
-    
+    if (!target || !hasMore || loading || showLoadMoreButton || isFilterChanging || products.length === 0) return;
+
     const handleIntersect = (entries: IntersectionObserverEntry[]) => {
       const [entry] = entries;
-      
-      if (entry.isIntersecting && 
-          !isFetchingRef.current && 
-          !observerLockRef.current && 
+      if (entry.isIntersecting &&
+          !isFetchingRef.current &&
+          !observerLockRef.current &&
           canLoadMoreRef.current) {
-        
         observerLockRef.current = true;
         canLoadMoreRef.current = false;
-        
-        // Load next page
         fetchFilteredProducts(currentFilters, products.length, sortOrder, false);
-        
-        setTimeout(() => {
-          canLoadMoreRef.current = true;
-        }, LOAD_COOLDOWN);
+        setTimeout(() => { canLoadMoreRef.current = true; }, LOAD_COOLDOWN);
       }
     };
-    
+
     const io = new IntersectionObserver(handleIntersect, {
       rootMargin: '600px',
       threshold: INTERSECTION_THRESHOLD
     });
-    
+
     io.observe(target);
-    
+
     return () => {
       io.disconnect();
       observerLockRef.current = false;
@@ -1097,14 +915,13 @@ export function HomePage({
   };
 
   const handleClearAllFilters = () => {
-    // Navigate to root clears all query params including search
     navigate('/', { replace: true });
   };
 
   // ============================================================================
   // COMPUTED VALUES
   // ============================================================================
-  
+
   const sortOptions = [
     { value: 'discount_desc', label: 'Best Discount' },
     { value: 'price_asc', label: 'Price: Low to High' },
@@ -1121,15 +938,12 @@ export function HomePage({
     selectedPriceRange[0] !== PRICE_RANGE[0] || selectedPriceRange[1] !== PRICE_RANGE[1]
   ].filter(Boolean).length;
 
-  const shopOptions = shopList.map(shop => ({
-    value: String(shop.id),
-    label: shop.shop_name
-  }));
+  const shopOptions = shopList.map(shop => ({ value: String(shop.id), label: shop.shop_name }));
 
   const sizeOptions = allSizeData
       .map(item => item.size_group)
       .filter((s): s is string => !!s)
-      .filter((value, index, self) => self.indexOf(value) === index) // Remove duplicates
+      .filter((value, index, self) => self.indexOf(value) === index)
       .sort(sortSizes)
       .map(sg => ({ value: sg, label: sg }));
 
@@ -1150,10 +964,26 @@ export function HomePage({
 
   const isFetchingEmpty = loading && products.length === 0 && !initialLoad;
 
+  // ── FIX: build a FilterActions object for introText / bottomContent
+  //    buttons so the category copy's FilterButtons actually work.
+  const filterActions: FilterActions = useMemo(() => ({
+    setGroupedTypes: (types: string[]) => updateFilter('type', types),
+    setTopLevelCategories: (categories: string[]) => updateFilter('category', categories),
+    setGenderAges: (genders: string[]) => updateFilter('gender', genders),
+    setSearchQuery: (query: string) => updateFilter('search', query),
+  }), [updateFilter]);
+
+  const renderedIntroText = useMemo(() => {
+    if (!categoryConfig) return null;
+    return typeof categoryConfig.introText === 'function'
+      ? categoryConfig.introText(filterActions)
+      : categoryConfig.introText;
+  }, [categoryConfig, filterActions]);
+
   // ============================================================================
   // RENDER
   // ============================================================================
-  
+
   return (
     <div className="min-h-screen bg-gray-50 dark:bg-gray-950 font-['Inter',sans-serif]">
       <div className="mx-auto px-4 pt-[calc(16px+1rem+4rem)] pb-6 sm:px-6 lg:px-8 max-w-screen-2xl">
@@ -1161,7 +991,6 @@ export function HomePage({
           {/* Filters Sidebar */}
           <div className="w-full lg:w-96 flex-shrink-0">
             <div className="lg:sticky lg:top-20">
-              {/* Mobile Filter Toggle - Sticky Header */}
               <div className="lg:hidden sticky top-0 z-30 mb-4 -mx-4 px-4 py-2 bg-gray-50/95 dark:bg-gray-950/95 backdrop-blur supports-[backdrop-filter]:bg-gray-50/60 border-b border-gray-200 dark:border-gray-800 transition-all duration-200">
                 <button
                   onClick={() => setShowFilters(!showFilters)}
@@ -1176,338 +1005,291 @@ export function HomePage({
                       Filters {activeFilterCount > 0 && `(${activeFilterCount})`}
                     </span>
                   </div>
-                  <AsyncLucideIcon 
-                    name={showFilters ? "ChevronUp" : "ChevronDown"} 
-                    className="h-5 w-5 text-gray-600 dark:text-gray-400" 
+                  <AsyncLucideIcon
+                    name={showFilters ? "ChevronUp" : "ChevronDown"}
+                    className="h-5 w-5 text-gray-600 dark:text-gray-400"
                   />
                 </button>
               </div>
-          <div className={`
-            fixed inset-0 z-50 lg:static lg:z-auto w-full lg:w-96 flex-shrink-0
-            ${showFilters ? 'block' : 'hidden lg:block'}
-          `}>
-             {/* Mobile Backdrop */}
-             <div 
-                className="fixed inset-0 bg-black/50 lg:hidden" 
-                onClick={() => setShowFilters(false)}
-                aria-hidden="true"
-             />
+              <div className={`
+                fixed inset-0 z-50 lg:static lg:z-auto w-full lg:w-96 flex-shrink-0
+                ${showFilters ? 'block' : 'hidden lg:block'}
+              `}>
+                <div
+                  className="fixed inset-0 bg-black/50 lg:hidden"
+                  onClick={() => setShowFilters(false)}
+                  aria-hidden="true"
+                />
+                <div className={`
+                  fixed inset-y-0 left-0 w-[280px] sm:w-[320px] bg-white dark:bg-gray-900 shadow-xl lg:shadow-none
+                  lg:static lg:w-auto lg:bg-transparent
+                  flex flex-col
+                  transition-transform duration-300 ease-in-out
+                  ${showFilters ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'}
+                  z-50 lg:z-auto
+                `}>
+                  <div className="flex-1 overflow-y-auto lg:overflow-y-auto lg:max-h-[calc(100vh-8rem)] p-4 lg:p-0 scrollbar-thin scrollbar-thumb-gray-300 dark:scrollbar-thumb-gray-600">
+                    <div className="flex items-center justify-between mb-4 lg:hidden">
+                      <h2 className="text-lg font-semibold text-gray-900 dark:text-gray-100">Filters</h2>
+                      <button
+                        onClick={() => setShowFilters(false)}
+                        className="p-2 text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200"
+                      >
+                        <AsyncLucideIcon name="X" className="h-5 w-5" />
+                      </button>
+                    </div>
 
-            <div className={`
-              fixed inset-y-0 left-0 w-[280px] sm:w-[320px] bg-white dark:bg-gray-900 shadow-xl lg:shadow-none
-              lg:static lg:w-auto lg:bg-transparent
-              flex flex-col
-              transition-transform duration-300 ease-in-out
-              ${showFilters ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'}
-              z-50 lg:z-auto
-            `}>
-              
-
-               <div className="flex-1 overflow-y-auto lg:overflow-y-auto lg:max-h-[calc(100vh-8rem)] p-4 lg:p-0 scrollbar-thin scrollbar-thumb-gray-300 dark:scrollbar-thumb-gray-600">
-                  {/* Mobile Header */}
-                  <div className="flex items-center justify-between mb-4 lg:hidden">
-                    <h2 className="text-lg font-semibold text-gray-900 dark:text-gray-100">Filters</h2>
-                    <button 
-                      onClick={() => setShowFilters(false)}
-                      className="p-2 text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200"
+                    <div
+                      id="filter-panel"
+                      className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-lg p-4 space-y-4 shadow-sm lg:shadow-none"
                     >
-                      <AsyncLucideIcon name="X" className="h-5 w-5" />
-                    </button>
-                  </div>
-              
-                  {/* Mobile Toggle (Hidden in drawer, visible on desktop main column if we moved it, but here we keep structure) - Actually we need the toggle OUTSIDE the sidebar for mobile. 
-                      Wait, the toggle button was originally inside the sidebar div but only visible on mobile. 
-                      If we make the sidebar hidden, the toggle button disappears.
-                      We need to move the toggle button OUTSIDE the sidebar container in the hierarchy. 
-                  */}
-                  
-                  {/* Tablet/Desktop Filter Panel Container */}
-                  <div
-                    id="filter-panel"
-                    className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-lg p-4 space-y-4 shadow-sm lg:shadow-none"
-                  >
-                    <div className="flex items-center justify-between mb-4">
-                      <h3 className="font-semibold text-gray-900 dark:text-gray-100 hidden lg:block">Filters</h3>
+                      <div className="flex items-center justify-between mb-4">
+                        <h3 className="font-semibold text-gray-900 dark:text-gray-100 hidden lg:block">Filters</h3>
+                        {activeFilterCount > 0 && (
+                          <button
+                            onClick={handleClearAllFilters}
+                            className="text-xs text-blue-600 dark:text-blue-400 hover:text-blue-800 dark:hover:text-blue-300 font-medium"
+                          >
+                            Clear all
+                          </button>
+                        )}
+                      </div>
+
+                      <div className="space-y-3">
+                        <div className="pb-1">
+                          <label className="flex items-center gap-2.5 min-h-10 cursor-pointer">
+                            <input
+                              type="checkbox"
+                              checked={madeInCanadaOnly}
+                              onChange={(e) =>
+                                updateFilter('made_in_canada', e.target.checked ? 'true' : null)
+                              }
+                              className="h-4 w-4 shrink-0 rounded border-gray-300 text-red-600 focus:ring-2 focus:ring-red-500 dark:border-gray-600 dark:bg-gray-700"
+                            />
+                            <span className="text-sm leading-5 text-gray-700 dark:text-gray-300">
+                              Made in Canada <span aria-hidden="true">🍁</span>
+                            </span>
+                          </label>
+                        </div>
+
+                        <div>
+                          <label htmlFor="filter-shop" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">Shop</label>
+                          <MultiSelectDropdown
+                            id="filter-shop"
+                            options={shopOptions}
+                            selected={selectedShopName}
+                            onChange={(val) => updateFilter('shop', val)}
+                            placeholder="All shops"
+                          />
+                        </div>
+
+                        <div>
+                          <label htmlFor="filter-size" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">Size</label>
+                          <MultiSelectDropdown
+                            id="filter-size"
+                            options={sizeOptions}
+                            selected={selectedSizeGroups}
+                            onChange={(val) => updateFilter('size', val)}
+                            placeholder="All sizes"
+                          />
+                        </div>
+
+                        <div>
+                          <label htmlFor="filter-type" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">Type</label>
+                          <MultiSelectDropdown
+                            id="filter-type"
+                            options={typeOptions}
+                            selected={selectedGroupedTypes}
+                            onChange={(val) => updateFilter('type', val)}
+                            placeholder="All types"
+                          />
+                        </div>
+
+                        <div>
+                          <label htmlFor="filter-category" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">Category</label>
+                          <MultiSelectDropdown
+                            id="filter-category"
+                            options={categoryOptions}
+                            selected={selectedTopLevelCategories}
+                            onChange={(val) => updateFilter('category', val)}
+                            placeholder="All categories"
+                          />
+                        </div>
+
+                        <div>
+                          <label htmlFor="filter-gender" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">Gender/Age</label>
+                          <MultiSelectDropdown
+                            id="filter-gender"
+                            options={genderOptions}
+                            selected={selectedGenderAges}
+                            onChange={(val) => updateFilter('gender', val)}
+                            placeholder="All"
+                          />
+                        </div>
+
+                        <div>
+                          <div className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Price Range</div>
+                          <div className="space-y-3">
+                            <div className="flex items-center justify-between gap-3">
+                              <div className="flex-1">
+                                <label htmlFor="price-min" className="sr-only">Minimum price</label>
+                                <div className="relative">
+                                  <div className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500 dark:text-gray-400">$</div>
+                                  <input
+                                    type="number"
+                                    id="price-min"
+                                    name="min-price"
+                                    min={ABS_MIN_PRICE}
+                                    max={ABS_MAX_PRICE}
+                                    step="1"
+                                    value={selectedPriceRange[0]}
+                                    onChange={handleMinPriceChange}
+                                    onBlur={handlePriceInputBlur}
+                                    className="w-full pl-8 pr-3 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100"
+                                    placeholder="Min"
+                                    aria-label="Minimum price"
+                                  />
+                                </div>
+                              </div>
+                              <span className="text-gray-500 dark:text-gray-400">to</span>
+                              <div className="flex-1">
+                                <label htmlFor="price-max" className="sr-only">Maximum price</label>
+                                <div className="relative">
+                                  <div className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500 dark:text-gray-400">$</div>
+                                  <input
+                                    type="number"
+                                    id="price-max"
+                                    name="max-price"
+                                    min={ABS_MIN_PRICE}
+                                    max={ABS_MAX_PRICE}
+                                    step="1"
+                                    value={selectedPriceRange[1]}
+                                    onChange={handleMaxPriceChange}
+                                    onBlur={handlePriceInputBlur}
+                                    className="w-full pl-8 pr-3 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100"
+                                    placeholder="Max"
+                                    aria-label="Maximum price"
+                                  />
+                                </div>
+                              </div>
+                            </div>
+                            {(() => {
+                              const dynamicMaxPrice = Math.max(DEFAULT_VIEW_MAX_PRICE, selectedPriceRange[1]);
+                              return (
+                                <>
+                                  <TransformSlider
+                                    min={ABS_MIN_PRICE}
+                                    max={dynamicMaxPrice}
+                                    value={selectedPriceRange}
+                                    onFinalChange={(values) => {
+                                      if (Array.isArray(values) && values.length === 2) {
+                                        updateFilter('price', `${values[0]}-${values[1]}`);
+                                      }
+                                    }}
+                                  />
+                                  <div className="flex justify-between text-xs text-gray-500 dark:text-gray-400">
+                                    <span>${ABS_MIN_PRICE}</span>
+                                    <span>${dynamicMaxPrice}</span>
+                                  </div>
+                                </>
+                              );
+                            })()}
+                          </div>
+                        </div>
+
+                        <div>
+                          <label className="flex items-center gap-2 cursor-pointer">
+                            <input
+                              type="checkbox"
+                              checked={onSaleOnly}
+                              onChange={(e) => updateFilter('sale', e.target.checked ? 'true' : 'false')}
+                              className="w-4 h-4 text-blue-600 bg-gray-100 border-gray-300 rounded focus:ring-blue-500 dark:focus:ring-blue-600 dark:bg-gray-700 dark:border-gray-600"
+                            />
+                            <span className="text-sm text-gray-700 dark:text-gray-300">On sale only</span>
+                          </label>
+                        </div>
+                      </div>
+
                       {activeFilterCount > 0 && (
-                        <button
-                          onClick={handleClearAllFilters}
-                          className="text-xs text-blue-600 dark:text-blue-400 hover:text-blue-800 dark:hover:text-blue-300 font-medium"
-                        >
-                          Clear all
-                        </button>
+                        <div className="pt-4 border-t border-gray-200 dark:border-gray-800">
+                          <p className="text-xs font-medium text-gray-700 dark:text-gray-300 mb-2">Active filters:</p>
+                          <div className="flex flex-wrap gap-1.5">
+                            {selectedShopName.length > 0 && (
+                              <div className="inline-flex items-center gap-1 px-2 py-1 bg-blue-100 dark:bg-blue-900/30 text-blue-800 dark:text-blue-300 rounded text-xs">
+                                Shops ({selectedShopName.length})
+                                <button onClick={() => updateFilter('shop', [])} className="ml-0.5 text-blue-600 hover:text-blue-800 dark:text-blue-400 dark:hover:text-blue-200">
+                                  <AsyncLucideIcon name="X" className="h-2.5 w-2.5 sm:h-3 sm:w-3" />
+                                </button>
+                              </div>
+                            )}
+                            {selectedSizeGroups.length > 0 && (
+                              <div className="inline-flex items-center gap-1 px-2 py-1 bg-blue-100 dark:bg-blue-900/30 text-blue-800 dark:text-blue-300 rounded text-xs">
+                                Sizes ({selectedSizeGroups.length})
+                                <button onClick={() => updateFilter('size', [])} className="ml-0.5 text-blue-600 hover:text-blue-800 dark:text-blue-400 dark:hover:text-blue-200">
+                                  <AsyncLucideIcon name="X" className="h-2.5 w-2.5 sm:h-3 sm:w-3" />
+                                </button>
+                              </div>
+                            )}
+                            {selectedGroupedTypes.length > 0 && (
+                              <div className="inline-flex items-center gap-1 px-2 py-1 bg-blue-100 dark:bg-blue-900/30 text-blue-800 dark:text-blue-300 rounded text-xs">
+                                Types ({selectedGroupedTypes.length})
+                                <button onClick={() => updateFilter('type', [])} className="ml-0.5 text-blue-600 hover:text-blue-800 dark:text-blue-400 dark:hover:text-blue-200">
+                                  <AsyncLucideIcon name="X" className="h-2.5 w-2.5 sm:h-3 sm:w-3" />
+                                </button>
+                              </div>
+                            )}
+                            {selectedTopLevelCategories.length > 0 && (
+                              <div className="inline-flex items-center gap-1 px-2 py-1 bg-blue-100 dark:bg-blue-900/30 text-blue-800 dark:text-blue-300 rounded text-xs">
+                                Categories ({selectedTopLevelCategories.length})
+                                <button onClick={() => updateFilter('category', [])} className="ml-0.5 text-blue-600 hover:text-blue-800 dark:text-blue-400 dark:hover:text-blue-200">
+                                  <AsyncLucideIcon name="X" className="h-2.5 w-2.5 sm:h-3 sm:w-3" />
+                                </button>
+                              </div>
+                            )}
+                            {selectedGenderAges.length > 0 && (
+                              <div className="inline-flex items-center gap-1 px-2 py-1 bg-blue-100 dark:bg-blue-900/30 text-blue-800 dark:text-blue-300 rounded text-xs">
+                                Gender/Age ({selectedGenderAges.length})
+                                <button onClick={() => updateFilter('gender', [])} className="ml-0.5 text-blue-600 hover:text-blue-800 dark:text-blue-400 dark:hover:text-blue-200">
+                                  <AsyncLucideIcon name="X" className="h-2.5 w-2.5 sm:h-3 sm:w-3" />
+                                </button>
+                              </div>
+                            )}
+                            {(selectedPriceRange[0] !== PRICE_RANGE[0] || selectedPriceRange[1] !== PRICE_RANGE[1]) && (
+                              <div className="inline-flex items-center gap-1 px-2 py-1 bg-blue-100 dark:bg-blue-900/30 text-blue-800 dark:text-blue-300 rounded text-xs">
+                                ${selectedPriceRange[0]} - ${selectedPriceRange[1]}
+                                <button onClick={() => updateFilter('price', `${PRICE_RANGE[0]}-${PRICE_RANGE[1]}`)} className="ml-0.5 text-blue-600 hover:text-blue-800 dark:text-blue-400 dark:hover:text-blue-200">
+                                  <AsyncLucideIcon name="X" className="h-2.5 w-2.5 sm:h-3 sm:w-3" />
+                                </button>
+                              </div>
+                            )}
+                            {onSaleOnly && (
+                              <div className="inline-flex items-center gap-1 px-2 py-1 bg-orange-100 dark:bg-orange-900/30 text-orange-800 dark:text-orange-300 rounded text-xs">
+                                On Sale
+                                <button onClick={() => updateFilter('sale', 'false')} className="ml-0.5 text-orange-600 hover:text-orange-800 dark:text-orange-400 dark:hover:text-orange-200">
+                                  <AsyncLucideIcon name="X" className="h-2.5 w-2.5 sm:h-3 sm:w-3" />
+                                </button>
+                              </div>
+                            )}
+                          </div>
+                        </div>
                       )}
                     </div>
 
-                    {/* Filter Dropdowns */}
-                    <div className="space-y-3">
-
-                      {/* Made in Canada at top */}
-                      <div className="pb-1">
-                        <label className="flex items-center gap-2.5 min-h-10 cursor-pointer">
-                        <input
-                          type="checkbox"
-                          checked={madeInCanadaOnly}
-                          onChange={(e) =>
-                            updateFilter(
-                              'made_in_canada',
-                              e.target.checked ? 'true' : null
-                            )
-                          }
-                          className="h-4 w-4 shrink-0 rounded border-gray-300
-                            text-red-600 focus:ring-2 focus:ring-red-500
-                            dark:border-gray-600 dark:bg-gray-700"
-                        />
-                        <span className="text-sm leading-5 text-gray-700 dark:text-gray-300">
-                          Made in Canada <span aria-hidden="true">🍁</span>
-                        </span>
-                      </label>
+                    <div className="mt-8 pt-6 border-t border-gray-200 dark:border-gray-800 mb-8 lg:mb-0">
+                      <div className="flex flex-wrap gap-x-4 gap-y-2 text-xs text-gray-500 dark:text-gray-400">
+                        <Link to="/about" className="hover:text-gray-900 dark:hover:text-gray-200">About</Link>
+                        <Link to="/contact" className="hover:text-gray-900 dark:hover:text-gray-200">Contact</Link>
+                        <Link to="/privacy" className="hover:text-gray-900 dark:hover:text-gray-200">Privacy</Link>
+                        <Link to="/terms" className="hover:text-gray-900 dark:hover:text-gray-200">Terms</Link>
                       </div>
-
-                      <div>
-                        <label htmlFor="filter-shop" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">
-                          Shop
-                        </label>
-                        <MultiSelectDropdown
-                          id="filter-shop"
-                          options={shopOptions}
-                          selected={selectedShopName}
-                          onChange={(val) => updateFilter('shop', val)}
-                          placeholder="All shops"
-                        />
-                      </div>
-
-                      <div>
-                        <label htmlFor="filter-size" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">
-                          Size
-                        </label>
-                        <MultiSelectDropdown
-                          id="filter-size"
-                          options={sizeOptions}
-                          selected={selectedSizeGroups}
-                          onChange={(val) => updateFilter('size', val)}
-                          placeholder="All sizes"
-                        />
-                      </div>
-
-                      <div>
-                        <label htmlFor="filter-type" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">
-                          Type
-                        </label>
-                        <MultiSelectDropdown
-                          id="filter-type"
-                          options={typeOptions}
-                          selected={selectedGroupedTypes}
-                          onChange={(val) => updateFilter('type', val)}
-                          placeholder="All types"
-                        />
-                      </div>
-
-                      <div>
-                        <label htmlFor="filter-category" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">
-                          Category
-                        </label>
-                        <MultiSelectDropdown
-                          id="filter-category"
-                          options={categoryOptions}
-                          selected={selectedTopLevelCategories}
-                          onChange={(val) => updateFilter('category', val)}
-                          placeholder="All categories"
-                        />
-                      </div>
-
-                      <div>
-                        <label htmlFor="filter-gender" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">
-                          Gender/Age
-                        </label>
-                        <MultiSelectDropdown
-                          id="filter-gender"
-                          options={genderOptions}
-                          selected={selectedGenderAges}
-                          onChange={(val) => updateFilter('gender', val)}
-                          placeholder="All"
-                        />
-                      </div>
-
-                      {/* Price Range Filter - Updated */}
-                      <div>
-                        <div className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                          Price Range
-                        </div>
-                        <div className="space-y-3">
-                          {/* Price Input Boxes */}
-                          <div className="flex items-center justify-between gap-3">
-                            <div className="flex-1">
-                              <label htmlFor="price-min" className="sr-only">Minimum price</label>
-                              <div className="relative">
-                                <div className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500 dark:text-gray-400">
-                                  $
-                                </div>
-                                <input
-                                  type="number"
-                                  id="price-min"
-                                  name="min-price"
-                                  min={ABS_MIN_PRICE}
-                                  max={ABS_MAX_PRICE}
-                                  step="1"
-                                  value={selectedPriceRange[0]}
-                                  onChange={handleMinPriceChange}
-                                  onBlur={handlePriceInputBlur}
-                                  className="w-full pl-8 pr-3 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100"
-                                  placeholder="Min"
-                                  aria-label="Minimum price"
-                                />
-                              </div>
-                            </div>
-                            <span className="text-gray-500 dark:text-gray-400">to</span>
-                            <div className="flex-1">
-                              <label htmlFor="price-max" className="sr-only">Maximum price</label>
-                              <div className="relative">
-                                <div className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500 dark:text-gray-400">
-                                  $
-                                </div>
-                                <input
-                                  type="number"
-                                  id="price-max"
-                                  name="max-price"
-                                  min={ABS_MIN_PRICE}
-                                  max={ABS_MAX_PRICE}
-                                  step="1"
-                                  value={selectedPriceRange[1]}
-                                  onChange={handleMaxPriceChange}
-                                  onBlur={handlePriceInputBlur}
-                                  className="w-full pl-8 pr-3 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100"
-                                  placeholder="Max"
-                                  aria-label="Maximum price"
-                                />
-                              </div>
-                            </div>
-                          </div>
-                          
-                          {/* Slider */}
-                          {(() => {
-                            const dynamicMaxPrice = Math.max(DEFAULT_VIEW_MAX_PRICE, selectedPriceRange[1]);
-                            return (
-                              <>
-                                <TransformSlider
-                                  min={ABS_MIN_PRICE}
-                                  max={dynamicMaxPrice}
-                                  value={selectedPriceRange}
-                                  onFinalChange={(values) => {
-                                    if (Array.isArray(values) && values.length === 2) {
-                                      // Update URL directly
-                                      updateFilter('price', `${values[0]}-${values[1]}`);
-                                    }
-                                  }}
-                                />
-                                
-                                {/* Price Range Labels */}
-                                <div className="flex justify-between text-xs text-gray-500 dark:text-gray-400">
-                                  <span>${ABS_MIN_PRICE}</span>
-                                  <span>${dynamicMaxPrice}</span>
-                                </div>
-                              </>
-                            );
-                          })()}
-                        </div>
-                      </div>
-
-                      {/* On sale only at bottom */}
-                      <div>
-                        <label className="flex items-center gap-2 cursor-pointer">
-                          <input
-                            type="checkbox"
-                            checked={onSaleOnly}
-                            onChange={(e) => updateFilter('sale', e.target.checked ? 'true' : 'false')}
-                            className="w-4 h-4 text-blue-600 bg-gray-100 border-gray-300 rounded focus:ring-blue-500 dark:focus:ring-blue-600 dark:bg-gray-700 dark:border-gray-600"
-                          />
-                          <span className="text-sm text-gray-700 dark:text-gray-300">On sale only</span>
-                        </label>
-                      </div>
-
+                      <p className="mt-4 text-xs text-gray-400 dark:text-gray-600">
+                        © {new Date().getFullYear()} Curated Canada
+                      </p>
                     </div>
-
-                    {/* Active Filters Pills */}
-                    {activeFilterCount > 0 && (
-                      <div className="pt-4 border-t border-gray-200 dark:border-gray-800">
-                        <p className="text-xs font-medium text-gray-700 dark:text-gray-300 mb-2">Active filters:</p>
-                        <div className="flex flex-wrap gap-1.5">
-                          {selectedShopName.length > 0 && (
-                            <div className="inline-flex items-center gap-1 px-2 py-1 bg-blue-100 dark:bg-blue-900/30 text-blue-800 dark:text-blue-300 rounded text-xs">
-                              Shops ({selectedShopName.length})
-                              <button onClick={() => updateFilter('shop', [])} className="ml-0.5 text-blue-600 hover:text-blue-800 dark:text-blue-400 dark:hover:text-blue-200">
-                                <AsyncLucideIcon name="X" className="h-2.5 w-2.5 sm:h-3 sm:w-3" />
-                              </button>
-                            </div>
-                          )}
-                          {selectedSizeGroups.length > 0 && (
-                            <div className="inline-flex items-center gap-1 px-2 py-1 bg-blue-100 dark:bg-blue-900/30 text-blue-800 dark:text-blue-300 rounded text-xs">
-                              Sizes ({selectedSizeGroups.length})
-                              <button onClick={() => updateFilter('size', [])} className="ml-0.5 text-blue-600 hover:text-blue-800 dark:text-blue-400 dark:hover:text-blue-200">
-                                <AsyncLucideIcon name="X" className="h-2.5 w-2.5 sm:h-3 sm:w-3" />
-                              </button>
-                            </div>
-                          )}
-                          {selectedGroupedTypes.length > 0 && (
-                            <div className="inline-flex items-center gap-1 px-2 py-1 bg-blue-100 dark:bg-blue-900/30 text-blue-800 dark:text-blue-300 rounded text-xs">
-                              Types ({selectedGroupedTypes.length})
-                              <button onClick={() => updateFilter('type', [])} className="ml-0.5 text-blue-600 hover:text-blue-800 dark:text-blue-400 dark:hover:text-blue-200">
-                                <AsyncLucideIcon name="X" className="h-2.5 w-2.5 sm:h-3 sm:w-3" />
-                              </button>
-                            </div>
-                          )}
-                          {selectedTopLevelCategories.length > 0 && (
-                            <div className="inline-flex items-center gap-1 px-2 py-1 bg-blue-100 dark:bg-blue-900/30 text-blue-800 dark:text-blue-300 rounded text-xs">
-                              Categories ({selectedTopLevelCategories.length})
-                              <button onClick={() => updateFilter('category', [])} className="ml-0.5 text-blue-600 hover:text-blue-800 dark:text-blue-400 dark:hover:text-blue-200">
-                                <AsyncLucideIcon name="X" className="h-2.5 w-2.5 sm:h-3 sm:w-3" />
-                              </button>
-                            </div>
-                          )}
-                          {selectedGenderAges.length > 0 && (
-                            <div className="inline-flex items-center gap-1 px-2 py-1 bg-blue-100 dark:bg-blue-900/30 text-blue-800 dark:text-blue-300 rounded text-xs">
-                              Gender/Age ({selectedGenderAges.length})
-                              <button onClick={() => updateFilter('gender', [])} className="ml-0.5 text-blue-600 hover:text-blue-800 dark:text-blue-400 dark:hover:text-blue-200">
-                                <AsyncLucideIcon name="X" className="h-2.5 w-2.5 sm:h-3 sm:w-3" />
-                              </button>
-                            </div>
-                          )}
-                          {(selectedPriceRange[0] !== PRICE_RANGE[0] || selectedPriceRange[1] !== PRICE_RANGE[1]) && (
-                            <div className="inline-flex items-center gap-1 px-2 py-1 bg-blue-100 dark:bg-blue-900/30 text-blue-800 dark:text-blue-300 rounded text-xs">
-                              ${selectedPriceRange[0]} - ${selectedPriceRange[1]}
-                              <button onClick={() => updateFilter('price', `${PRICE_RANGE[0]}-${PRICE_RANGE[1]}`)} className="ml-0.5 text-blue-600 hover:text-blue-800 dark:text-blue-400 dark:hover:text-blue-200">
-                                <AsyncLucideIcon name="X" className="h-2.5 w-2.5 sm:h-3 sm:w-3" />
-                              </button>
-                            </div>
-                          )}
-                          {onSaleOnly && (
-                            <div className="inline-flex items-center gap-1 px-2 py-1 bg-orange-100 dark:bg-orange-900/30 text-orange-800 dark:text-orange-300 rounded text-xs">
-                              On Sale
-                              <button onClick={() => updateFilter('sale', 'false')} className="ml-0.5 text-orange-600 hover:text-orange-800 dark:text-orange-400 dark:hover:text-orange-200">
-                                <AsyncLucideIcon name="X" className="h-2.5 w-2.5 sm:h-3 sm:w-3" />
-                              </button>
-                            </div>
-                          )}
-                        </div>
-                      </div>
-                    )}
                   </div>
-
-                  {/* Sidebar Footer */}
-                  <div className="mt-8 pt-6 border-t border-gray-200 dark:border-gray-800 mb-8 lg:mb-0">
-                    <div className="flex flex-wrap gap-x-4 gap-y-2 text-xs text-gray-500 dark:text-gray-400">
-                      <Link to="/about" className="hover:text-gray-900 dark:hover:text-gray-200">About</Link>
-                      <Link to="/contact" className="hover:text-gray-900 dark:hover:text-gray-200">Contact</Link>
-                      <Link to="/privacy" className="hover:text-gray-900 dark:hover:text-gray-200">Privacy</Link>
-                      <Link to="/terms" className="hover:text-gray-900 dark:hover:text-gray-200">Terms</Link>
-                    </div>
-                    <p className="mt-4 text-xs text-gray-400 dark:text-gray-600">
-                      © {new Date().getFullYear()} Curated Canada
-                    </p>
-                  </div>
-               </div>
+                </div>
+              </div>
             </div>
-          </div>
-          </div>
           </div>
 
           {/* Products Grid */}
@@ -1518,16 +1300,23 @@ export function HomePage({
                 <h1 className="text-3xl font-bold text-gray-900 dark:text-gray-100 mb-4">
                   {categoryConfig.h1}
                 </h1>
+
+                {/* ── FIX 1: Render introText (was missing entirely) ── */}
+                {renderedIntroText && (
+                  <div className="mb-4">
+                    {renderedIntroText}
+                  </div>
+                )}
+
                 {/* Stats moved closer to title */}
                 {!loading && products.length > 0 && (
                   <p className="mt-4 text-sm text-gray-500 dark:text-gray-400">
-                    Currently showing {products.length} {products.length === 1 ? 'item' : 'items'} 
+                    Currently showing {products.length} {products.length === 1 ? 'item' : 'items'}
                     {selectedPriceRange[0] !== ABS_MIN_PRICE || selectedPriceRange[1] !== ABS_MAX_PRICE ? ` from $${selectedPriceRange[0]} to $${selectedPriceRange[1]}` : ''}.
                   </p>
                 )}
               </div>
             ) : (
-              /* Home page Header */
               <div className="mb-4">
                 <h1 className="text-2xl sm:text-3xl font-extrabold tracking-tight text-gray-950 dark:text-gray-50 mb-3">
                   Discover Canadian brands and deals
@@ -1538,7 +1327,7 @@ export function HomePage({
               </div>
             )}
 
-            {/* Newsletter Signup - Quieter secondary section */}
+            {/* Newsletter Signup */}
             <div className="mt-6 p-4 bg-gray-50 dark:bg-gray-900/50 rounded-lg border border-gray-200 dark:border-gray-800">
               <div className="mb-4">
                 <h3 className="text-sm font-medium text-gray-900 dark:text-gray-100 flex items-center gap-2">
@@ -1549,7 +1338,7 @@ export function HomePage({
                   Join other shoppers discovering Canadian fashion and exclusive deals.
                 </p>
               </div>
-              <form 
+              <form
                 className="flex flex-col w-full md:flex-row md:items-center md:justify-between gap-3"
                 onSubmit={async (e) => {
                   e.preventDefault();
@@ -1557,7 +1346,7 @@ export function HomePage({
                   const btn = form.querySelector('button');
                   const input = form.querySelector('input[type="email"]') as HTMLInputElement;
                   const checkbox = form.querySelector('input[type="checkbox"]') as HTMLInputElement;
-                  
+
                   if (!checkbox.checked) {
                     alert('Please check the box to confirm your consent.');
                     return;
@@ -1567,16 +1356,15 @@ export function HomePage({
                     const originalText = btn.textContent;
                     btn.disabled = true;
                     btn.textContent = 'Subscribing...';
-                    
+
                     try {
                       await apiClient.subscribe(input.value, window.location.pathname, checkbox.checked);
-                      
                       btn.textContent = 'Subscribed!';
                       btn.classList.add('bg-green-600', 'hover:bg-green-700');
                       btn.classList.remove('bg-blue-600', 'hover:bg-blue-700');
                       input.value = '';
                       checkbox.checked = false;
-                      
+
                       setTimeout(() => {
                         if (btn) {
                           btn.textContent = originalText;
@@ -1595,14 +1383,14 @@ export function HomePage({
               >
                 <div className="flex w-full gap-2">
                   <label htmlFor="email-capture" className="sr-only">Email address</label>
-                  <input 
+                  <input
                     id="email-capture"
-                    type="email" 
-                    placeholder="Your email address" 
+                    type="email"
+                    placeholder="Your email address"
                     required
                     className="px-3 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 flex-1 md:w-auto focus:outline-none focus:ring-2 focus:ring-blue-500"
                   />
-                  <button 
+                  <button
                     type="submit"
                     className="px-4 py-2 text-sm font-medium text-blue-600 dark:text-blue-400 bg-blue-100 dark:bg-blue-900/30 rounded-md hover:bg-blue-200 dark:hover:bg-blue-900/40 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 transition-colors whitespace-nowrap disabled:opacity-75 disabled:cursor-not-allowed"
                   >
@@ -1621,6 +1409,7 @@ export function HomePage({
                 </label>
               </form>
             </div>
+
             <div className="mt-4 mb-5 flex items-center justify-end sm:mt-4 sm:mb-2">
               <div className="w-40 sm:w-48">
                 <SingleSelectDropdown
@@ -1641,32 +1430,32 @@ export function HomePage({
                   <div className="flex-1">
                     <p className="text-red-700 dark:text-red-300 text-sm font-medium">{error}</p>
                     <p className="text-red-600 dark:text-red-400 text-sm mt-1">
-                      {error.includes('timed out') 
-                        ? 'The server might be experiencing high load. Please try again.' 
+                      {error.includes('timed out')
+                        ? 'The server might be experiencing high load. Please try again.'
                         : 'Please check your connection and try again.'}
                     </p>
-                    <button 
-                      onClick={() => { 
-                        setError(null); 
-                        setProducts([]); 
-                        setInitialLoad(true); 
+                    <button
+                      onClick={() => {
+                        setError(null);
+                        setProducts([]);
+                        setInitialLoad(true);
                         fetchFilteredProducts(
-                          { 
-                            selectedShopName, 
-                            selectedSizeGroups, 
-                            selectedGroupedTypes, 
-                            selectedTopLevelCategories, 
-                            selectedGenderAges, 
-                            onSaleOnly, 
+                          {
+                            selectedShopName,
+                            selectedSizeGroups,
+                            selectedGroupedTypes,
+                            selectedTopLevelCategories,
+                            selectedGenderAges,
+                            onSaleOnly,
                             madeInCanadaOnly,
-                            searchQuery, 
-                            selectedPriceRange 
+                            searchQuery,
+                            selectedPriceRange
                           },
                           0,
                           sortOrder,
                           true
                         );
-                      }} 
+                      }}
                       className="mt-3 text-red-600 dark:text-red-400 hover:underline text-sm font-medium"
                     >
                       Try again
@@ -1676,14 +1465,15 @@ export function HomePage({
               </div>
             )}
 
-            {/* Products Grid */}
+            {/* Products Grid heading ── FIX: category-aware H2 instead of generic */}
             <div className="mb-8">
               <h2 className="text-xl font-semibold text-gray-900 dark:text-gray-100 mb-3">
-                Latest Canadian Brand Deals
+                {categoryConfig
+                  ? `Latest ${categoryConfig.h1.replace(/\s*-\s*Compare.*$/, '').replace(/\s*Deals$/, '')} Deals`
+                  : 'Latest Canadian Brand Deals'}
               </h2>
             </div>
             <div className="relative min-h-[400px]">
-              {/* Accessibility - Live region for screen readers */}
               <div role="status" aria-live="polite" className="sr-only">
                 {loading && "Loading products"}
                 {!loading && products.length > 0 && `Showing ${products.length} products`}
@@ -1703,8 +1493,8 @@ export function HomePage({
                     <AsyncLucideIcon name="Search" className="h-12 w-12 text-gray-400 dark:text-gray-600 mb-4" />
                     <p className="text-gray-900 dark:text-gray-100 text-sm font-medium">No products found</p>
                     <p className="text-gray-600 dark:text-gray-400 text-sm mt-1">Try adjusting your filters or search term</p>
-                    <button 
-                      onClick={handleClearAllFilters} 
+                    <button
+                      onClick={handleClearAllFilters}
                       className="mt-4 px-4 py-2 text-sm font-medium text-blue-600 dark:text-blue-400 hover:text-blue-800 dark:hover:text-blue-300"
                     >
                       Clear all filters
@@ -1724,9 +1514,9 @@ export function HomePage({
                           }}
                           className="transform transition-transform duration-300 hover:-translate-y-1 active:scale-[0.98] touch-manipulation"
                         >
-                          <ProductCard 
-                            product={product} 
-                            pricing={productPricings[pid]} 
+                          <ProductCard
+                            product={product}
+                            pricing={productPricings[pid]}
                             isLcp={index < LCP_PRELOAD_COUNT}
                           />
                         </div>
@@ -1736,7 +1526,6 @@ export function HomePage({
                 )}
               </div>
 
-              {/* Loading indicator while auto-loading */}
               {loading && products.length > 0 && !showLoadMoreButton && !isFilterChanging && (
                 <div className="flex justify-center py-8">
                   <div className="bg-white dark:bg-gray-800 p-3 rounded-lg shadow-lg">
@@ -1745,7 +1534,6 @@ export function HomePage({
                 </div>
               )}
 
-              {/* Load More Button */}
               {hasMore && !loading && showLoadMoreButton && products.length > 0 && !isFilterChanging && (
                 <div className="text-center py-8">
                   <button
@@ -1761,8 +1549,7 @@ export function HomePage({
                   </p>
                 </div>
               )}
-              
-              {/* Loading state for Load More button */}
+
               {hasMore && loading && showLoadMoreButton && products.length > 0 && !isFilterChanging && (
                 <div className="text-center py-8">
                   <div className="inline-flex items-center justify-center gap-2 px-6 py-3 bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-400 text-sm font-medium rounded-lg border-2 border-gray-200 dark:border-gray-700">
@@ -1772,12 +1559,10 @@ export function HomePage({
                 </div>
               )}
 
-              {/* Infinite scroll trigger element */}
               {!showLoadMoreButton && hasMore && autoLoadCountRef.current < MAX_AUTO_LOADS && !isFilterChanging && products.length > 0 && (
                 <div ref={observerRef} className="h-20" />
               )}
 
-              {/* End of results */}
               {!hasMore && products.length > 0 && !isFilterChanging && (
                 <div className="text-center py-8 border-t border-gray-200 dark:border-gray-800">
                   <div className="inline-flex items-center gap-2 text-gray-600 dark:text-gray-400 text-sm mb-3">
@@ -1805,12 +1590,21 @@ export function HomePage({
                 </div>
               )}
             </div>
+
+            {/* ── FIX 1: Render bottomContent (was missing entirely) ──
+                Placed after the product grid so the SEO copy is in the HTML
+                but doesn't push products below the fold. */}
+            {categoryConfig?.bottomContent && (
+              <div className="mt-12">
+                {categoryConfig.bottomContent}
+              </div>
+            )}
           </div>
         </div>
       </div>
     </div>
   );
-};
+}
 
 // ============================================================================
 // SKELETON COMPONENT
