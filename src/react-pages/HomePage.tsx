@@ -2,12 +2,13 @@ import { type ChangeEvent, useCallback, useEffect, useRef, useState, useMemo, st
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import type { ProductWithDetails } from '../types';
 import { apiClient } from '../lib/api-client';
+import { computeNewDealsSinceVisit, type DealSignals } from '../lib/newSinceVisit';
 
 import AsyncLucideIcon from '../components/AsyncLucideIcon';
 import { ProductCard } from '../components/ProductCard';
 import { MultiSelectDropdown, SingleSelectDropdown } from '../components/Dropdowns';
 import TransformSlider from '../components/TransformSlider';
-import type { CategoryConfig, FilterActions } from '../data/categories'; // ── FIX: import FilterActions
+import type { CategoryConfig, FilterActions } from '../data/categories';
 
 // ============================================================================
 // CONSTANTS
@@ -22,6 +23,7 @@ const PRICING_DEBOUNCE_MS = 300;
 const OBSERVER_CHECK_INTERVAL_MS = 500;
 const REGULAR_LOAD_TIMEOUT_MS = 30000;
 const MAX_CACHE_ENTRIES = 10;
+const NEW_IN_CATALOG_DAYS = 7;
 
 type SortOrder = 'price_asc' | 'price_desc' | 'discount_desc';
 
@@ -30,36 +32,22 @@ type SortOrder = 'price_asc' | 'price_desc' | 'discount_desc';
 // ============================================================================
 
 const SIZE_ORDER_MAP: Record<string, number> = {
-  'XXS': 10,
-  'XS': 20,
-  'S': 30,
-  'M': 40,
-  'L': 50,
-  'XL': 60,
-  '1X': 70,
-  '2XL': 80,
-  '2X': 90,
-  '3XL': 100,
-  '3X': 110,
-  '4XL': 120,
-  '4X': 130,
-  'ONE SIZE': 500,
+  'XXS': 10, 'XS': 20, 'S': 30, 'M': 40, 'L': 50, 'XL': 60,
+  '1X': 70, '2XL': 80, '2X': 90, '3XL': 100, '3X': 110,
+  '4XL': 120, '4X': 130, 'ONE SIZE': 500,
 };
 
 function sortSizes(a: string, b: string): number {
   const orderA = SIZE_ORDER_MAP[a.toUpperCase()];
   const orderB = SIZE_ORDER_MAP[b.toUpperCase()];
-
   if (orderA !== undefined && orderB !== undefined) return orderA - orderB;
   if (orderA !== undefined) return -1;
   if (orderB !== undefined) return 1;
-
   const numA = parseInt(a);
   const numB = parseInt(b);
   if (!isNaN(numA) && !isNaN(numB)) return numA - numB;
   if (!isNaN(numA)) return -1;
   if (!isNaN(numB)) return 1;
-
   return a.localeCompare(b);
 }
 
@@ -82,11 +70,7 @@ const parseArrayParam = (param: string | null) => {
   return param.split(',').filter(Boolean);
 };
 
-const parsePriceRange = (
-  param: string | null,
-  absMin: number,
-  absMax: number
-): [number, number] | null => {
+const parsePriceRange = (param: string | null, absMin: number, absMax: number): [number, number] | null => {
   if (!param) return null;
   const parts = param.split('-');
   if (parts.length !== 2) return null;
@@ -138,10 +122,17 @@ export function HomePage({
   const [showLoadMoreButton, setShowLoadMoreButton] = useState(false);
   const [showFilters, setShowFilters] = useState(false);
 
-  // ── FIX 1: only trust SSR products on the homepage; collection pages
-  //    always fetch client-side so stale initialProducts from a previous
-  //    route can't leak through after client-side navigation.
   const hasSkippedInitialFetch = useRef(initialProducts.length > 0 && !categoryConfig);
+
+  // ============================================================================
+  // STATE - New deals since your last visit
+  // ============================================================================
+  const [dealSignals, setDealSignals] = useState<DealSignals>({
+    newDeals: new Set(),
+    deeperDeals: new Set(),
+    baselineAt: null,
+  });
+  const lastComputedSlugRef = useRef<string | null>(null);
 
   // ============================================================================
   // STATE - Filter Options (Dropdowns)
@@ -245,10 +236,8 @@ export function HomePage({
   const CACHE_TTL = 5 * 60 * 1000;
   const canLoadMoreRef = useRef(true);
   const prevFilterKeyRef = useRef<string>('');
-
   const isSyncingFromUrl = useRef(false);
   const userInteractedRef = useRef(false);
-
 
   const updateFilter = useCallback((key: string, value: string | string[] | null) => {
     userInteractedRef.current = true;
@@ -452,7 +441,6 @@ export function HomePage({
     };
 
     observeCurrentCards();
-
     const intervalId = setInterval(() => { observeCurrentCards(); }, OBSERVER_CHECK_INTERVAL_MS);
 
     return () => {
@@ -651,20 +639,53 @@ export function HomePage({
   const [isCategoryInitialized, setIsCategoryInitialized] = useState(false);
 
   useEffect(() => {
-    if (categoryConfig) {
-      const defaults = categoryConfig.filterDefaults;
-      setSelectedTopLevelCategories(defaults.selectedTopLevelCategories || []);
-      setSelectedGenderAges(defaults.selectedGenderAges || []);
-      setSelectedGroupedTypes(defaults.selectedGroupedTypes || []);
-      setSelectedSizeGroups([]);
-      setSelectedShopName([]);
-      setSearchQuery(defaults.query || '');
-      setSelectedPriceRange([...PRICE_RANGE]);
+    if (!categoryConfig) {
       setIsCategoryInitialized(true);
-    } else {
-      setIsCategoryInitialized(true);
+      return;
     }
-  }, [PRICE_RANGE, categoryConfig, categoryConfig?.slug]);
+    const d = categoryConfig.filterDefaults;
+
+    if (!searchParams.has('category') && d.selectedTopLevelCategories) {
+      setSelectedTopLevelCategories(d.selectedTopLevelCategories);
+    }
+    if (!searchParams.has('gender') && d.selectedGenderAges) {
+      setSelectedGenderAges(d.selectedGenderAges);
+    }
+    if (!searchParams.has('type') && d.selectedGroupedTypes) {
+      setSelectedGroupedTypes(d.selectedGroupedTypes);
+    }
+    if (!searchParams.has('search') && d.query) {
+      setSearchQuery(d.query);
+    }
+    if (!searchParams.has('size')) setSelectedSizeGroups([]);
+    if (!searchParams.has('shop')) setSelectedShopName([]);
+    if (!searchParams.has('price')) setSelectedPriceRange([...PRICE_RANGE]);
+    if (!searchParams.has('sale')) setOnSaleOnly(false);
+    if (!searchParams.has('made_in_canada')) {
+      setMadeInCanadaOnly(categoryConfig.slug === 'made-in-canada');
+    }
+
+    setIsCategoryInitialized(true);
+  }, [PRICE_RANGE, categoryConfig, categoryConfig?.slug, searchParams]);
+
+  // ============================================================================
+  // EFFECT - New deals since your last visit (localStorage)
+  // ============================================================================
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    if (!products.length) return;
+    const scope = categoryConfig?.slug ?? '__home';
+    if (lastComputedSlugRef.current === scope) return;
+    lastComputedSlugRef.current = scope;
+
+    const snapshots = products.map(p => ({
+      id: String(p.id),
+      onSale: (p.on_sale ?? false) || (p.max_discount_percentage ?? 0) > 0,
+      discount: p.max_discount_percentage ?? 0,
+    }));
+
+    setDealSignals(computeNewDealsSinceVisit(snapshots, scope));
+  }, [products, categoryConfig?.slug]);
 
   // ============================================================================
   // PRE-WARM CONNECTION ON APP START
@@ -677,7 +698,7 @@ export function HomePage({
   }, []);
 
   // ============================================================================
-  // SEO META (client-side; canonical should also be emitted SSR by Layout)
+  // SEO META
   // ============================================================================
 
   useEffect(() => {
@@ -726,7 +747,6 @@ export function HomePage({
   // ============================================================================
 
   useEffect(() => {
-    // Never redirect on initial mount / hydration
     if (!userInteractedRef.current) return;
     if (!categoryConfig?.filterDefaults) return;
     if (!isCategoryInitialized) return;
@@ -757,11 +777,7 @@ export function HomePage({
     async function fetchInitialData() {
       try {
         const [
-          shopsResult,
-          sizesResult,
-          typesResult,
-          categoriesResult,
-          gendersResult
+          shopsResult, sizesResult, typesResult, categoriesResult, gendersResult
         ] = await Promise.all([
           fetchWithCache<{ id: number; shop_name: string }>('shops', async () => {
             const data = await apiClient.fetchShops();
@@ -800,7 +816,6 @@ export function HomePage({
     }
 
     fetchInitialData();
-
     return () => { cancelled = true; };
   }, [fetchWithCache]);
 
@@ -855,11 +870,9 @@ export function HomePage({
 
     autoLoadCountRef.current = 0;
     inFlightRequestsRef.current.clear();
-
     prevFilterKeyRef.current = currentFilterKey;
 
     fetchFilteredProducts(currentFilters, 0, sortOrder, true);
-
   }, [currentFilters, sortOrder, fetchFilteredProducts]);
 
   // ============================================================================
@@ -964,8 +977,6 @@ export function HomePage({
 
   const isFetchingEmpty = loading && products.length === 0 && !initialLoad;
 
-  // ── FIX: build a FilterActions object for introText / bottomContent
-  //    buttons so the category copy's FilterButtons actually work.
   const filterActions: FilterActions = useMemo(() => ({
     setGroupedTypes: (types: string[]) => updateFilter('type', types),
     setTopLevelCategories: (categories: string[]) => updateFilter('category', categories),
@@ -979,6 +990,33 @@ export function HomePage({
       ? categoryConfig.introText(filterActions)
       : categoryConfig.introText;
   }, [categoryConfig, filterActions]);
+
+  // "New in the catalog" — created_at within the last N days
+  const newInCatalogProducts = useMemo(() => {
+    const cutoff = Date.now() - NEW_IN_CATALOG_DAYS * 86400e3;
+    return products.filter(p => {
+      if (!p.created_at) return false;
+      const ts = Date.parse(p.created_at);
+      return Number.isFinite(ts) && ts > cutoff;
+    });
+  }, [products]);
+
+  // "New deals since your last visit" — on_sale flip or deeper discount
+  const newDealsProducts = useMemo(
+    () => products.filter(p =>
+      dealSignals.newDeals.has(String(p.id)) ||
+      dealSignals.deeperDeals.has(String(p.id))
+    ),
+    [products, dealSignals]
+  );
+
+  // Main grid excludes anything shown in the two sections above it
+  const displayProducts = useMemo(() => {
+    const excluded = new Set<string>();
+    for (const p of newDealsProducts) excluded.add(String(p.id));
+    for (const p of newInCatalogProducts) excluded.add(String(p.id));
+    return products.filter(p => !excluded.has(String(p.id)));
+  }, [products, newDealsProducts, newInCatalogProducts]);
 
   // ============================================================================
   // RENDER
@@ -1301,14 +1339,12 @@ export function HomePage({
                   {categoryConfig.h1}
                 </h1>
 
-                {/* ── FIX 1: Render introText (was missing entirely) ── */}
                 {renderedIntroText && (
                   <div className="mb-4">
                     {renderedIntroText}
                   </div>
                 )}
 
-                {/* Stats moved closer to title */}
                 {!loading && products.length > 0 && (
                   <p className="mt-4 text-sm text-gray-500 dark:text-gray-400">
                     Currently showing {products.length} {products.length === 1 ? 'item' : 'items'}
@@ -1440,17 +1476,7 @@ export function HomePage({
                         setProducts([]);
                         setInitialLoad(true);
                         fetchFilteredProducts(
-                          {
-                            selectedShopName,
-                            selectedSizeGroups,
-                            selectedGroupedTypes,
-                            selectedTopLevelCategories,
-                            selectedGenderAges,
-                            onSaleOnly,
-                            madeInCanadaOnly,
-                            searchQuery,
-                            selectedPriceRange
-                          },
+                          { selectedShopName, selectedSizeGroups, selectedGroupedTypes, selectedTopLevelCategories, selectedGenderAges, onSaleOnly, madeInCanadaOnly, searchQuery, selectedPriceRange },
                           0,
                           sortOrder,
                           true
@@ -1465,7 +1491,75 @@ export function HomePage({
               </div>
             )}
 
-            {/* Products Grid heading ── FIX: category-aware H2 instead of generic */}
+            {/* New deals since your last visit */}
+            {newDealsProducts.length > 0 && dealSignals.baselineAt && (
+              <section id="new-deals-section" className="mb-8">
+                <h2 className="text-xl font-semibold text-gray-900 dark:text-gray-100 mb-1">
+                  New deals since your last visit{' '}
+                  <span className="text-sm font-normal text-gray-500">({newDealsProducts.length})</span>
+                </h2>
+                <p className="text-sm text-gray-500 dark:text-gray-400 mb-3">
+                  Went on sale since{' '}
+                  {new Date(dealSignals.baselineAt).toLocaleDateString('en-CA', { weekday: 'long' })}.
+                </p>
+                <div className="grid grid-cols-2 gap-2 sm:gap-3 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
+                  {newDealsProducts.map(product => {
+                    const pid = String(product.id);
+                    return (
+                      <div
+                        key={`nd-${product.id}-${product.shop_id}`}
+                        data-prod-id={pid}
+                        ref={(el) => {
+                          if (el) cardRefs.current.set(`nd-${pid}`, el);
+                          else cardRefs.current.delete(`nd-${pid}`);
+                        }}
+                      >
+                        <ProductCard
+                          product={product}
+                          pricing={productPricings[pid]}
+                          isLcp={false}
+                        />
+                      </div>
+                    );
+                  })}
+                </div>
+              </section>
+            )}
+
+            {/* New in the catalog */}
+            {newInCatalogProducts.length > 0 && (
+              <section id="new-in-catalog-section" className="mb-8">
+                <h2 className="text-xl font-semibold text-gray-900 dark:text-gray-100 mb-1">
+                  New in the catalog{' '}
+                  <span className="text-sm font-normal text-gray-500">({newInCatalogProducts.length})</span>
+                </h2>
+                <p className="text-sm text-gray-500 dark:text-gray-400 mb-3">
+                  Added in the last {NEW_IN_CATALOG_DAYS} days.
+                </p>
+                <div className="grid grid-cols-2 gap-2 sm:gap-3 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
+                  {newInCatalogProducts.map(product => {
+                    const pid = String(product.id);
+                    return (
+                      <div
+                        key={`nc-${product.id}-${product.shop_id}`}
+                        data-prod-id={pid}
+                        ref={(el) => {
+                          if (el) cardRefs.current.set(`nc-${pid}`, el);
+                          else cardRefs.current.delete(`nc-${pid}`);
+                        }}
+                      >
+                        <ProductCard
+                          product={product}
+                          pricing={productPricings[pid]}
+                          isLcp={false}
+                        />
+                      </div>
+                    );
+                  })}
+                </div>
+              </section>
+            )}
+
             <div className="mb-8">
               <h2 className="text-xl font-semibold text-gray-900 dark:text-gray-100 mb-3">
                 {categoryConfig
@@ -1488,7 +1582,7 @@ export function HomePage({
                     <AsyncLucideIcon name="Loader2" className="animate-spin h-8 w-8 text-gray-600 dark:text-gray-300 mb-3" />
                     <p className="text-gray-900 dark:text-gray-100 text-sm">Loading products…</p>
                   </div>
-                ) : products.length === 0 && !loading ? (
+                ) : displayProducts.length === 0 && !loading ? (
                   <div className="col-span-full flex flex-col items-center justify-center min-h-[200px] py-8">
                     <AsyncLucideIcon name="Search" className="h-12 w-12 text-gray-400 dark:text-gray-600 mb-4" />
                     <p className="text-gray-900 dark:text-gray-100 text-sm font-medium">No products found</p>
@@ -1502,7 +1596,7 @@ export function HomePage({
                   </div>
                 ) : (
                   <>
-                    {products.map((product, index) => {
+                    {displayProducts.map((product, index) => {
                       const pid = String(product.id);
                       return (
                         <div
@@ -1591,9 +1685,6 @@ export function HomePage({
               )}
             </div>
 
-            {/* ── FIX 1: Render bottomContent (was missing entirely) ──
-                Placed after the product grid so the SEO copy is in the HTML
-                but doesn't push products below the fold. */}
             {categoryConfig?.bottomContent && (
               <div className="mt-12">
                 {categoryConfig.bottomContent}

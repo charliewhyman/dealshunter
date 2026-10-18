@@ -27,7 +27,7 @@ if (pathname === '/') {
     SELECT p.id, p.title, p.handle, p.shop_id, p.shop_name,
            p.min_price, p.max_discount_percentage, p.on_sale, p.in_stock,
            p.images, p.top_level_category, p.subcategory, p.grouped_product_type,
-           p.variants, p.size_groups,
+           p.variants, p.size_groups, p.created_at,
            COALESCE(s.made_in_canada, false) AS made_in_canada
     FROM products_with_details_core p
     LEFT JOIN shops s ON s.id = p.shop_id
@@ -47,7 +47,7 @@ if (pathname === '/') {
     SELECT p.id, p.title, p.handle, p.shop_id, p.shop_name,
            p.min_price, p.max_discount_percentage, p.on_sale, p.in_stock,
            p.images, p.top_level_category, p.subcategory, p.grouped_product_type,
-           p.variants, p.size_groups,
+           p.variants, p.size_groups, p.created_at,
            COALESCE(s.made_in_canada, false) AS made_in_canada
     FROM products_with_details_core p
     LEFT JOIN shops s ON s.id = p.shop_id
