@@ -464,7 +464,6 @@ class ProductProcessor:
                 "variants": json.dumps(variant_data) if variant_data else None,
                 "images": json.dumps(image_data) if image_data else None,
                 # Dates
-                "created_at": product.get("created_at"),
                 "updated_at": product.get("updated_at"),
                 "updated_at_external": product.get("updated_at"),
                 "published_at_external": product.get("published_at"),

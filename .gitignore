@@ -43,3 +43,9 @@ worker-configuration.d.ts
 
 # TypeScript
 *.tsbuildinfo
+
+# Scraper outputs
+scraping/data/
+scraping/logs/
+
+.venv/
