@@ -83,17 +83,33 @@ const parseArrayParam = (param: string | null) => {
   return param.split(',').filter(Boolean);
 };
 
-const parsePriceRange = (param: string | null, absMin: number, absMax: number): [number, number] | null => {
-  if (!param) return null;
-  const parts = param.split('-').map(Number);
-  if (parts.length === 2 && !isNaN(parts[0]) && !isNaN(parts[1])) {
+const parsePriceRange = (
+    param: string | null,
+    absMin: number,
+    absMax: number
+  ): [number, number] | null => {
+    if (!param) return null;
+
+    const parts = param.split('-');
+
+    if (parts.length !== 2) return null;
+
+    const min = Number(parts[0]);
+    const max = Number(parts[1]);
+
+    if (
+      !Number.isFinite(min) ||
+      !Number.isFinite(max) ||
+      min > max
+    ) {
+      return null;
+    }
+
     return [
-      Math.max(absMin, parts[0]), 
-      Math.min(absMax, parts[1])
+      Math.max(absMin, Math.min(absMax, min)),
+      Math.max(absMin, Math.min(absMax, max)),
     ];
-  }
-  return null;
-}
+  };
 
 interface FilterOptions {
   selectedShopName: string[];
@@ -135,8 +151,7 @@ export function HomePage({
   const [showLoadMoreButton, setShowLoadMoreButton] = useState(false);
   const [showFilters, setShowFilters] = useState(false);
 
-  const hasSkippedInitialFetch = useRef(initialProducts.length > 0);
-
+  const hasSkippedInitialFetch = useRef(initialProducts.length > 0 && !categoryConfig);
 
   // ============================================================================
   // STATE - Filter Options (Dropdowns)
@@ -309,52 +324,64 @@ export function HomePage({
   // Sync URL -> State (Handle Back/Forward)
   useEffect(() => {
     isSyncingFromUrl.current = true;
-    
-    const urlSearch = searchParams.get('search') || '';
-    if (urlSearch !== searchQuery) setSearchQuery(urlSearch);
 
-    const urlSort = (searchParams.get('sort') as SortOrder) || 'discount_desc';
-    if (urlSort !== sortOrder) setSortOrder(urlSort);
-
-    const urlShops = parseArrayParam(searchParams.get('shop'));
-    if (JSON.stringify(urlShops) !== JSON.stringify(selectedShopName)) setSelectedShopName(urlShops);
-
-    const urlSizes = parseArrayParam(searchParams.get('size'));
-    if (JSON.stringify(urlSizes) !== JSON.stringify(selectedSizeGroups)) setSelectedSizeGroups(urlSizes);
-
-    const urlTypes = parseArrayParam(searchParams.get('type'));
-    if (JSON.stringify(urlTypes) !== JSON.stringify(selectedGroupedTypes)) setSelectedGroupedTypes(urlTypes);
-    
-    const urlCats = parseArrayParam(searchParams.get('category'));
-    if (JSON.stringify(urlCats) !== JSON.stringify(selectedTopLevelCategories)) setSelectedTopLevelCategories(urlCats);
-    
-    const urlGenders = parseArrayParam(searchParams.get('gender'));
-    if (JSON.stringify(urlGenders) !== JSON.stringify(selectedGenderAges)) setSelectedGenderAges(urlGenders);
-
-    const urlSale = searchParams.get('sale') === 'true';
-    if (urlSale !== onSaleOnly) setOnSaleOnly(urlSale);
-
-    const urlMadeInCanada = searchParams.get('made_in_canada') === 'true';
-    if (urlMadeInCanada !== madeInCanadaOnly) setMadeInCanadaOnly(urlMadeInCanada);
-
-    const urlPrice = parsePriceRange(searchParams.get('price'), ABS_MIN_PRICE, ABS_MAX_PRICE);
-    if (urlPrice) {
-      if (urlPrice[0] !== selectedPriceRange[0] || urlPrice[1] !== selectedPriceRange[1]) {
-        setSelectedPriceRange(urlPrice);
-      }
-    } else {
-        // If no price in URL, reset to default if not already
-        // Wait, loop risk if default is distinct.
-        // If URL has no price, we should probably respect that means 'default'.
-        if (selectedPriceRange[0] !== PRICE_RANGE[0] || selectedPriceRange[1] !== PRICE_RANGE[1]) {
-             setSelectedPriceRange([...PRICE_RANGE]);
-        }
+    if (searchParams.has('search')) {
+      const urlSearch = searchParams.get('search') || '';
+      if (urlSearch !== searchQuery) setSearchQuery(urlSearch);
     }
 
-    // Release lock after render cycle
-    setTimeout(() => { isSyncingFromUrl.current = false; }, 0);
-  }, [PRICE_RANGE, madeInCanadaOnly, onSaleOnly, searchParams, searchQuery, selectedGenderAges, selectedGroupedTypes, selectedPriceRange, selectedShopName, selectedSizeGroups, selectedTopLevelCategories, sortOrder]);
+    if (searchParams.has('sort')) {
+      const sortParam = searchParams.get('sort');
+      const urlSort: SortOrder =
+        sortParam === 'price_asc' || sortParam === 'price_desc' || sortParam === 'discount_desc'
+          ? sortParam
+          : 'discount_desc';
+      if (urlSort !== sortOrder) setSortOrder(urlSort);
+    }
 
+    if (searchParams.has('shop')) {
+      const urlShops = parseArrayParam(searchParams.get('shop'));
+      if (JSON.stringify(urlShops) !== JSON.stringify(selectedShopName)) setSelectedShopName(urlShops);
+    }
+    if (searchParams.has('size')) {
+      const urlSizes = parseArrayParam(searchParams.get('size'));
+      if (JSON.stringify(urlSizes) !== JSON.stringify(selectedSizeGroups)) setSelectedSizeGroups(urlSizes);
+    }
+    if (searchParams.has('type')) {
+      const urlTypes = parseArrayParam(searchParams.get('type'));
+      if (JSON.stringify(urlTypes) !== JSON.stringify(selectedGroupedTypes)) setSelectedGroupedTypes(urlTypes);
+    }
+    if (searchParams.has('category')) {
+      const urlCats = parseArrayParam(searchParams.get('category'));
+      if (JSON.stringify(urlCats) !== JSON.stringify(selectedTopLevelCategories)) setSelectedTopLevelCategories(urlCats);
+    }
+    if (searchParams.has('gender')) {
+      const urlGenders = parseArrayParam(searchParams.get('gender'));
+      if (JSON.stringify(urlGenders) !== JSON.stringify(selectedGenderAges)) setSelectedGenderAges(urlGenders);
+    }
+    if (searchParams.has('sale')) {
+      const urlSale = searchParams.get('sale') === 'true';
+      if (urlSale !== onSaleOnly) setOnSaleOnly(urlSale);
+    }
+    if (searchParams.has('made_in_canada')) {
+      const urlMadeInCanada = searchParams.get('made_in_canada') === 'true';
+      if (urlMadeInCanada !== madeInCanadaOnly) setMadeInCanadaOnly(urlMadeInCanada);
+    }
+    if (searchParams.has('price')) {
+      const urlPrice = parsePriceRange(searchParams.get('price'), ABS_MIN_PRICE, ABS_MAX_PRICE);
+      if (urlPrice) {
+        if (urlPrice[0] !== selectedPriceRange[0] || urlPrice[1] !== selectedPriceRange[1]) {
+          setSelectedPriceRange(urlPrice);
+        }
+      }
+    }
+
+    setTimeout(() => { isSyncingFromUrl.current = false; }, 0);
+  }, [
+    PRICE_RANGE, madeInCanadaOnly, onSaleOnly, searchParams, searchQuery,
+    selectedGenderAges, selectedGroupedTypes, selectedPriceRange,
+    selectedShopName, selectedSizeGroups, selectedTopLevelCategories, sortOrder,
+  ]);
   // ============================================================================
   // UTILITY FUNCTIONS
   // ============================================================================
@@ -698,10 +725,14 @@ export function HomePage({
         setIsFilterChanging(false);
       });
     } finally {
-      if (!currentRequestRef.current?.signal.aborted) {
+      inFlightRequestsRef.current.delete(requestKey);
+
+      if (currentRequestRef.current?.signal.aborted) {
         isFetchingRef.current = false;
         observerLockRef.current = false;
-        inFlightRequestsRef.current.delete(requestKey);
+      } else {
+        isFetchingRef.current = false;
+        observerLockRef.current = false;
       }
     }
   }, [scheduleIdle, fetchBatchPricingFor]);
@@ -712,23 +743,27 @@ export function HomePage({
   const [isCategoryInitialized, setIsCategoryInitialized] = useState(false);
 
   useEffect(() => {
-    if (categoryConfig) {
-      const defaults = categoryConfig.filterDefaults;
-      
-      // Explicitly reset filters when category SLUG changes
-      setSelectedTopLevelCategories(defaults.selectedTopLevelCategories || []);
-      setSelectedGenderAges(defaults.selectedGenderAges || []);
-      setSelectedGroupedTypes(defaults.selectedGroupedTypes || []);
-      setSelectedSizeGroups([]); 
-      setSelectedShopName([]); 
-      setSearchQuery(defaults.query || ''); 
-      setSelectedPriceRange([...PRICE_RANGE]); 
-      
-      setIsCategoryInitialized(true);
-    } else {
-      setIsCategoryInitialized(true);
+    if (!categoryConfig) { setIsCategoryInitialized(true); return; }
+    const defaults = categoryConfig.filterDefaults;
+
+    if (!searchParams.has('category') && defaults.selectedTopLevelCategories) {
+      setSelectedTopLevelCategories(defaults.selectedTopLevelCategories);
     }
-  }, [PRICE_RANGE, categoryConfig, categoryConfig?.slug]);
+    if (!searchParams.has('gender') && defaults.selectedGenderAges) {
+      setSelectedGenderAges(defaults.selectedGenderAges);
+    }
+    if (!searchParams.has('type') && defaults.selectedGroupedTypes) {
+      setSelectedGroupedTypes(defaults.selectedGroupedTypes);
+    }
+    if (!searchParams.has('search') && defaults.query) {
+      setSearchQuery(defaults.query);
+    }
+    // Intentionally reset size/shop/price when *navigating* between categories,
+    // but not on first mount if the URL carries them.
+    // (Add a "previous slug" ref if you want to distinguish.)
+
+    setIsCategoryInitialized(true);
+  }, [categoryConfig, searchParams]);
 
   // ============================================================================
   // PRE-WARM CONNECTION ON APP START
@@ -1121,13 +1156,13 @@ export function HomePage({
   
   return (
     <div className="min-h-screen bg-gray-50 dark:bg-gray-950 font-['Inter',sans-serif]">
-      <div className="mx-auto px-4 pt-24 pb-6 sm:px-6 lg:px-8 max-w-screen-2xl">
+      <div className="mx-auto px-4 pt-[calc(16px+1rem+4rem)] pb-6 sm:px-6 lg:px-8 max-w-screen-2xl">
         <div className="flex flex-col lg:flex-row gap-6">
           {/* Filters Sidebar */}
           <div className="w-full lg:w-96 flex-shrink-0">
-            <div className="lg:sticky lg:top-24">
+            <div className="lg:sticky lg:top-20">
               {/* Mobile Filter Toggle - Sticky Header */}
-              <div className="lg:hidden sticky top-16 z-30 mb-4 -mx-4 px-4 py-2 bg-gray-50/95 dark:bg-gray-950/95 backdrop-blur supports-[backdrop-filter]:bg-gray-50/60 border-b border-gray-200 dark:border-gray-800 transition-all duration-200">
+              <div className="lg:hidden sticky top-0 z-30 mb-4 -mx-4 px-4 py-2 bg-gray-50/95 dark:bg-gray-950/95 backdrop-blur supports-[backdrop-filter]:bg-gray-50/60 border-b border-gray-200 dark:border-gray-800 transition-all duration-200">
                 <button
                   onClick={() => setShowFilters(!showFilters)}
                   className="w-full flex items-center justify-between gap-2 px-4 py-3 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors shadow-sm"
@@ -1208,17 +1243,24 @@ export function HomePage({
 
                       {/* Made in Canada at top */}
                       <div className="pb-1">
-                        <label className="flex items-center gap-2 cursor-pointer">
-                          <input
-                            type="checkbox"
-                            checked={madeInCanadaOnly}
-                            onChange={(e) => updateFilter('made_in_canada', e.target.checked ? 'true' : null)}
-                            className="w-4 h-4 text-red-600 bg-gray-100 border-gray-300 rounded focus:ring-red-500 dark:focus:ring-red-600 dark:bg-gray-700 dark:border-gray-600"
-                          />
-                          <span className="text-sm text-gray-700 dark:text-gray-300 flex items-center gap-1">
-                            Made in Canada <span role="img" aria-label="Made in Canada">🍁</span>
-                          </span>
-                        </label>
+                        <label className="flex items-center gap-2.5 min-h-10 cursor-pointer">
+                        <input
+                          type="checkbox"
+                          checked={madeInCanadaOnly}
+                          onChange={(e) =>
+                            updateFilter(
+                              'made_in_canada',
+                              e.target.checked ? 'true' : null
+                            )
+                          }
+                          className="h-4 w-4 shrink-0 rounded border-gray-300
+                            text-red-600 focus:ring-2 focus:ring-red-500
+                            dark:border-gray-600 dark:bg-gray-700"
+                        />
+                        <span className="text-sm leading-5 text-gray-700 dark:text-gray-300">
+                          Made in Canada <span aria-hidden="true">🍁</span>
+                        </span>
+                      </label>
                       </div>
 
                       <div>
@@ -1486,26 +1528,29 @@ export function HomePage({
               </div>
             ) : (
               /* Home page Header */
-              <div className="mb-6">
-                <h1 className="text-xl font-semibold text-gray-800 dark:text-gray-200 mb-1">
-                  Discover Canadian Fashion &amp; Footwear Brands
+              <div className="mb-4">
+                <h1 className="text-2xl sm:text-3xl font-extrabold tracking-tight text-gray-950 dark:text-gray-50 mb-3">
+                  Discover Canadian brands and deals
                 </h1>
+                <p className="text-base leading-relaxed text-gray-600 dark:text-gray-400 max-w-2xl">
+                  Compare current prices and deals from independent brands across Canada.
+                </p>
               </div>
             )}
 
-            {/* Email Capture */}
-            <div className="mb-6 p-4 sm:p-5 bg-blue-50 dark:bg-blue-900/20 rounded-xl border border-blue-100 dark:border-blue-800/30 flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
-              <div>
-                <h3 className="text-base font-semibold text-blue-900 dark:text-blue-100 flex items-center gap-2">
-                  <AsyncLucideIcon name="Mail" className="h-4 w-4" />
-                  Get selected Canadian brands and deals in your inbox weekly.
+            {/* Newsletter Signup - Quieter secondary section */}
+            <div className="mt-6 p-4 bg-gray-50 dark:bg-gray-900/50 rounded-lg border border-gray-200 dark:border-gray-800">
+              <div className="mb-4">
+                <h3 className="text-sm font-medium text-gray-900 dark:text-gray-100 flex items-center gap-2">
+                  <AsyncLucideIcon name="Mail" className="h-4 w-4 text-gray-500 dark:text-gray-400" />
+                  Get Canadian Brand Deals by Email
                 </h3>
-                <p className="text-sm text-blue-700 dark:text-blue-300 mt-1">
+                <p className="text-xs text-gray-500 dark:text-gray-400">
                   Join other shoppers discovering Canadian fashion and exclusive deals.
                 </p>
               </div>
               <form 
-                className="flex flex-col w-full md:w-auto gap-3"
+                className="flex flex-col w-full md:flex-row md:items-center md:justify-between gap-3"
                 onSubmit={async (e) => {
                   e.preventDefault();
                   const form = e.target as HTMLFormElement;
@@ -1555,36 +1600,35 @@ export function HomePage({
                     type="email" 
                     placeholder="Your email address" 
                     required
-                    className="px-3 py-2 text-sm border border-blue-200 dark:border-blue-700/50 rounded-md bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 flex-1 md:w-64 focus:outline-none focus:ring-2 focus:ring-blue-500 shadow-sm"
+                    className="px-3 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 flex-1 md:w-auto focus:outline-none focus:ring-2 focus:ring-blue-500"
                   />
                   <button 
                     type="submit"
-                    className="px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 transition-colors shadow-sm whitespace-nowrap disabled:opacity-75 disabled:cursor-not-allowed"
+                    className="px-4 py-2 text-sm font-medium text-blue-600 dark:text-blue-400 bg-blue-100 dark:bg-blue-900/30 rounded-md hover:bg-blue-200 dark:hover:bg-blue-900/40 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 transition-colors whitespace-nowrap disabled:opacity-75 disabled:cursor-not-allowed"
                   >
                     Subscribe
                   </button>
                 </div>
-                <label className="flex items-start gap-2 cursor-pointer mt-1">
+                <label className="flex items-start gap-2 cursor-pointer mt-2">
                   <input
                     type="checkbox"
                     required
-                    className="mt-0.5 w-4 h-4 text-blue-600 bg-gray-100 border-gray-300 rounded focus:ring-blue-500 dark:focus:ring-blue-600 dark:bg-gray-700 dark:border-gray-600 shrink-0"
+                    className="mt-1 w-4 h-4 text-blue-600 bg-gray-100 border-gray-300 rounded focus:ring-blue-500 dark:focus:ring-blue-600 dark:bg-gray-700 dark:border-gray-600 shrink-0"
                   />
-                  <span className="text-xs text-blue-800 dark:text-blue-200/80 leading-tight">
+                  <span className="text-xs text-gray-500 dark:text-gray-400 leading-tight">
                     I consent to receive weekly emails about new Canadian brands and deals. I can unsubscribe at any time.
                   </span>
                 </label>
               </form>
             </div>
-
-            <div className="mb-3 flex items-center justify-end sm:mb-4">
+            <div className="mt-4 mb-5 flex items-center justify-end sm:mt-4 sm:mb-2">
               <div className="w-40 sm:w-48">
-                <SingleSelectDropdown 
+                <SingleSelectDropdown
                   id="sort-products"
-                  options={sortOptions} 
-                  selected={sortOrder} 
-                  onChange={handleSortChange} 
-                  placeholder="Sort by" 
+                  options={sortOptions}
+                  selected={sortOrder}
+                  onChange={handleSortChange}
+                  placeholder="Sort by"
                 />
               </div>
             </div>
@@ -1632,7 +1676,12 @@ export function HomePage({
               </div>
             )}
 
-            {/* Products Grid Container */}
+            {/* Products Grid */}
+            <div className="mb-8">
+              <h2 className="text-xl font-semibold text-gray-900 dark:text-gray-100 mb-3">
+                Latest Canadian Brand Deals
+              </h2>
+            </div>
             <div className="relative min-h-[400px]">
               {/* Accessibility - Live region for screen readers */}
               <div role="status" aria-live="polite" className="sr-only">
@@ -1756,45 +1805,12 @@ export function HomePage({
                 </div>
               )}
             </div>
-            
-            {/* Category Bottom Content */}
-            {/* Bottom SEO Content Area */}
-            <div className="mt-16 border-t border-gray-200 dark:border-gray-800 pt-8">
-              {categoryConfig ? (
-                <div className="text-gray-600 dark:text-gray-300">
-                  {typeof categoryConfig.introText === 'function' 
-                    ? categoryConfig.introText({
-                        setGroupedTypes: setSelectedGroupedTypes,
-                        setTopLevelCategories: setSelectedTopLevelCategories,
-                        setGenderAges: setSelectedGenderAges,
-                        setSearchQuery: setSearchQuery
-                      }) 
-                    : (categoryConfig.introText as React.ReactNode)}
-                </div>
-              ) : (
-                /* Home page brand links relocated to bottom */
-                <div>
-                  <p className="text-sm text-gray-500 dark:text-gray-400 max-w-2xl">
-                    Find and compare clothing, shoes, and accessories from independent Canadian brands like:
-                  </p>
-                  <p className="text-sm text-gray-500 dark:text-gray-400 max-w-2xl mt-1">
-                    {['Reigning Champ', 'Anian', 'Ecologyst', 'Viberg', 'Encircled', 'Province of Canada', 'Knix', 'Muttonhead'].join(' · ')}
-                  </p>
-                </div>
-              )}
-
-              {categoryConfig && categoryConfig.bottomContent && (
-                <div className="mt-8">
-                   {categoryConfig.bottomContent}
-                </div>
-              )}
-            </div>
           </div>
         </div>
       </div>
     </div>
   );
-}
+};
 
 // ============================================================================
 // SKELETON COMPONENT

@@ -5,39 +5,59 @@ import Layout from '@/layouts/Layout.astro';
 import { AppWrapper } from '@/AppWrapper';
 import { sql } from '@/lib/db';
 import { CATEGORY_META } from '@/data/categoryMeta';
+import { CATEGORIES } from '@/data/categories';
 
 const rawPath = Astro.url.pathname;
 const pathname = rawPath === '/' ? '/' : rawPath.replace(/\/$/, '');
 const canonical = new URL(pathname, Astro.site);
 
-let title = 'Curated Canada – Canadian Independent Brand Deals';
-let description = 'Compare deals on clothing, footwear, accessories, and home goods from independent Canadian brands. Prices updated daily.';
+let title = pathname === '/' 
+  ? 'Canadian Brand Deals & Price Comparisons | Curated Canada'
+  : 'Curated Canada – Canadian Independent Brand Deals';
+let description = pathname === '/'
+  ? 'Compare current prices and deals from independent brands across Canada.'
+  : 'Compare deals on clothing, footwear, accessories, and home goods from independent Canadian brands. Prices updated daily.';
 let noindex = false;
 
 // Server-render initial products for home and collection pages
 let initialProducts: any[] = [];
 
-if (pathname === '/' || pathname.startsWith('/collections/')) {
-  try {
-    console.log('[SSR] Querying products for', pathname);
-    initialProducts = await sql`
-      SELECT
-        p.id, p.title, p.handle, p.shop_id, p.shop_name,
-        p.min_price, p.max_discount_percentage, p.on_sale, p.in_stock,
-        p.images, p.top_level_category, p.subcategory, p.grouped_product_type,
-        p.variants, p.size_groups,
-        COALESCE(s.made_in_canada, false) AS made_in_canada
-      FROM products_with_details_core p
-      LEFT JOIN shops s ON s.id = p.shop_id
-      WHERE p.in_stock = true AND p.is_archived = false
-      ORDER BY p.max_discount_percentage DESC NULLS LAST
-      LIMIT 31
-    `;
-    console.log('[SSR] Got', initialProducts.length, 'products');
-  } catch (err) {
-    console.error('[SSR] Query failed:', err);
-    initialProducts = [];
-  }
+if (pathname === '/') {
+  initialProducts = await sql`
+    SELECT p.id, p.title, p.handle, p.shop_id, p.shop_name,
+           p.min_price, p.max_discount_percentage, p.on_sale, p.in_stock,
+           p.images, p.top_level_category, p.subcategory, p.grouped_product_type,
+           p.variants, p.size_groups,
+           COALESCE(s.made_in_canada, false) AS made_in_canada
+    FROM products_with_details_core p
+    LEFT JOIN shops s ON s.id = p.shop_id
+    WHERE p.in_stock = true AND p.is_archived = false
+    ORDER BY p.max_discount_percentage DESC NULLS LAST
+    LIMIT 31
+  `;
+} else if (pathname.startsWith('/collections/')) {
+  const slug = pathname.replace(/^\/collections\//, '').replace(/\/$/, '');
+  const defaults = CATEGORIES[slug]?.filterDefaults ?? {};
+
+  const topLevel  = defaults.selectedTopLevelCategories ?? null;
+  const grouped   = defaults.selectedGroupedTypes ?? null;
+  const genderAge = defaults.selectedGenderAges ?? null;
+
+  initialProducts = await sql`
+    SELECT p.id, p.title, p.handle, p.shop_id, p.shop_name,
+           p.min_price, p.max_discount_percentage, p.on_sale, p.in_stock,
+           p.images, p.top_level_category, p.subcategory, p.grouped_product_type,
+           p.variants, p.size_groups,
+           COALESCE(s.made_in_canada, false) AS made_in_canada
+    FROM products_with_details_core p
+    LEFT JOIN shops s ON s.id = p.shop_id
+    WHERE p.in_stock = true AND p.is_archived = false
+      ${topLevel  ? sql`AND p.top_level_category   = ANY(${topLevel})`  : sql``}
+      ${grouped   ? sql`AND p.grouped_product_type = ANY(${grouped})`   : sql``}
+      ${genderAge ? sql`AND p.gender_age           = ANY(${genderAge})` : sql``}
+    ORDER BY p.max_discount_percentage DESC NULLS LAST
+    LIMIT 31
+  `;
 }
 
 if (pathname.startsWith('/collections/')) {
