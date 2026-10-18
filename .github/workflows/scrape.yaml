@@ -25,7 +25,7 @@ on:
 jobs:
   scrape:
     runs-on: ubuntu-latest
-    timeout-minutes: ${{ github.event.schedule == '0 3 1 * *' && 420 || 180 }}
+    timeout-minutes: 420
     environment: production
 
     steps:
@@ -117,7 +117,7 @@ jobs:
         with:
           name: scrape-artifacts-${{ github.run_number }}
           path: |
-            scraping/data/
+            scraping/data/failed/
             scraping/logs/
           retention-days: 7
 
