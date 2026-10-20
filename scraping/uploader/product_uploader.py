@@ -3,6 +3,7 @@ Product uploader with normalized image structure and product categorization.
 Filters to only upload available products (in-stock with valid prices).
 """
 
+from collections import defaultdict
 import json
 import re
 import html as html_lib
@@ -998,9 +999,14 @@ class ProductUploader(BaseUploader):
 
         return None
 
-    def process_file(self, filepath: Path, shop_product_ids: Dict[str, set]) -> bool:
+    def process_file(
+        self, filepath: Path, shop_product_ids: Optional[Dict[str, set]] = None
+    ) -> bool:
         """Process a single product file with filtering and HTML support."""
         self.logger.info(f"📦 Processing product file: {filepath.name}")
+
+        if shop_product_ids is None:
+            shop_product_ids = defaultdict(set)
 
         try:
             # Load JSON data
