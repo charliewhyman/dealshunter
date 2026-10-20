@@ -21,6 +21,11 @@ def debug_product(product_id: int):
     db = DatabaseClient()
     categorizer = ProductCategorizer()
     categorizer.reload_config()
+    
+    # Validate categorizer is ready
+    if not categorizer.config or not categorizer.config.get("category_mapping"):
+        print("❌ Invalid categorizer config, cannot debug product")
+        return
 
     def get_product(conn):
         with conn.cursor() as cur:
@@ -59,15 +64,27 @@ def debug_product(product_id: int):
     print(f"  -> gender_age          : {category_info['gender_age']}")
 
 
-def recategorize_all_products():
-    """Re-categorize ALL products in database using updated config."""
+def recategorize_all_products(dry_run: bool = False):
+    """Re-categorize ALL products in database using updated config.
+    
+    Args:
+        dry_run: If True, only simulate changes without writing to database
+    """
 
     # Initialize
     db = DatabaseClient()
     categorizer = ProductCategorizer()
     categorizer.reload_config()  # Load updated config
-
+    
+    # Validate categorizer is ready
+    if not categorizer.config or not categorizer.config.get("category_mapping"):
+        print("❌ Invalid categorizer config, cannot re-categorize")
+        return
+    
     print("Starting re-categorization of all products...")
+    
+    if dry_run:
+        print("⚠️  DRY RUN MODE - no changes will be saved")
 
     def get_all_products(conn):
         with conn.cursor() as cur:
@@ -121,8 +138,41 @@ def recategorize_all_products():
         # Batch update
         if len(batch) >= batch_size:
 
-            def update_batch(conn, b=batch):
+            def update_batch(conn, b=batch, dry_run=dry_run):
                 with conn.cursor() as cur:
+                    if dry_run:
+                        # Simulate update without writing
+                        print(f"  [DRY RUN] Would update {len(b)} products in batch")
+                    else:
+                        cur.executemany(
+                            """
+                            UPDATE products_with_details_core
+                            SET
+                                grouped_product_type = %s,
+                                top_level_category = %s,
+                                gender_age = %s,
+                                updated_at = NOW()
+                            WHERE id = %s
+                        """,
+                            b,
+                        )
+                        print(f"  [✓] Updated batch of {len(batch)} products")
+                if not dry_run:
+                    conn.commit()
+
+            db.safe_execute(update_batch, f"Update batch of {len(batch)} products")
+            print(f"  Progress: {updated} / {len(all_products)} processed...")
+            batch = []
+
+    # Final batch
+    if batch:
+
+        def update_final_batch(conn, b=batch, dry_run=dry_run):
+            with conn.cursor() as cur:
+                if dry_run:
+                    # Simulate update without writing
+                    print(f"  [DRY RUN] Would update final batch of {len(b)} products")
+                else:
                     cur.executemany(
                         """
                         UPDATE products_with_details_core
@@ -135,37 +185,20 @@ def recategorize_all_products():
                     """,
                         b,
                     )
+                    print(f"  [✓] Updated final batch of {len(batch)} products")
+            if not dry_run:
                 conn.commit()
-
-            db.safe_execute(update_batch, f"Update batch of {len(batch)} products")
-            print(f"  Progress: {updated} / {len(all_products)} updated...")
-            batch = []
-
-    # Final batch
-    if batch:
-
-        def update_final_batch(conn, b=batch):
-            with conn.cursor() as cur:
-                cur.executemany(
-                    """
-                    UPDATE products_with_details_core
-                    SET
-                        grouped_product_type = %s,
-                        top_level_category = %s,
-                        gender_age = %s,
-                        updated_at = NOW()
-                    WHERE id = %s
-                """,
-                    b,
-                )
-            conn.commit()
 
         db.safe_execute(
             update_final_batch, f"Update final batch of {len(batch)} products"
         )
 
     print(f"\n✅ Re-categorization complete!")
-    print(f"   Updated: {updated} / {len(all_products)}")
+    print(f"   Processed: {updated} / {len(all_products)} products")
+    if dry_run:
+        print(f"   [DRY RUN] No changes saved to database")
+    else:
+        print(f"   [✓] {updated} products updated in database")
 
     # Show resulting category distribution
     def get_stats(conn):
@@ -192,6 +225,9 @@ def recategorize_all_products():
 if __name__ == "__main__":
     if len(sys.argv) > 1:
         # Debug a specific product
-        debug_product(int(sys.argv[1]))
+        product_id = int(sys.argv[1])
+        debug_product(product_id)
     else:
-        recategorize_all_products()
+        # Check for dry run flag
+        dry_run = "--dry-run" in sys.argv or "-n" in sys.argv
+        recategorize_all_products(dry_run=dry_run)
