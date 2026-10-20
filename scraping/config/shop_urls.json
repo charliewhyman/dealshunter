@@ -597,5 +597,281 @@
     "shop_name": "Bonnetier",
     "location": "Boucherville, Quebec",
     "made_in_canada_only": true
+  },
+  {
+    "id": 1560,
+    "url": "https://seulementlocal.com/",
+    "category": [
+      "Clothing",
+      "Men's Clothing",
+      "Women's Clothing",
+      "Unisex"
+    ],
+    "shop_name": "Ellie & Mac",
+    "location": "Montréal, Quebec",
+    "made_in_canada_only": false
+  },
+  {
+    "id": 1561,
+    "url": "https://www.shopmodernfable.com/",
+    "category": [ 
+      "Clothing",
+      "Women's Clothing"
+    ], 
+    "shop_name": "Modern Fable",
+    "location": "Almonte, Ontario",
+    "made_in_canada_only": false
+  },
+  {
+    "id": 1562,
+    "url": "https://www.rainbowjeans.com/",
+    "category": [ 
+      "Clothing",
+      "Women's Clothing",
+      "Men's Clothing",
+      "Unisex",
+      "Home Goods",
+      "Lifestyle",
+      "Accessories"], 
+    "shop_name": "Over the Rainbow",
+    "location": "Toronto, Ontario",
+    "made_in_canada_only": false
+  },
+  [
+  {
+    "id": 1563,
+    "url": "https://parkscanadashop.ca/",
+    "category": [
+      "Clothing",
+      "Accessories",
+      "Home Goods",
+      "Lifestyle"
+    ],
+    "shop_name": "Parks Canada Shop",
+    "location": "Gatineau, Quebec",
+    "made_in_canada_only": false
+  },
+  {
+    "id": 1564,
+    "url": "https://jerico.ca/",
+    "category": [
+      "Clothing",
+      "Men's Clothing",
+      "Women's Clothing",
+      "Unisex",
+      "Activewear"
+    ],
+    "shop_name": "Jerico",
+    "location": "Toronto, Ontario",
+    "made_in_canada_only": true
+  },
+  {
+    "id": 1565,
+    "url": "https://www.smokinglily.com/",
+    "category": [
+      "Clothing",
+      "Women's Clothing",
+      "Accessories"
+    ],
+    "shop_name": "Smoking Lily",
+    "location": "Victoria, British Columbia",
+    "made_in_canada_only": true
+  },
+  {
+    "id": 1566,
+    "url": "https://www.tentree.ca/",
+    "category": [
+      "Clothing",
+      "Men's Clothing",
+      "Women's Clothing",
+      "Accessories",
+      "Activewear"
+    ],
+    "shop_name": "tentree",
+    "location": "Vancouver, British Columbia",
+    "made_in_canada_only": false
+  },
+  {
+    "id": 1567,
+    "url": "https://workshopandflock.com/",
+    "category": [
+      "Clothing",
+      "Women's Clothing",
+      "Jewelry",
+      "Accessories",
+      "Home Goods",
+      "Lifestyle"
+    ],
+    "shop_name": "Workshop & Flock",
+    "location": "Ottawa, Ontario",
+    "made_in_canada_only": false
+  },
+  {
+    "id": 1568,
+    "url": "https://blackmapletrading.com/",
+    "category": [
+      "Clothing",
+      "Accessories",
+      "Home Goods",
+      "Lifestyle"
+    ],
+    "shop_name": "Black Maple Trading Co.",
+    "location": "Montréal, Quebec",
+    "made_in_canada_only": false
+  },
+  {
+    "id": 1569,
+    "url": "https://www.houseofblanks.com/",
+    "category": [
+      "Clothing",
+      "Men's Clothing",
+      "Women's Clothing",
+      "Unisex"
+    ],
+    "shop_name": "House of Blanks",
+    "location": "Toronto, Ontario",
+    "made_in_canada_only": true
+  },
+  {
+    "id": 1570,
+    "url": "https://daubanddesign.com/",
+    "category": [
+      "Clothing",
+      "Women's Clothing",
+      "Activewear",
+      "Loungewear"
+    ],
+    "shop_name": "Daub + Design",
+    "location": "Vancouver, British Columbia",
+    "made_in_canada_only": true
+  },
+  {
+    "id": 1571,
+    "url": "https://figclothing.ca/",
+    "category": [
+      "Clothing",
+      "Women's Clothing",
+      "Activewear"
+    ],
+    "shop_name": "FIG Clothing",
+    "location": "Montréal, Quebec",
+    "made_in_canada_only": false
   }
+],
+[
+  {
+    "id": 1573,
+    "url": "https://abaka.ca/",
+    "category": [
+      "Clothing",
+      "Women's Clothing",
+      "Men's Clothing"
+    ],
+    "shop_name": "Abaka",
+    "location": "Quebec",
+    "made_in_canada_only": true
+  },
+  {
+    "id": 1569,
+    "url": "https://www.houseofblanks.com/",
+    "category": [
+      "Clothing",
+      "Men's Clothing",
+      "Women's Clothing",
+      "Unisex"
+    ],
+    "shop_name": "House of Blanks",
+    "location": "Toronto, Ontario",
+    "made_in_canada_only": true
+  },
+  {
+    "id": 1575,
+    "url": "https://www.minitipi.ca/",
+    "category": [
+      "Clothing",
+      "Children's Clothing",
+      "Accessories",
+      "Home Goods"
+    ],
+    "shop_name": "Mini Tipi",
+    "location": "Gatineau, Quebec",
+    "made_in_canada_only": true
+  },
+  {
+    "id": 1581,
+    "url": "https://www.wuxly.com/",
+    "category": [
+      "Clothing",
+      "Outerwear"
+    ],
+    "shop_name": "Wuxly",
+    "location": "Toronto, Ontario",
+    "made_in_canada_only": true
+  }
+],
+[
+  {
+    "id": 1572,
+    "url": "https://atelier-b.ca/",
+    "category": [
+      "Clothing",
+      "Women's Clothing",
+      "Unisex"
+    ],
+    "shop_name": "Atelier B",
+    "location": "Montréal, Quebec",
+    "made_in_canada_only": true
+  },
+  {
+    "id": 1574,
+    "url": "https://www.redwoodclassics.net/",
+    "category": [
+      "Clothing",
+      "Men's Clothing",
+      "Women's Clothing",
+      "Unisex"
+    ],
+    "shop_name": "Redwood Classics",
+    "location": "Toronto, Ontario",
+    "made_in_canada_only": true
+  },
+  {
+    "id": 1577,
+    "url": "https://yogajeans.ca/",
+    "category": [
+      "Clothing",
+      "Women's Clothing",
+      "Denim"
+    ],
+    "shop_name": "Yoga Jeans",
+    "location": "Montréal, Quebec",
+    "made_in_canada_only": false
+  },
+  {
+    "id": 1578,
+    "url": "https://canada-west-boots-factory-outlet.myshopify.com/",
+    "category": [
+      "Footwear",
+      "Men's Footwear",
+      "Women's Footwear",
+      "Accessories"
+    ],
+    "shop_name": "Canada West Boots Factory Outlet",
+    "location": "Winnipeg, Manitoba",
+    "made_in_canada_only": false
+  },
+  {
+    "id": 1579,
+    "url": "https://www.kamik.com/",
+    "category": [
+      "Footwear",
+      "Men's Footwear",
+      "Women's Footwear",
+      "Children's Footwear"
+    ],
+    "shop_name": "Kamik",
+    "location": "Montréal, Quebec",
+    "made_in_canada_only": true
+  }
+]
 ]
