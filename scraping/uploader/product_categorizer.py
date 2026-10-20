@@ -9,6 +9,12 @@ class ProductCategorizer:
 
     def __init__(self):
         self.config = ConfigLoader.load_product_type_mapping()
+        
+        # Validate config structure
+        if not self.config or not self.config.get("category_mapping"):
+            uploader_logger.error("Invalid product type mapping config, using fallback")
+            self.config = {"category_mapping": {}, "default_gender_age": "Unisex", "default_category": "Uncategorized", "uncategorized_fallback": "Uncategorized", "gender_age_patterns": {}}
+        
         self._cache = {}  # Cache for category lookups
         self._prepare_keywords()
 
@@ -200,15 +206,15 @@ class ProductCategorizer:
                 normalized, patterns["include"], patterns["raw_keywords"]
             )
 
-            # Check for excludes
+            # Check for excludes (case-insensitive)
             exclude_score = 0
             for exclude_pattern in patterns["exclude"]:
-                if re.search(exclude_pattern, normalized):
+                if re.search(exclude_pattern, normalized, re.IGNORECASE):
                     exclude_score += 20  # Heavy penalty for excluded terms
                     break
 
             for exclude in patterns["raw_excludes"]:
-                if exclude in normalized:
+                if exclude.lower() in normalized:
                     exclude_score += 10
                     break
 
@@ -230,7 +236,8 @@ class ProductCategorizer:
 
             # Log the match for debugging
             uploader_logger.debug(
-                f"Categorized '{product_type}' as '{best_category}' (score: {best_score})"
+                f"Categorized '{product_type}' as '{
+            best_category}' (score: {best_score})"
             )
 
             # Extract top-level category
@@ -263,13 +270,13 @@ class ProductCategorizer:
         Enhanced categorization using multiple data sources.
         Falls back to product_type only if no better match found.
         """
-        # Flatten tags into a single searchable string
+        # Flatten tags into a single searchable string (filter empty strings)
         tags_text = None
         if tags:
             if isinstance(tags, list):
-                tags_text = " ".join(str(t) for t in tags if t)
+                tags_text = " ".join(str(t) for t in tags if t and t.strip())
             elif isinstance(tags, str):
-                tags_text = tags
+                tags_text = tags.strip() if tags.strip() else None
 
         # Priority weights for different sources
         weights = {
@@ -305,14 +312,18 @@ class ProductCategorizer:
                 # Apply source weight
                 weighted_score = match_score * weights[source_name]
 
-                # Check excludes
+                # Check excludes (case-insensitive)
                 exclude_penalty = 0
                 for exclude in patterns["raw_excludes"]:
-                    if exclude in normalized:
+                    if exclude.lower() in normalized:
                         exclude_penalty = 30  # Heavy penalty
                         break
 
                 final_score = weighted_score - exclude_penalty
+
+                if exclude_penalty > 0:
+                    # Skip excluded categories entirely
+                    continue
 
                 if final_score > 0:
                     # Add to aggregate scores
@@ -354,7 +365,7 @@ class ProductCategorizer:
             tags: Optional list of tags or string of tags for gender detection
             title: Optional product title for better categorization
             description: Optional description for better categorization
-            vendor: Optional vendor/brand for better categorization
+        vendor: Optional vendor for better categorization
         """
         # Use enhanced categorization if additional context is provided
         if title or description or vendor or tags:
