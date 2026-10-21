@@ -5,7 +5,7 @@ PostgreSQL client using psycopg 3 with connection pooling
 import os
 import time
 import random
-from typing import Optional, Callable, Any, List, Dict, Union, Tuple
+from typing import Optional, Callable, Any, List, Dict, Union, Tuple, cast
 from psycopg import Connection
 from psycopg.rows import dict_row
 from psycopg_pool import ConnectionPool
@@ -89,7 +89,10 @@ class DatabaseClient:
         """Get a connection from the pool. Use in a context manager."""
         if DatabaseClient._pool is None:
             self._initialize()
-        return DatabaseClient._pool.connection()
+        pool = DatabaseClient._pool
+        if pool is None:
+            raise RuntimeError("Database connection pool is not initialized")
+        return pool.connection()
 
     def close(self):
         """Close the connection pool."""
@@ -233,7 +236,7 @@ class DatabaseClient:
 
             def do_upsert(conn: Connection):
                 with conn.cursor() as cur:
-                    cur.executemany(sql, values_list)
+                    cur.executemany(cast(Any, sql), values_list)
                     return True
 
             result = self.safe_execute(
@@ -281,7 +284,7 @@ class DatabaseClient:
 
             def do_delete(conn: Connection):
                 with conn.cursor() as cur:
-                    cur.execute(sql, (batch,))
+                    cur.execute(cast(Any, sql), (batch,))
                     return True
 
             result = self.safe_execute(
@@ -300,14 +303,14 @@ class DatabaseClient:
     def execute_query(
         self,
         query: str,
-        params: Union[List, Tuple, Dict] = None,
+        params: Optional[Union[List, Tuple, Dict]] = None,
         fetch_all: bool = False,
     ) -> Any:
         """Execute a raw query."""
 
         def do_query(conn: Connection):
             with conn.cursor() as cur:
-                cur.execute(query, params)
+                cur.execute(cast(Any, query), params)
                 if fetch_all:
                     return cur.fetchall()
                 if cur.description:
