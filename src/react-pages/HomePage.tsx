@@ -2,7 +2,6 @@ import { type ChangeEvent, useCallback, useEffect, useRef, useState, useMemo, st
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import type { ProductWithDetails } from '../types';
 import { apiClient } from '../lib/api-client';
-import { computeNewDealsSinceVisit, type DealSignals } from '../lib/newSinceVisit';
 
 import AsyncLucideIcon from '../components/AsyncLucideIcon';
 import { ProductCard } from '../components/ProductCard';
@@ -23,10 +22,13 @@ const PRICING_DEBOUNCE_MS = 300;
 const OBSERVER_CHECK_INTERVAL_MS = 500;
 const REGULAR_LOAD_TIMEOUT_MS = 30000;
 const MAX_CACHE_ENTRIES = 10;
-const NEW_IN_CATALOG_DAYS = 7;
+
+// "What's new" configuration
+const NEW_IN_CATALOG_DAYS = 3;         // tighter than before — 1,008/7d was too many
+const NEW_IN_CATALOG_LIMIT = 20;       // hard cap for the local new-product strip
+const NEW_DEALS_LIMIT = 60;            // server-side deal diff cap
 
 type SortOrder = 'price_asc' | 'price_desc' | 'discount_desc';
-
 type NewBadge = 'new' | 'sale' | 'deeper';
 type NewItem = {
   product: ProductWithDetails;
@@ -103,6 +105,28 @@ interface FilterOptions {
 }
 
 // ============================================================================
+// DEAL BASELINE (localStorage)
+// ============================================================================
+
+function getDealBaseline(scope: string): string | null {
+  if (typeof window === 'undefined') return null;
+  try {
+    return window.localStorage.getItem(`deals_baseline_${scope}`);
+  } catch {
+    return null;
+  }
+}
+
+function setDealBaseline(scope: string, iso: string) {
+  if (typeof window === 'undefined') return;
+  try {
+    window.localStorage.setItem(`deals_baseline_${scope}`, iso);
+  } catch {
+    /* ignore quota/private mode */
+  }
+}
+
+// ============================================================================
 // MAIN COMPONENT
 // ============================================================================
 
@@ -134,14 +158,13 @@ export function HomePage({
   const hasSkippedInitialFetch = useRef(initialProducts.length > 0 && !categoryConfig);
 
   // ============================================================================
-  // STATE - New deals since your last visit
+  // STATE - What's new (server-driven deal diff + local new-product strip)
   // ============================================================================
-  const [dealSignals, setDealSignals] = useState<DealSignals>({
-    newDeals: new Set(),
-    deeperDeals: new Set(),
-    baselineAt: null,
-  });
-  const lastComputedSlugRef = useRef<string | null>(null);
+  const scope = categoryConfig?.slug ?? '__home';
+  const [dealBaselineAt, setDealBaselineAt] = useState<string | null>(() => getDealBaseline(scope));
+  const [newDeals, setNewDeals] = useState<ProductWithDetails[]>([]);
+  const [newDealsLoading, setNewDealsLoading] = useState(false);
+  const [now] = useState(() => Date.now());
 
   // ============================================================================
   // STATE - Filter Options (Dropdowns)
@@ -176,13 +199,9 @@ export function HomePage({
     '';
 
   const selectedShopName = parseArrayParam(searchParams.get('shop'));
-
   const selectedGroupedTypes = parseArrayParam(searchParams.get('type'));
-
   const selectedTopLevelCategories = parseArrayParam(searchParams.get('category'));
-
   const selectedGenderAges = parseArrayParam(searchParams.get('gender'));
-
   const onSaleOnly = searchParams.get('sale') === 'true';
 
   const madeInCanadaOnly =
@@ -221,11 +240,8 @@ export function HomePage({
   const CACHE_TTL = 5 * 60 * 1000;
   const canLoadMoreRef = useRef(true);
   const prevFilterKeyRef = useRef<string>('');
-  const isSyncingFromUrl = useRef(false);
-  const userInteractedRef = useRef(false);
 
   const updateFilter = useCallback((key: string, value: string | string[] | null) => {
-    userInteractedRef.current = true;
     const newParams = new URLSearchParams(searchParams);
     if (value === null || (Array.isArray(value) && value.length === 0) || value === '') {
       newParams.delete(key);
@@ -275,10 +291,10 @@ export function HomePage({
   // EFFECTS - URL Sync
   // ============================================================================
 
-  useEffect(() => {
-    // Skip sync if we're currently updating filters from URL
-    if (isSyncingFromUrl.current) return;
+  const isSyncingFromUrl = useRef(false);
 
+  useEffect(() => {
+    if (isSyncingFromUrl.current) return;
     isSyncingFromUrl.current = true;
 
     if (searchParams.has('made_in_canada')) {
@@ -306,14 +322,14 @@ export function HomePage({
     if (w.requestIdleCallback) {
       try {
         w.requestIdleCallback(() => {
-          try { task(); } catch (error) { console.error('Error in scheduled idle callback:', error); }
+          try { task(); } catch (err) { console.error('Error in scheduled idle callback:', err); }
         }, { timeout: 2000 });
         return;
-      } catch (error) {
-        console.error('Failed to schedule idle callback:', error);
+      } catch (err) {
+        console.error('Failed to schedule idle callback:', err);
       }
     }
-    setTimeout(() => { try { task(); } catch (error) { console.error('Error in setTimeout callback:', error); } }, 200);
+    setTimeout(() => { try { task(); } catch (err) { console.error('Error in setTimeout callback:', err); } }, 200);
   }, []);
 
   // ============================================================================
@@ -343,8 +359,8 @@ export function HomePage({
           }
         }
       }
-    } catch (error) {
-      console.error('Error fetching pricing:', error);
+    } catch (err) {
+      console.error('Error fetching pricing:', err);
     }
 
     setProductPricings(prev => ({ ...prev, ...pricingMap }));
@@ -353,8 +369,8 @@ export function HomePage({
   const fetchPricingDebounced = useRef(
     createDebounced((ids: string[]) => {
       if (ids.length > 0) {
-        fetchBatchPricingFor(ids).catch((error) => {
-          console.error('Failed to fetch batch pricing:', error);
+        fetchBatchPricingFor(ids).catch((err) => {
+          console.error('Failed to fetch batch pricing:', err);
         });
       }
     }, PRICING_DEBOUNCE_MS)
@@ -362,10 +378,7 @@ export function HomePage({
 
   useEffect(() => {
     const debounced = fetchPricingDebounced.current;
-
-    return () => {
-      debounced.cancel?.();
-    };
+    return () => { debounced.cancel?.(); };
   }, []);
 
   // ============================================================================
@@ -392,7 +405,7 @@ export function HomePage({
 
     const observeCurrentCards = () => {
       for (const el of cardRefs.current.values()) {
-        try { io.observe(el); } catch (error) { console.error('Failed to observe element:', error); }
+        try { io.observe(el); } catch (err) { console.error('Failed to observe element:', err); }
       }
     };
 
@@ -426,10 +439,10 @@ export function HomePage({
   const fetchFilteredProducts = useCallback(async (
     filters: FilterOptions,
     offset: number,
-    sortOrder: SortOrder,
+    sort: SortOrder,
     isFilterChange: boolean = false
   ) => {
-    const requestKey = `${JSON.stringify(filters)}-${offset}-${sortOrder}`;
+    const requestKey = `${JSON.stringify(filters)}-${offset}-${sort}`;
 
     if (!isFilterChange && inFlightRequestsRef.current.has(requestKey)) return;
 
@@ -477,17 +490,17 @@ export function HomePage({
         if (hasMoreData && autoLoadCount < MAX_AUTO_LOADS) {
           scheduleIdle(async () => {
             const nextOffset = offset + ITEMS_PER_PAGE;
-            const nextKey = `${JSON.stringify(filters)}-${nextOffset}-${sortOrder}`;
+            const nextKey = `${JSON.stringify(filters)}-${nextOffset}-${sort}`;
             if (!prefetchCacheRef.current[nextKey]) {
               try {
-                const nextData = await apiClient.fetchProducts(filters, nextOffset, sortOrder);
+                const nextData = await apiClient.fetchProducts(filters, nextOffset, sort);
                 if (Array.isArray(nextData)) {
                   prefetchCacheRef.current[nextKey] = { data: nextData as unknown as ProductWithDetails[] };
                   const ids = nextData.slice(0, ITEMS_PER_PAGE).map(p => p.id).filter(Boolean);
                   if (ids.length) fetchBatchPricingFor(ids);
                 }
-              } catch (error) {
-                console.error('Failed to prefetch next page:', error);
+              } catch (err) {
+                console.error('Failed to prefetch next page:', err);
               }
             }
           });
@@ -508,7 +521,7 @@ export function HomePage({
       currentRequestRef.current = controller;
       const timeoutId = setTimeout(() => controller.abort(), REGULAR_LOAD_TIMEOUT_MS);
 
-      const data = await apiClient.fetchProducts(filters, offset, sortOrder);
+      const data = await apiClient.fetchProducts(filters, offset, sort);
       clearTimeout(timeoutId);
 
       const newData = (data as unknown as ProductWithDetails[]) || [];
@@ -553,17 +566,17 @@ export function HomePage({
       if (hasMoreData && autoLoadCount < MAX_AUTO_LOADS) {
         scheduleIdle(async () => {
           const nextOffset = offset + ITEMS_PER_PAGE;
-          const nextKey = `${JSON.stringify(filters)}-${nextOffset}-${sortOrder}`;
+          const nextKey = `${JSON.stringify(filters)}-${nextOffset}-${sort}`;
           if (!prefetchCacheRef.current[nextKey]) {
             try {
-              const nextData = await apiClient.fetchProducts(filters, nextOffset, sortOrder);
+              const nextData = await apiClient.fetchProducts(filters, nextOffset, sort);
               if (Array.isArray(nextData)) {
                 prefetchCacheRef.current[nextKey] = { data: nextData as unknown as ProductWithDetails[] };
                 const nextIds = nextData.slice(0, ITEMS_PER_PAGE).map(p => p.id).filter(Boolean);
                 if (nextIds.length) fetchBatchPricingFor(nextIds);
               }
-            } catch (error) {
-              console.error('Failed to prefetch next page from database:', error);
+            } catch (err) {
+              console.error('Failed to prefetch next page from database:', err);
             }
           }
         });
@@ -598,9 +611,7 @@ export function HomePage({
   // EFFECT - Handle Category Page Navigation / Reset
   // ============================================================================
   useEffect(() => {
-    if (!categoryConfig) {
-      return;
-    }
+    if (!categoryConfig) return;
 
     const d = categoryConfig.filterDefaults;
     const newParams = new URLSearchParams(searchParams);
@@ -610,49 +621,79 @@ export function HomePage({
       newParams.set('search', d.query);
       changed = true;
     }
-
     if (!newParams.has('price')) {
       newParams.set('price', PRICE_RANGE.join(','));
       changed = true;
     }
-
     if (!newParams.has('sale')) {
       newParams.set('sale', 'false');
       changed = true;
     }
-
     if (!newParams.has('made_in_canada') && categoryConfig.slug === 'made-in-canada') {
       newParams.set('made_in_canada', 'true');
       changed = true;
     }
-
-    // Don't override user's explicit 'false' value
     if (newParams.has('made_in_canada') && newParams.get('made_in_canada') === 'false') {
-      changed = true; // Mark as changed so we don't add the default
+      changed = true;
     }
 
     if (changed) {
       setSearchParams(newParams, { replace: true });
     }
   }, [PRICE_RANGE, categoryConfig, searchParams, setSearchParams]);
+
   // ============================================================================
-  // EFFECT - New deals since your last visit (localStorage)
+  // EFFECT - Server-side "new deals since last visit"
   // ============================================================================
+  // (1) On first mount for a scope, establish a baseline if we don't have one.
+  //     We do NOT want to fetch deals against a baseline of "now" — that would
+  //     always return zero on the first visit. Instead we set the baseline
+  //     silently on first visit, and fetch deals on subsequent visits.
   useEffect(() => {
     if (typeof window === 'undefined') return;
-    if (!products.length) return;
-    const scope = categoryConfig?.slug ?? '__home';
-    if (lastComputedSlugRef.current === scope) return;
-    lastComputedSlugRef.current = scope;
+    if (!categoryConfig && initialProducts.length === 0) {
+      // Wait for the first products to load before establishing a baseline.
+      return;
+    }
+    const existing = getDealBaseline(scope);
+    if (!existing) {
+      const iso = new Date().toISOString();
+      setDealBaseline(scope, iso);
+      setDealBaselineForState(iso);
+      return;
+    }
+    setDealBaselineForState(existing);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [scope, categoryConfig, initialProducts.length]);
 
-    const snapshots = products.map(p => ({
-      id: String(p.id),
-      onSale: (p.on_sale ?? false) || (p.max_discount_percentage ?? 0) > 0,
-      discount: p.max_discount_percentage ?? 0,
-    }));
+  // Local helper to keep state in sync with what's actually in storage.
+  function setDealBaselineForState(iso: string) {
+    if (dealBaselineAt !== iso) setDealBaselineAt(iso);
+  }
 
-    setDealSignals(computeNewDealsSinceVisit(snapshots, scope));
-  }, [products, categoryConfig?.slug]);
+  // (2) Fetch the deal diff from the server whenever scope or baseline changes.
+  useEffect(() => {
+    if (!dealBaselineAt) return;
+    let cancelled = false;
+    setNewDealsLoading(true);
+
+    apiClient
+      .fetchNewDealsSince(dealBaselineAt, NEW_DEALS_LIMIT)
+      .then(rows => {
+        if (cancelled) return;
+        setNewDeals(Array.isArray(rows) ? rows : []);
+      })
+      .catch(err => {
+        if (cancelled) return;
+        console.error('Failed to fetch new deals since baseline:', err);
+        setNewDeals([]);
+      })
+      .finally(() => {
+        if (!cancelled) setNewDealsLoading(false);
+      });
+
+    return () => { cancelled = true; };
+  }, [dealBaselineAt, scope]);
 
   // ============================================================================
   // PRE-WARM CONNECTION ON APP START
@@ -752,8 +793,8 @@ export function HomePage({
         setAllGroupedTypes(typesResult);
         setAllTopLevelCategories(categoriesResult);
         setAllGenderAges(gendersResult);
-      } catch (error) {
-        console.error('Error fetching filter options:', error);
+      } catch (err) {
+        console.error('Error fetching filter options:', err);
       }
     }
 
@@ -929,19 +970,17 @@ export function HomePage({
   }), [updateFilter]);
 
   let renderedIntroText: React.ReactNode = null;
-
   if (categoryConfig) {
     const IntroText = categoryConfig.introText;
-
     renderedIntroText =
       typeof IntroText === 'function'
         ? <IntroText {...filterActions} />
         : IntroText;
   }
 
-  // "New in the catalog" — created_at within the last N days
-  const [now] = useState(() => Date.now());
-
+  // ---------------------------------------------------------------------------
+  // What's new: server deal diff + local new-product strip, merged by id.
+  // ---------------------------------------------------------------------------
   const newItems = useMemo<NewItem[]>(() => {
     const cutoff = now - NEW_IN_CATALOG_DAYS * 86400e3;
     const byId = new Map<string, NewItem>();
@@ -957,20 +996,33 @@ export function HomePage({
       }
     };
 
-    for (const p of products) {
-      const publishedRaw = p.published_at_external ?? p.created_at; // fallback for older rows
-      if (publishedRaw) {
-        const ts = Date.parse(publishedRaw);
-        if (Number.isFinite(ts) && ts > cutoff) upsert(p, 'new', ts);
-      }
+    // 1) Server-driven deal rows (independent of pagination).
+    const baselineTs = dealBaselineAt ? Date.parse(dealBaselineAt) : 0;
+    for (const p of newDeals) {
+      // The server already determined this is "new or deeper since baseline".
+      // We don't distinguish new-vs-deeper here because the API contract
+      // only returns the product; if you want separate badges, add a
+      // `deal_kind: 'new' | 'deeper'` field to the response and branch here.
       const id = String(p.id);
-      const baseline = dealSignals.baselineAt ?? 0;
-      if (dealSignals.newDeals.has(id)) upsert(p, 'sale', baseline);
-      if (dealSignals.deeperDeals.has(id)) upsert(p, 'deeper', baseline);
+      const pct = p.max_discount_percentage ?? 0;
+      upsert(p, 'sale', Number.isFinite(baselineTs) ? baselineTs + pct : Date.now());
+    }
+
+    // 2) Local new-product strip from currently-loaded page.
+    //    Uses published_at_external (real publish date) with created_at fallback.
+    let localNewCount = 0;
+    for (const p of products) {
+      if (localNewCount >= NEW_IN_CATALOG_LIMIT) break;
+      const raw = p.published_at_external ?? p.created_at;
+      if (!raw) continue;
+      const ts = Date.parse(raw);
+      if (!Number.isFinite(ts) || ts <= cutoff) continue;
+      upsert(p, 'new', ts);
+      localNewCount += 1;
     }
 
     return [...byId.values()].sort((a, b) => b.sortKey - a.sortKey);
-  }, [products, dealSignals, now]);
+  }, [products, newDeals, dealBaselineAt, now]);
 
   // Main grid excludes anything shown in the "What's new" section.
   const displayProducts = useMemo(() => {
@@ -1303,19 +1355,14 @@ export function HomePage({
 
           {/* Products Grid */}
           <div className="flex-1">
-            {/* Category Header (H1 + Intro) */}
             {categoryConfig ? (
               <div className="mb-8">
                 <h1 className="text-3xl font-bold text-gray-900 dark:text-gray-100 mb-4">
                   {categoryConfig.h1}
                 </h1>
-
                 {renderedIntroText && (
-                  <div className="mb-4">
-                    {renderedIntroText}
-                  </div>
+                  <div className="mb-4">{renderedIntroText}</div>
                 )}
-
                 {!loading && products.length > 0 && (
                   <p className="mt-4 text-sm text-gray-500 dark:text-gray-400">
                     Currently showing {products.length} {products.length === 1 ? 'item' : 'items'}
@@ -1462,7 +1509,7 @@ export function HomePage({
               </div>
             )}
 
-                        {/* What's new: new products + new/deeper deals, merged */}
+            {/* What's new: server deal diff + local new-product strip, merged */}
             {newItems.length > 0 && (
               <section id="whats-new-section" className="mb-8">
                 <h2 className="text-xl font-semibold text-gray-900 dark:text-gray-100 mb-1">
@@ -1470,10 +1517,11 @@ export function HomePage({
                   <span className="text-sm font-normal text-gray-500">({newItems.length})</span>
                 </h2>
                 <p className="text-sm text-gray-500 dark:text-gray-400 mb-3">
-                  New products in the catalog and deals that changed
-                  {dealSignals.baselineAt
-                    ? ` since ${new Date(dealSignals.baselineAt).toLocaleDateString('en-CA', { weekday: 'long' })}`
-                    : ''}.
+                  Deals that changed
+                  {dealBaselineAt
+                    ? ` since ${new Date(dealBaselineAt).toLocaleDateString('en-CA', { weekday: 'long' })}`
+                    : ''}
+                  , and products added in the last {NEW_IN_CATALOG_DAYS} days.
                 </p>
                 <div className="grid grid-cols-2 gap-2 sm:gap-3 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
                   {newItems.map(({ product, badges }) => {
@@ -1515,9 +1563,12 @@ export function HomePage({
                     );
                   })}
                 </div>
+                {newDealsLoading && (
+                  <p className="text-xs text-gray-500 dark:text-gray-400 mt-2">Loading fresh deals…</p>
+                )}
               </section>
             )}
-            
+
             <div className="mb-8">
               <h2 className="text-xl font-semibold text-gray-900 dark:text-gray-100 mb-3">
                 {categoryConfig
