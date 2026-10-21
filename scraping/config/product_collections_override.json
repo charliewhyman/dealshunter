@@ -1,0 +1,6 @@
+{
+  "1578": {
+    "collection_handles": ["boots"],
+    "reason": "Only boots are relevant; show-tack, apparel, tack excluded"
+  }
+}
