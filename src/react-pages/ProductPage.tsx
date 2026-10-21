@@ -246,7 +246,7 @@ function ProductPage() {
                       />
                     </picture>
                   ) : (
-                    <div className="w-full h-[400px] bg-gray-100 dark:bg-gray-800 rounded-lg flex items-center justify-center">
+                    <div className="w-full h-100 bg-gray-100 dark:bg-gray-800 rounded-lg flex items-center justify-center">
                       <span className="text-gray-400">No Image Available</span>
                     </div>
                   )}
