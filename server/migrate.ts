@@ -1,7 +1,7 @@
 import * as path from 'path';
 import { promises as fs } from 'fs';
 import { fileURLToPath } from 'url';
-import { Migrator, FileMigrationProvider } from 'kysely';
+import { Migrator, FileMigrationProvider } from 'kysely/migration';
 import { getDb } from './db';
 import dotenv from 'dotenv';
 
