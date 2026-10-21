@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { useParams, Link } from 'react-router-dom';
+import { useParams, useSearchParams, Link } from 'react-router-dom';
 import { apiClient } from '../lib/api-client';
 import type { ProductWithDetails } from "../types";
 import AsyncLucideIcon from '../components/AsyncLucideIcon';
@@ -8,7 +8,7 @@ import { format } from 'date-fns/format';
 
 function ProductPage() {
   const { productId } = useParams<{ productId: string }>();
-  const searchParams = new URLSearchParams(window.location.search);
+  const [searchParams] = useSearchParams();
   const [product, setProduct] = useState<ProductWithDetails | null>(null);
   const [loading, setLoading] = useState(true);
   const [imgLoaded, setImgLoaded] = useState(false);
@@ -39,8 +39,7 @@ function ProductPage() {
       try {
         setLoading(true);
         const productData = await apiClient.fetchProduct(productId);
-
-        setProduct((productData as unknown as ProductWithDetails) || null);
+        setProduct(productData || null);
       } catch (error) {
         console.error('Error fetching product:', error);
         setProduct(null);
@@ -160,36 +159,42 @@ function ProductPage() {
     return product.in_stock && !allVariantsUnavailable;
   }, [product, variants]);
 
-  const isHtmlDescription = useMemo(() => {
-    if (!product?.description) return false;
-    const htmlRegex = /<[a-z][\s\S]*>/i;
-    return htmlRegex.test(product.description);
-  }, [product?.description]);
+  // ── Description handling ────────────────────────────────────────────────
+  // Destructure once so the memos below can depend on the *string* rather
+  // than closing over `product`. React Compiler infers `product` from the
+  // closure; declaring `[product?.description]` is narrower than the
+  // inference, so it skips optimizing the whole component. Naming the
+  // field first fixes that.
+
+  const productDescription = product?.description;
+
+  const isHtmlDescription = productDescription
+    ? /<[a-z][\s\S]*>/i.test(productDescription)
+    : false;
 
   const descriptionPreview = useMemo(() => {
-    if (!product?.description) return '';
-    const description = product.description;
-
+    if (!productDescription) return '';
     if (isHtmlDescription) {
       const tempDiv = document.createElement('div');
-      tempDiv.innerHTML = description;
+      tempDiv.innerHTML = productDescription;
       const text = tempDiv.textContent || tempDiv.innerText || '';
       return text.length > 300 && !showFullDescription ? text.slice(0, 300) + '...' : text;
     }
+    return productDescription.length > 300 && !showFullDescription
+      ? productDescription.slice(0, 300) + '...'
+      : productDescription;
+  }, [productDescription, isHtmlDescription, showFullDescription]);
 
-    return description.length > 300 && !showFullDescription ? description.slice(0, 300) + '...' : description;
-  }, [product?.description, isHtmlDescription, showFullDescription]);
-
-  const needsTruncation = useMemo(() => {
-    if (!product?.description) return false;
+  const needsTruncation = (() => {
+    if (!productDescription) return false;
     if (isHtmlDescription) {
       const tempDiv = document.createElement('div');
-      tempDiv.innerHTML = product.description;
+      tempDiv.innerHTML = productDescription;
       const text = tempDiv.textContent || tempDiv.innerText || '';
       return text.length > 300;
     }
-    return product.description.length > 300;
-  }, [product?.description, isHtmlDescription]);
+    return productDescription.length > 300;
+  })();
 
   if (loading) return (
     <div className="min-h-screen flex items-center justify-center">
@@ -208,7 +213,6 @@ function ProductPage() {
 
   return (
     <div className="min-h-screen bg-white dark:bg-gray-900">
-      
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-20 pb-8">
         <div className="text-gray-900 dark:text-gray-100">
           <div className="flex flex-col lg:flex-row gap-6 sm:gap-8">
@@ -233,7 +237,7 @@ function ProductPage() {
                         fetchPriority="high"
                         width={dbWidth}
                         height={dbHeight}
-                        alt={dbAlt || product?.title || 'Product image'}
+                        alt={dbAlt || product.title || 'Product image'}
                         className={`relative w-full h-auto max-h-[70vh] object-contain rounded-lg shadow-md transition-opacity duration-500 ${
                           imgLoaded ? 'opacity-100' : 'opacity-0'
                         }`}
@@ -262,7 +266,7 @@ function ProductPage() {
               <h1 className="text-2xl sm:text-3xl lg:text-4xl font-bold tracking-tight">
                 {product.title}
               </h1>
-              
+
               {/* Availability Badge */}
               {!isAvailable && (
                 <div className="inline-block px-3 py-1.5 bg-red-100 dark:bg-red-900/30 text-red-800 dark:text-red-300 text-sm font-medium rounded-md">
@@ -277,7 +281,7 @@ function ProductPage() {
                   Made in Canada
                 </div>
               )}
-              
+
               {/* Price Section */}
               <div className="space-y-2">
                 {variantPrice !== null && (
@@ -285,7 +289,7 @@ function ProductPage() {
                     <span className="text-3xl sm:text-4xl font-bold text-gray-900 dark:text-gray-100">
                       ${variantPrice.toFixed(2)}
                     </span>
-                    
+
                     {compareAtPrice && compareAtPrice > variantPrice && (
                       <>
                         <span className="text-xl sm:text-2xl text-gray-500 dark:text-gray-400 line-through">
@@ -298,7 +302,7 @@ function ProductPage() {
                     )}
                   </div>
                 )}
-                
+
                 {product.min_price != null && variantPrice === null && (
                   <p className="text-sm text-gray-600 dark:text-gray-400">
                     Starting from ${product.min_price.toFixed(2)}
@@ -332,7 +336,7 @@ function ProductPage() {
                   </div>
                 </div>
               )}
-              
+
               {/* Purchase Button */}
               <div className="pt-2">
                 <a
@@ -365,31 +369,26 @@ function ProductPage() {
                 </Link>
               </div>
 
-              {/* Description Section - SIMPLIFIED */}
+              {/* Description Section */}
               {product.description ? (
                 <div className="pt-6 border-t border-gray-200 dark:border-gray-700">
                   <h2 className="text-xl font-semibold text-gray-900 dark:text-gray-100 mb-4">
                     Product Description
                   </h2>
-                  
+
                   {isHtmlDescription ? (
-                    // HTML Description
                     <div className="space-y-4">
-                      <div 
+                      <div
                         className="text-gray-700 dark:text-gray-300 description-html"
-                        dangerouslySetInnerHTML={{ 
-                          __html: showFullDescription 
-                            ? product.description 
-                            : descriptionPreview 
+                        dangerouslySetInnerHTML={{
+                          __html: showFullDescription ? product.description : descriptionPreview,
                         }}
                       />
-                      
+
                       {needsTruncation && (
                         <button
                           onClick={() => setShowFullDescription(!showFullDescription)}
-                          className="text-sm font-medium text-blue-600 dark:text-blue-400 
-                            hover:text-blue-700 dark:hover:text-blue-300 
-                            inline-flex items-center gap-1 focus:outline-none"
+                          className="text-sm font-medium text-blue-600 dark:text-blue-400 hover:text-blue-700 dark:hover:text-blue-300 inline-flex items-center gap-1 focus:outline-none"
                         >
                           {showFullDescription ? (
                             <>
@@ -406,20 +405,17 @@ function ProductPage() {
                       )}
                     </div>
                   ) : (
-                    // Plain Text Description
                     <div className="space-y-4">
                       <div className="text-gray-700 dark:text-gray-300 whitespace-pre-line">
-                        {showFullDescription || !needsTruncation 
-                          ? product.description 
+                        {showFullDescription || !needsTruncation
+                          ? product.description
                           : descriptionPreview}
                       </div>
-                      
+
                       {needsTruncation && (
                         <button
                           onClick={() => setShowFullDescription(!showFullDescription)}
-                          className="text-sm font-medium text-blue-600 dark:text-blue-400 
-                            hover:text-blue-700 dark:hover:text-blue-300 
-                            inline-flex items-center gap-1 focus:outline-none"
+                          className="text-sm font-medium text-blue-600 dark:text-blue-400 hover:text-blue-700 dark:hover:text-blue-300 inline-flex items-center gap-1 focus:outline-none"
                         >
                           {showFullDescription ? (
                             <>
@@ -456,28 +452,28 @@ function ProductPage() {
                     <span className="text-gray-600 dark:text-gray-400">{product.grouped_product_type}</span>
                   </div>
                 )}
-                
+
                 {product.shop_name && (
                   <div className="flex items-start gap-2 text-sm">
                     <span className="font-medium text-gray-700 dark:text-gray-300 min-w-24">Brand:</span>
                     <span className="text-gray-600 dark:text-gray-400">{product.vendor}</span>
                   </div>
                 )}
-                
+
                 {product.shop_name && (
                   <div className="flex items-start gap-2 text-sm">
                     <span className="font-medium text-gray-700 dark:text-gray-300 min-w-24">Store:</span>
                     <span className="text-gray-600 dark:text-gray-400">{product.shop_name}</span>
                   </div>
                 )}
-                
+
                 {product.tags && Array.isArray(product.tags) && product.tags.length > 0 && (
                   <div className="flex items-start gap-2 text-sm">
                     <span className="font-medium text-gray-700 dark:text-gray-300 min-w-24">Tags:</span>
                     <div className="flex flex-wrap gap-1">
                       {product.tags.slice(0, 10).map((tag, index) => (
-                        <span 
-                          key={index} 
+                        <span
+                          key={index}
                           className="px-2 py-1 bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-400 rounded text-xs"
                         >
                           {tag}
@@ -491,7 +487,7 @@ function ProductPage() {
                     </div>
                   </div>
                 )}
-                
+
                 <div className="flex items-start gap-2 text-sm">
                   <span className="font-medium text-gray-700 dark:text-gray-300 min-w-24">Last updated:</span>
                   <span className="text-gray-600 dark:text-gray-400">
