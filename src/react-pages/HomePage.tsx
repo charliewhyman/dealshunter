@@ -119,6 +119,8 @@ export function HomePage({
   const navigate = useNavigate();
 
   const autoLoadCountRef = useRef(0);
+  const [autoLoadCount, setAutoLoadCount] = useState(0);
+
   const [showLoadMoreButton, setShowLoadMoreButton] = useState(false);
   const [showFilters, setShowFilters] = useState(false);
 
@@ -152,19 +154,19 @@ export function HomePage({
   // STATE - User Selections (Synced with URL)
   // ============================================================================
 
-  const [sortOrder, setSortOrder] = useState<SortOrder>(() => {
-    const fromUrl = searchParams.get('sort');
-    if (fromUrl === 'price_asc' || fromUrl === 'price_desc' || fromUrl === 'discount_desc')
-      return fromUrl as SortOrder;
-    return 'discount_desc';
-  });
+  const sortParam = searchParams.get('sort');
 
-  const [searchQuery, setSearchQuery] = useState<string>(() => {
-    const fromUrl = searchParams.get('search');
-    if (fromUrl !== null) return fromUrl;
-    if (categoryConfig?.filterDefaults?.query) return categoryConfig.filterDefaults.query;
-    return '';
-  });
+  const sortOrder: SortOrder =
+    sortParam === 'price_asc' ||
+    sortParam === 'price_desc' ||
+    sortParam === 'discount_desc'
+      ? sortParam
+      : 'discount_desc';
+
+  const searchQuery =
+    searchParams.get('search') ??
+    categoryConfig?.filterDefaults?.query ??
+    '';
 
   const selectedShopName = parseArrayParam(searchParams.get('shop'));
 
@@ -174,26 +176,16 @@ export function HomePage({
 
   const selectedGenderAges = parseArrayParam(searchParams.get('gender'));
 
-  const [onSaleOnly, setOnSaleOnly] = useState<boolean>(() => {
-    const fromUrl = searchParams.get('sale');
-    if (fromUrl === 'true') return true;
-    if (fromUrl === 'false') return false;
-    return false;
-  });
+  const onSaleOnly = searchParams.get('sale') === 'true';
 
-  const [madeInCanadaOnly, setMadeInCanadaOnly] = useState<boolean>(() => {
-    const fromUrl = searchParams.get('made_in_canada');
-    if (fromUrl === 'true') return true;
-    if (fromUrl === 'false') return false;
-    if (categoryConfig?.slug === 'made-in-canada') return true;
-    return false;
-  });
+  const madeInCanadaOnly =
+    searchParams.has('made_in_canada')
+      ? searchParams.get('made_in_canada') === 'true'
+      : categoryConfig?.slug === 'made-in-canada';
 
-  const [selectedPriceRange, setSelectedPriceRange] = useState<[number, number]>(() => {
-    const fromUrl = parsePriceRange(searchParams.get('price'), ABS_MIN_PRICE, ABS_MAX_PRICE);
-    if (fromUrl) return fromUrl;
-    return [...PRICE_RANGE];
-  });
+  const selectedPriceRange =
+    parsePriceRange(searchParams.get('price'), ABS_MIN_PRICE, ABS_MAX_PRICE)
+    ?? [...PRICE_RANGE] as [number, number];
 
   const selectedSizeGroups = parseArrayParam(searchParams.get('size'));
 
@@ -241,7 +233,7 @@ export function HomePage({
     const value = parseFloat(e.target.value);
     if (!isNaN(value) && value >= ABS_MIN_PRICE && value <= ABS_MAX_PRICE) {
       const newMin = Math.min(value, selectedPriceRange[1]);
-      setSelectedPriceRange([newMin, selectedPriceRange[1]]);
+      updateFilter('price', [newMin, selectedPriceRange[1]].join(','));
     }
   }, [selectedPriceRange, ABS_MIN_PRICE, ABS_MAX_PRICE]);
 
@@ -249,7 +241,7 @@ export function HomePage({
     const value = parseFloat(e.target.value);
     if (!isNaN(value) && value >= ABS_MIN_PRICE && value <= ABS_MAX_PRICE) {
       const newMax = Math.max(value, selectedPriceRange[0]);
-      setSelectedPriceRange([selectedPriceRange[0], newMax]);
+      updateFilter('price', [selectedPriceRange[0], newMax].join(','));
     }
   }, [selectedPriceRange, ABS_MIN_PRICE, ABS_MAX_PRICE]);
 
@@ -258,7 +250,7 @@ export function HomePage({
     const max = selectedPriceRange[1];
     if (min > max) {
       min = max;
-      setSelectedPriceRange([min, max]);
+      updateFilter('price', [min, max].join(','));
     }
     if (min !== PRICE_RANGE[0] || max !== PRICE_RANGE[1]) {
       updateFilter('price', `${min}-${max}`);
@@ -277,32 +269,15 @@ export function HomePage({
 
     isSyncingFromUrl.current = true;
 
-    if (searchParams.has('search')) {
-      const urlSearch = searchParams.get('search') || '';
-      if (urlSearch !== searchQuery) setSearchQuery(urlSearch);
-    }
-
-    if (searchParams.has('sort')) {
-      const sortParam = searchParams.get('sort');
-      const urlSort: SortOrder =
-        sortParam === 'price_asc' || sortParam === 'price_desc' || sortParam === 'discount_desc'
-          ? sortParam
-          : 'discount_desc';
-      if (urlSort !== sortOrder) setSortOrder(urlSort);
-    }
-    if (searchParams.has('sale')) {
-      const urlSale = searchParams.get('sale') === 'true';
-      if (urlSale !== onSaleOnly) setOnSaleOnly(urlSale);
-    }
     if (searchParams.has('made_in_canada')) {
       const urlMadeInCanada = searchParams.get('made_in_canada') === 'true';
-      if (urlMadeInCanada !== madeInCanadaOnly) setMadeInCanadaOnly(urlMadeInCanada);
+      if (urlMadeInCanada !== madeInCanadaOnly) updateFilter('made_in_canada', urlMadeInCanada ? 'true' : 'false');
     }
     if (searchParams.has('price')) {
       const urlPrice = parsePriceRange(searchParams.get('price'), ABS_MIN_PRICE, ABS_MAX_PRICE);
       if (urlPrice) {
         if (urlPrice[0] !== selectedPriceRange[0] || urlPrice[1] !== selectedPriceRange[1]) {
-          setSelectedPriceRange(urlPrice);
+          updateFilter('price', urlPrice.join(','));
         }
       }
     }
@@ -365,17 +340,21 @@ export function HomePage({
 
   const fetchPricingDebounced = useRef(
     createDebounced((ids: string[]) => {
-      if (ids.length > 0) fetchBatchPricingFor(ids).catch((error) => {
-        console.error('Failed to fetch batch pricing:', error);
-      });
+      if (ids.length > 0) {
+        fetchBatchPricingFor(ids).catch((error) => {
+          console.error('Failed to fetch batch pricing:', error);
+        });
+      }
     }, PRICING_DEBOUNCE_MS)
-  ).current;
+  );
 
   useEffect(() => {
+    const debounced = fetchPricingDebounced.current;
+
     return () => {
-      if (fetchPricingDebounced.cancel) fetchPricingDebounced.cancel();
+      debounced.cancel?.();
     };
-  }, [fetchPricingDebounced]);
+  }, []);
 
   // ============================================================================
   // PRICING INTERSECTION OBSERVER
@@ -392,7 +371,9 @@ export function HomePage({
           pricedIdsRef.current.add(id);
           idsToFetch.push(id);
         }
-        if (idsToFetch.length > 0) fetchPricingDebounced(idsToFetch);
+        if (idsToFetch.length > 0) {
+          fetchPricingDebounced.current(idsToFetch);
+        }
       },
       { rootMargin: INTERSECTION_ROOT_MARGIN, threshold: INTERSECTION_THRESHOLD }
     );
@@ -444,6 +425,7 @@ export function HomePage({
 
     if (isFilterChange) {
       autoLoadCountRef.current = 0;
+      setAutoLoadCount(0);
       setShowLoadMoreButton(false);
       if (currentRequestRef.current) currentRequestRef.current.abort();
       currentRequestRef.current = null;
@@ -473,12 +455,14 @@ export function HomePage({
         setTimeout(() => { canLoadMoreRef.current = true; }, LOAD_COOLDOWN);
         if (!isFilterChange) {
           autoLoadCountRef.current += 1;
+          setAutoLoadCount(autoLoadCountRef.current);
+
           const newCount = autoLoadCountRef.current;
           startTransition(() => {
             if (newCount >= MAX_AUTO_LOADS) setShowLoadMoreButton(true);
           });
         }
-        if (hasMoreData && autoLoadCountRef.current < MAX_AUTO_LOADS) {
+        if (hasMoreData && autoLoadCount < MAX_AUTO_LOADS) {
           scheduleIdle(async () => {
             const nextOffset = offset + ITEMS_PER_PAGE;
             const nextKey = `${JSON.stringify(filters)}-${nextOffset}-${sortOrder}`;
@@ -546,13 +530,15 @@ export function HomePage({
 
       if (!isFilterChange) {
         autoLoadCountRef.current += 1;
+        setAutoLoadCount(autoLoadCountRef.current);
+
         const newCount = autoLoadCountRef.current;
         startTransition(() => {
           if (newCount >= MAX_AUTO_LOADS) setShowLoadMoreButton(true);
         });
       }
 
-      if (hasMoreData && autoLoadCountRef.current < MAX_AUTO_LOADS) {
+      if (hasMoreData && autoLoadCount < MAX_AUTO_LOADS) {
         scheduleIdle(async () => {
           const nextOffset = offset + ITEMS_PER_PAGE;
           const nextKey = `${JSON.stringify(filters)}-${nextOffset}-${sortOrder}`;
@@ -808,6 +794,8 @@ export function HomePage({
     if (currentRequestRef.current) currentRequestRef.current.abort();
 
     autoLoadCountRef.current = 0;
+    setAutoLoadCount(0);
+
     inFlightRequestsRef.current.clear();
     prevFilterKeyRef.current = currentFilterKey;
 
@@ -923,22 +911,25 @@ export function HomePage({
     setSearchQuery: (query: string) => updateFilter('search', query),
   }), [updateFilter]);
 
-  const renderedIntroText = useMemo(() => {
-    if (!categoryConfig) return null;
-    return typeof categoryConfig.introText === 'function'
+  const renderedIntroText = !categoryConfig
+    ? null
+    : typeof categoryConfig.introText === 'function'
       ? categoryConfig.introText(filterActions)
       : categoryConfig.introText;
-  }, [categoryConfig, filterActions]);
 
   // "New in the catalog" — created_at within the last N days
+  const [now] = useState(() => Date.now());
+
   const newInCatalogProducts = useMemo(() => {
-    const cutoff = Date.now() - NEW_IN_CATALOG_DAYS * 86400e3;
+    const cutoff = now - NEW_IN_CATALOG_DAYS * 86400e3;
+
     return products.filter(p => {
       if (!p.created_at) return false;
+
       const ts = Date.parse(p.created_at);
       return Number.isFinite(ts) && ts > cutoff;
     });
-  }, [products]);
+  }, [products, now]);
 
   // "New deals since your last visit" — on_sale flip or deeper discount
   const newDealsProducts = useMemo(
@@ -1592,7 +1583,7 @@ export function HomePage({
                 </div>
               )}
 
-              {!showLoadMoreButton && hasMore && autoLoadCountRef.current < MAX_AUTO_LOADS && !isFilterChanging && products.length > 0 && (
+              {!showLoadMoreButton && hasMore && autoLoadCount < MAX_AUTO_LOADS && !isFilterChanging && products.length > 0 && (
                 <div ref={observerRef} className="h-20" />
               )}
 
