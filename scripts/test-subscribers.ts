@@ -1,6 +1,5 @@
 import { getDb } from '../server/db.js';
 import dotenv from 'dotenv';
-import { sql } from 'kysely';
 
 dotenv.config();
 
@@ -22,14 +21,12 @@ async function checkSubscribers() {
                 ip_address: '127.0.0.1',
                 consent_given: true
             })
-            // @ts-ignore
             .onConflict((oc) => oc.column('email').doNothing())
             .execute();
 
         console.log('Querying subscribers table...');
         const subscribers = await db.selectFrom('subscribers')
             .selectAll()
-            // @ts-ignore
             .orderBy('created_at', 'desc')
             .limit(5)
             .execute();
