@@ -2,5 +2,6 @@
     "python.analysis.extraPaths": [
         "./scraping"
     ],
-    "python.analysis.autoSearchPaths": true
+    "python.analysis.autoSearchPaths": true,
+    "css.lint.unknownAtRules": "ignore"
 }
