@@ -1036,9 +1036,9 @@ useEffect(() => {
       <div className="mx-auto px-4 pt-[calc(16px+1rem+4rem)] pb-6 sm:px-6 lg:px-8 max-w-screen-2xl">
         <div className="flex flex-col lg:flex-row gap-6">
           {/* Filters Sidebar */}
-          <div className="w-full lg:w-96 flex-shrink-0">
+          <div className="w-full lg:w-96 shrink-0">
             <div className="lg:sticky lg:top-20">
-              <div className="lg:hidden sticky top-0 z-30 mb-4 -mx-4 px-4 py-2 bg-gray-50/95 dark:bg-gray-950/95 backdrop-blur supports-[backdrop-filter]:bg-gray-50/60 border-b border-gray-200 dark:border-gray-800 transition-all duration-200">
+              <div className="lg:hidden sticky top-0 z-30 mb-4 -mx-4 px-4 py-2 bg-gray-50/95 dark:bg-gray-950/95 backdrop-blur supports-backdrop-filter:bg-gray-50/60 border-b border-gray-200 dark:border-gray-800 transition-all duration-200">
                 <button
                   onClick={() => setShowFilters(!showFilters)}
                   className="w-full flex items-center justify-between gap-2 px-4 py-3 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors shadow-sm"
@@ -1059,7 +1059,7 @@ useEffect(() => {
                 </button>
               </div>
               <div className={`
-                fixed inset-0 z-50 lg:static lg:z-auto w-full lg:w-96 flex-shrink-0
+                fixed inset-0 z-50 lg:static lg:z-auto w-full lg:w-96 shrink-0
                 ${showFilters ? 'block' : 'hidden lg:block'}
               `}>
                 <div
@@ -1068,7 +1068,7 @@ useEffect(() => {
                   aria-hidden="true"
                 />
                 <div className={`
-                  fixed inset-y-0 left-0 w-[280px] sm:w-[320px] bg-white dark:bg-gray-900 shadow-xl lg:shadow-none
+                  fixed inset-y-0 left-0 w-70 sm:w-[320px] bg-white dark:bg-gray-900 shadow-xl lg:shadow-none
                   lg:static lg:w-auto lg:bg-transparent
                   flex flex-col
                   transition-transform duration-300 ease-in-out
@@ -1476,7 +1476,7 @@ useEffect(() => {
             {error && (
               <div className="mb-4 p-4 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg">
                 <div className="flex items-start gap-3">
-                  <AsyncLucideIcon name="AlertCircle" className="h-5 w-5 text-red-600 dark:text-red-400 mt-0.5 flex-shrink-0" />
+                  <AsyncLucideIcon name="AlertCircle" className="h-5 w-5 text-red-600 dark:text-red-400 mt-0.5 shrink-0" />
                   <div className="flex-1">
                     <p className="text-red-700 dark:text-red-300 text-sm font-medium">{error}</p>
                     <p className="text-red-600 dark:text-red-400 text-sm mt-1">
@@ -1558,7 +1558,7 @@ useEffect(() => {
                   : 'Latest Canadian Brand Deals'}
               </h2>
             </div>
-            <div className="relative min-h-[400px]">
+            <div className="relative min-h-100">
               <div role="status" aria-live="polite" className="sr-only">
                 {loading && "Loading products"}
                 {!loading && products.length > 0 && `Showing ${products.length} products`}
@@ -1569,12 +1569,12 @@ useEffect(() => {
                 {initialLoad ? (
                   <ProductGridSkeleton count={10} />
                 ) : isFetchingEmpty ? (
-                  <div className="col-span-full flex flex-col items-center justify-center min-h-[200px]">
+                  <div className="col-span-full flex flex-col items-center justify-center min-h-50">
                     <AsyncLucideIcon name="Loader2" className="animate-spin h-8 w-8 text-gray-600 dark:text-gray-300 mb-3" />
                     <p className="text-gray-900 dark:text-gray-100 text-sm">Loading products…</p>
                   </div>
                 ) : displayProducts.length === 0 && !loading ? (
-                  <div className="col-span-full flex flex-col items-center justify-center min-h-[200px] py-8">
+                  <div className="col-span-full flex flex-col items-center justify-center min-h-50 py-8">
                     <AsyncLucideIcon name="Search" className="h-12 w-12 text-gray-400 dark:text-gray-600 mb-4" />
                     <p className="text-gray-900 dark:text-gray-100 text-sm font-medium">No products found</p>
                     <p className="text-gray-600 dark:text-gray-400 text-sm mt-1">Try adjusting your filters or search term</p>

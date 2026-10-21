@@ -247,7 +247,7 @@ function ProductCardComponent({ product, pricing, isLcp, isNew = false, isNewDea
         </div>
       )}
 
-      <div className="relative w-full aspect-square overflow-hidden bg-gray-100 dark:bg-gray-900 flex-shrink-0 rounded-t-md border-b border-gray-100 dark:border-gray-700">
+      <div className="relative w-full aspect-square overflow-hidden bg-gray-100 dark:bg-gray-900 shrink-0 rounded-t-md border-b border-gray-100 dark:border-gray-700">
         {finalSrc ? (
           <picture>
             {finalWebpSrcSet && <source type="image/webp" srcSet={finalWebpSrcSet} sizes={sizesAttr} />}
@@ -283,7 +283,7 @@ function ProductCardComponent({ product, pricing, isLcp, isNew = false, isNewDea
 
         <div className="flex items-start justify-between mb-1 sm:mb-2 h-10 sm:h-11">
           <h3
-            className={`text-sm font-medium text-gray-900 dark:text-gray-100 text-left line-clamp-2 flex-grow mr-2 ${
+            className={`text-sm font-medium text-gray-900 dark:text-gray-100 text-left line-clamp-2 grow mr-2 ${
               !isAvailable ? 'line-through text-gray-400 dark:text-gray-500' : ''
             }`}
           >
@@ -293,7 +293,7 @@ function ProductCardComponent({ product, pricing, isLcp, isNew = false, isNewDea
             href={`/api/out/${product.id}?src=card`}
             target="_blank"
             rel="noopener noreferrer"
-            className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 flex-shrink-0 mt-0.5"
+            className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 shrink-0 mt-0.5"
             onClick={handleOutboundClick}
             title="View on original site"
           >
@@ -313,7 +313,7 @@ function ProductCardComponent({ product, pricing, isLcp, isNew = false, isNewDea
                     className="inline-flex items-center text-xs px-2 py-1 rounded-full border border-gray-300 dark:border-gray-600 bg-gray-100 dark:bg-gray-700 text-gray-900 dark:text-gray-100"
                     title={variant.title}
                   >
-                    <span className="truncate max-w-[50px]">{variant.title}</span>
+                    <span className="truncate max-w-12.5">{variant.title}</span>
                   </span>
                 ))}
               {availableVariantsCount > 2 && (
