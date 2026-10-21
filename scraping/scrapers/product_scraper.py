@@ -311,6 +311,7 @@ class ProductScraper(BaseScraper):
 
     def _should_skip_product(self, product: Dict[str, Any], vendor: str) -> bool:
         """Check if product should be filtered out by config filters."""
+        
         if not self.filters:
             return False
 
