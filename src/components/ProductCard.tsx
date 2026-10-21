@@ -1,4 +1,4 @@
-import { useMemo, useState, memo, useLayoutEffect, useRef } from 'react';
+import { useMemo, useState, useLayoutEffect, useRef } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import AsyncLucideIcon from './AsyncLucideIcon';
 import type { ProductWithDetails } from "../types";
@@ -11,10 +11,13 @@ interface ProductCardProps {
     compareAtPrice: number | null;
   };
   isLcp?: boolean;
+  isNew?: boolean;       // published_at_external within N days
+  isNewDeal?: boolean;   // in newDeals/deeperDeals since baseline
 }
 
-function ProductCardComponent({ product, pricing, isLcp }: ProductCardProps) {
+function ProductCardComponent({ product, pricing, isLcp, isNew = false, isNewDeal = false }: ProductCardProps) {
   const navigate = useNavigate();
+  const location = useLocation();  // FIX: hoisted out of handleCardClick
 
   const pricingFromHook = useProductPricing(product.id, !pricing);
   const variantPrice = pricing?.variantPrice ?? pricingFromHook.variantPrice;
@@ -169,7 +172,6 @@ function ProductCardComponent({ product, pricing, isLcp }: ProductCardProps) {
   const isAvailable = product.in_stock && !allVariantsUnavailable;
 
   const handleCardClick = () => {
-    const location = useLocation();
     navigate(`/products/${product.id}?${new URLSearchParams(location.search).toString()}`, { replace: true });
   };
 
@@ -198,14 +200,33 @@ function ProductCardComponent({ product, pricing, isLcp }: ProductCardProps) {
     [processedVariants]
   );
 
+  // Promo badges only make sense on a purchasable card.
+  const showPromoBadges = isAvailable && (isNewDeal || isNew || hasDiscount);
+
   return (
     <div
       className="relative flex flex-col bg-white dark:bg-gray-800 rounded-md shadow-sm hover:shadow-md dark:hover:shadow-gray-700 transition-all cursor-pointer overflow-hidden product-card group"
       onClick={handleCardClick}
     >
-      {hasDiscount && (
-        <div className="absolute top-2 left-2 bg-red-600 text-white text-xs font-bold px-1.5 py-0.5 rounded z-10">
-          {discountPercentage}% OFF
+      {/* Promo badges — one stack, top-left. Priority: DEAL > NEW > % OFF.
+          At most TWO chips so the card stays readable on a 2-col grid. */}
+      {showPromoBadges && (
+        <div className="absolute top-2 left-2 z-10 flex flex-col items-start gap-1">
+          {isNewDeal && (
+            <span className="bg-red-600 text-white text-xs font-bold px-1.5 py-0.5 rounded">
+              DEAL
+            </span>
+          )}
+          {isNew && (
+            <span className="bg-blue-600 text-white text-xs font-bold px-1.5 py-0.5 rounded">
+              NEW
+            </span>
+          )}
+          {hasDiscount && !isNewDeal && (
+            <span className="bg-orange-500 text-white text-xs font-bold px-1.5 py-0.5 rounded">
+              {discountPercentage}% OFF
+            </span>
+          )}
         </div>
       )}
 
@@ -216,7 +237,12 @@ function ProductCardComponent({ product, pricing, isLcp }: ProductCardProps) {
       )}
 
       {product.made_in_canada && (
-        <div className="absolute top-2 right-2 bg-white/90 dark:bg-gray-800/90 w-7 h-7 flex items-center justify-center rounded-full shadow-sm z-10" title="Made in Canada">
+        <div
+          className={`absolute ${
+            isAvailable ? 'top-2' : 'top-10'
+          } right-2 bg-white/90 dark:bg-gray-800/90 w-7 h-7 flex items-center justify-center rounded-full shadow-sm z-10`}
+          title="Made in Canada"
+        >
           <span className="text-base leading-none" role="img" aria-label="Made in Canada">🍁</span>
         </div>
       )}
@@ -318,4 +344,6 @@ function ProductCardComponent({ product, pricing, isLcp }: ProductCardProps) {
   );
 }
 
-export const ProductCard = memo(ProductCardComponent);
+export function ProductCard(props: ProductCardProps) {
+  return <ProductCardComponent {...props} />;
+}
