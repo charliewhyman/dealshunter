@@ -1,7 +1,7 @@
 import { useMemo, useState, memo, useLayoutEffect, useRef } from 'react';
+import { useNavigate, useLocation } from 'react-router-dom';
 import AsyncLucideIcon from './AsyncLucideIcon';
 import type { ProductWithDetails } from "../types";
-import { useNavigate } from 'react-router-dom';
 import { useProductPricing } from '../hooks/useProductPricing';
 
 interface ProductCardProps {
@@ -168,7 +168,10 @@ function ProductCardComponent({ product, pricing, isLcp }: ProductCardProps) {
 
   const isAvailable = product.in_stock && !allVariantsUnavailable;
 
-  const handleCardClick = () => navigate(`/products/${product.id}`);
+  const handleCardClick = () => {
+    const location = useLocation();
+    navigate(`/products/${product.id}?${new URLSearchParams(location.search).toString()}`, { replace: true });
+  };
 
   const handleOutboundClick = (e: React.MouseEvent) => {
     e.stopPropagation();

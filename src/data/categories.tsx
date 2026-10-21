@@ -1,5 +1,6 @@
 import React from 'react';
 import { Link } from 'react-router-dom';
+import { FilterButton } from '../components/FilterButton';
 
 export interface FilterActions {
   setGroupedTypes: (types: string[]) => void;
@@ -22,15 +23,6 @@ export interface CategoryConfig {
     query?: string;
   };
 }
-
-const FilterButton = ({ onClick, children }: { onClick: () => void; children: React.ReactNode }) => (
-  <button
-    onClick={onClick}
-    className="font-medium text-blue-600 hover:text-blue-800 dark:text-blue-400 dark:hover:text-blue-300 hover:underline bg-transparent border-none p-0 cursor-pointer text-base"
-  >
-    {children}
-  </button>
-);
 
 export const CATEGORIES: Record<string, CategoryConfig> = {
   // 1. Women's Clothing

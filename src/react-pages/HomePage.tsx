@@ -183,9 +183,14 @@ export function HomePage({
       ? searchParams.get('made_in_canada') !== 'false'
       : categoryConfig?.slug === 'made-in-canada';
 
-  const selectedPriceRange =
-    parsePriceRange(searchParams.get('price'), ABS_MIN_PRICE, ABS_MAX_PRICE)
-    ?? [...PRICE_RANGE] as [number, number];
+  const priceParam = searchParams.get('price');
+
+  const selectedPriceRange = useMemo(
+    () =>
+      parsePriceRange(priceParam, ABS_MIN_PRICE, ABS_MAX_PRICE) ??
+      ([...PRICE_RANGE] as [number, number]),
+    [PRICE_RANGE, priceParam]
+  );
 
   const selectedSizeGroups = parseArrayParam(searchParams.get('size'));
 
@@ -235,7 +240,7 @@ export function HomePage({
       const newMin = Math.min(value, selectedPriceRange[1]);
       updateFilter('price', [newMin, selectedPriceRange[1]].join(','));
     }
-  }, [selectedPriceRange, ABS_MIN_PRICE, ABS_MAX_PRICE]);
+  }, [selectedPriceRange, updateFilter]);
 
   const handleMaxPriceChange = useCallback((e: ChangeEvent<HTMLInputElement>) => {
     const value = parseFloat(e.target.value);
@@ -243,7 +248,7 @@ export function HomePage({
       const newMax = Math.max(value, selectedPriceRange[0]);
       updateFilter('price', [selectedPriceRange[0], newMax].join(','));
     }
-  }, [selectedPriceRange, ABS_MIN_PRICE, ABS_MAX_PRICE]);
+  }, [selectedPriceRange, updateFilter]);
 
   const handlePriceInputBlur = useCallback(() => {
     let min = selectedPriceRange[0];
@@ -258,14 +263,6 @@ export function HomePage({
       updateFilter('price', null);
     }
   }, [selectedPriceRange, PRICE_RANGE, updateFilter]);
-
-  // Debounced price filter to prevent scroll jumps on every keystroke
-  const debouncedPriceUpdate = useCallback(
-    debounce((filters: FilterOptions) => {
-      fetchFilteredProducts(filters, 0, sortOrder, true);
-    }, 300),
-    [fetchFilteredProducts, sortOrder]
-  );
 
   // ============================================================================
   // EFFECTS - URL Sync
@@ -291,7 +288,7 @@ export function HomePage({
     }
 
     setTimeout(() => { isSyncingFromUrl.current = false; }, 0);
-  }, [PRICE_RANGE, madeInCanadaOnly, onSaleOnly, searchParams, searchQuery, selectedGenderAges, selectedGroupedTypes, selectedPriceRange, selectedShopName, selectedSizeGroups, selectedTopLevelCategories, sortOrder]);
+  }, [PRICE_RANGE, madeInCanadaOnly, onSaleOnly, searchParams, searchQuery, selectedGenderAges, selectedGroupedTypes, selectedPriceRange, selectedShopName, selectedSizeGroups, selectedTopLevelCategories, sortOrder, updateFilter]);
 
   // ============================================================================
   // UTILITY FUNCTIONS
@@ -588,7 +585,7 @@ export function HomePage({
       isFetchingRef.current = false;
       observerLockRef.current = false;
     }
-  }, [scheduleIdle, fetchBatchPricingFor]);
+  }, [autoLoadCount, scheduleIdle, fetchBatchPricingFor]);
 
   // ============================================================================
   // EFFECT - Handle Category Page Navigation / Reset
@@ -871,10 +868,6 @@ export function HomePage({
     navigate('/', { replace: true });
   };
 
-  const handleMadeInCanadaChange = useCallback((e: ChangeEvent<HTMLInputElement>) => {
-    updateFilter('made_in_canada', e.target.checked ? 'true' : 'false');
-  }, [updateFilter]);
-
   // ============================================================================
   // COMPUTED VALUES
   // ============================================================================
@@ -928,11 +921,16 @@ export function HomePage({
     setSearchQuery: (query: string) => updateFilter('search', query),
   }), [updateFilter]);
 
-  const renderedIntroText = !categoryConfig
-    ? null
-    : typeof categoryConfig.introText === 'function'
-      ? categoryConfig.introText(filterActions)
-      : categoryConfig.introText;
+  let renderedIntroText: React.ReactNode = null;
+
+  if (categoryConfig) {
+    const IntroText = categoryConfig.introText;
+
+    renderedIntroText =
+      typeof IntroText === 'function'
+        ? <IntroText {...filterActions} />
+        : IntroText;
+  }
 
   // "New in the catalog" — created_at within the last N days
   const [now] = useState(() => Date.now());

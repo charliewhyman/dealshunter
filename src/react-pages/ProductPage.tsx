@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { useParams } from 'react-router-dom';
+import { useParams, Link } from 'react-router-dom';
 import { apiClient } from '../lib/api-client';
 import type { ProductWithDetails } from "../types";
 import AsyncLucideIcon from '../components/AsyncLucideIcon';
@@ -8,6 +8,7 @@ import { format } from 'date-fns/format';
 
 function ProductPage() {
   const { productId } = useParams<{ productId: string }>();
+  const searchParams = new URLSearchParams(window.location.search);
   const [product, setProduct] = useState<ProductWithDetails | null>(null);
   const [loading, setLoading] = useState(true);
   const [imgLoaded, setImgLoaded] = useState(false);
@@ -348,6 +349,20 @@ function ProductPage() {
                   <span>{isAvailable ? 'View on Store' : 'Currently Unavailable'}</span>
                   {isAvailable && <AsyncLucideIcon name="ExternalLink" className="w-5 h-5" />}
                 </a>
+              </div>
+
+              <div className="pt-4 border-t border-gray-200 dark:border-gray-700">
+                <Link
+                  to={`/?${searchParams.toString()}`}
+                  className={`inline-flex items-center justify-center gap-2 w-full px-6 py-4 text-base sm:text-lg font-semibold rounded-lg transition-all duration-200 ${
+                    isAvailable
+                      ? 'text-white bg-blue-600 hover:bg-blue-700 dark:bg-blue-500 dark:hover:bg-blue-600 shadow-md hover:shadow-lg'
+                      : 'text-gray-500 bg-gray-200 dark:bg-gray-700 dark:text-gray-400 cursor-not-allowed'
+                  }`}
+                >
+                  <span>{isAvailable ? 'Back to Shopping' : 'Browse Products'}</span>
+                  <AsyncLucideIcon name="ArrowLeft" className="w-5 h-5" />
+                </Link>
               </div>
 
               {/* Description Section - SIMPLIFIED */}
