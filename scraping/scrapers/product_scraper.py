@@ -1,8 +1,13 @@
 """
 Product Scraper - With both incremental and full scrape modes.
 Optimized to skip OOS products in incremental mode.
-Now with robust 429 error handling, retry logic, test-product filtering,
-and per-shop collection scoping.
+
+Features:
+- Robust 429 error handling and retry logic
+- Test-product filtering (word-boundary safe)
+- Non-tangible filtering (services, gift cards, shipping protection,
+  deposits, memberships, digital goods)
+- Per-shop collection scoping via config/product_collection_overrides.json
 """
 
 import os
@@ -18,9 +23,9 @@ from core.session_manager import SessionManager
 from core.state_manager import StateManager
 
 
-# ---------------------------------------------------------------------------
+# ===========================================================================
 # Test-product detection
-# ---------------------------------------------------------------------------
+# ===========================================================================
 _TEST_TOKENS = {
     "test", "testing", "tested",
     "dummy", "placeholder",
@@ -95,20 +100,130 @@ def is_test_product(product: Dict[str, Any]) -> tuple:
     return False, ""
 
 
+# ===========================================================================
+# Non-tangible detection (services, gift cards, shipping, etc.)
+# ===========================================================================
+# product_type values that are definitively not physical goods
+_NON_TANGIBLE_PRODUCT_TYPES = {
+    "service",
+    "services",
+    "insurance",
+    "gift card",
+    "gift cards",
+    "gift wrap",
+    "gift wrapping",
+    "pre-order deposit",
+    "alteration services",
+    "repair services",
+    "package protection",
+    "membership",
+    "digital",
+    "download",
+}
+
+# Phrase list — matched as substrings (already specific enough)
+_NON_TANGIBLE_PHRASES = (
+    # shipping / protection
+    "shipping protection",
+    "ship protection",
+    "package protection",
+    "route protection",
+    "shipping insurance",
+    "routeins",
+    "navidium",
+    "safe ship protection",
+    "safe-ship",
+    # gift cards / credit
+    "gift card",
+    "gift certificate",
+    "e-gift",
+    "egift",
+    "store credit",
+    # deposits / fees
+    "pre-order deposit",
+    "pre order deposit",
+    "down payment",
+    # subscriptions / memberships
+    "membership fee",
+    "elite membership",
+    # donations / tips
+    "donation match",
+    "donation",
+    # delivery services
+    "hand delivered",
+    # alterations (as standalone phrase — product_type covers the rest)
+    "custom alterations",
+)
+
+# Word-boundary patterns for alteration / repair services
+_NON_TANGIBLE_SERVICE_RE = re.compile(
+    r"\b(alteration|alterations|hemming|repair services?)\b",
+    re.IGNORECASE,
+)
+
+# Handle prefixes
+_NON_TANGIBLE_HANDLE_PREFIXES = (
+    "gift-card",
+    "gift_card",
+    "e-gift",
+    "egift",
+    "safe-ship",
+    "shipping-",
+    "routeins",
+    "navidium",
+)
+
+
+def is_non_tangible(product: Dict[str, Any]) -> tuple:
+    """Return (is_non_tangible, reason). Reason is '' when it IS tangible.
+
+    Layered checks:
+      1. Structural: all variants have requires_shipping == false
+      2. product_type is a known non-tangible value
+      3. Handle/title/product_type matches a phrase or service regex
+      4. Handle starts with a known non-tangible prefix
+    """
+    variants = product.get("variants") or []
+    if variants and all(
+        v.get("requires_shipping", True) is False for v in variants
+    ):
+        return True, "all variants require_shipping=false (digital/service)"
+
+    handle = (product.get("handle") or "").lower()
+    title = (product.get("title") or "").lower()
+    ptype = (product.get("product_type") or "").lower()
+    text = f"{handle} {title} {ptype}"
+
+    if ptype in _NON_TANGIBLE_PRODUCT_TYPES:
+        return True, f"product_type is {ptype!r}"
+
+    for phrase in _NON_TANGIBLE_PHRASES:
+        if phrase in text:
+            return True, f"matches non-tangible phrase: {phrase!r}"
+
+    if _NON_TANGIBLE_SERVICE_RE.search(text):
+        return True, "matches alteration/repair service pattern"
+
+    for prefix in _NON_TANGIBLE_HANDLE_PREFIXES:
+        if handle.startswith(prefix):
+            return True, f"handle starts with {prefix!r}"
+
+    return False, ""
+
+
+# ===========================================================================
+# ProductScraper
+# ===========================================================================
 class ProductScraper(BaseScraper):
     """Product scraper - supports both incremental and full scraping."""
 
     def __init__(self):
         super().__init__("products")
 
-        # TWO MODES: Full vs Incremental
+        # Modes
         self.full_scrape_mode = False
-
-        # Full scrape settings
         self.full_max_pages = 100
         self.full_max_requests = 1000
-
-        # Incremental scrape settings
         self.inc_max_pages = 3
         self.inc_max_requests = 30
         self.batch_size = 50
@@ -117,7 +232,7 @@ class ProductScraper(BaseScraper):
         self.skip_oos_in_incremental = True
         self.skip_oos_in_full = False
 
-        # Current active settings
+        # Active settings
         self.max_pages = self.inc_max_pages
         self.max_requests_per_shop = self.inc_max_requests
 
@@ -128,11 +243,11 @@ class ProductScraper(BaseScraper):
         self.min_shop_delay = 30
         self.skip_shop_hours = 6
 
-        # 429 retry settings
+        # 429 retry
         self.max_429_retries = 3
         self.retry_delay_multiplier = 2
 
-        # Load filters and collection overrides once
+        # Config (loaded once — fixes bug where filters only loaded in set_full_scrape_mode)
         self.filters = self._load_filters()
         self.collection_overrides = self._load_collection_overrides()
 
@@ -149,9 +264,8 @@ class ProductScraper(BaseScraper):
             self.max_requests_per_shop = self.inc_max_requests
             self.logger.info("📊 Set to INCREMENTAL scrape mode")
 
-    # --------------------------------------------------------------- filters
+    # ----------------------------------------------------------- config
     def _load_filters(self) -> Dict[str, List[Dict]]:
-        """Load product filters from config file."""
         try:
             config_path = os.path.join(
                 os.path.dirname(os.path.dirname(__file__)),
@@ -167,23 +281,12 @@ class ProductScraper(BaseScraper):
             return {}
 
     def _load_collection_overrides(self) -> Dict[str, Dict[str, Any]]:
-        """Load per-shop collection scoping from config file.
+        """Load per-shop collection scoping from config/product_collection_overrides.json.
 
-        Format (config/product_collection_overrides.json):
+        Format:
           {
-            "1578": {
-              "collection_handles": ["boots"],
-              "reason": "..."
-            },
-            "1600": {
-              "exclude_handles": ["sale", "clearance"]
-            }
+            "1578": { "collection_handles": ["boots"], "reason": "..." }
           }
-
-        - include (`collection_handles` or `collection_handle`): scrape only those
-        - exclude (`exclude_handles`): scrape /products.json, then filter out
-          products that belong to those collections (needs per-product collection
-          ids; only applied when the product payload includes them)
         """
         try:
             config_path = os.path.join(
@@ -196,10 +299,11 @@ class ProductScraper(BaseScraper):
             with open(config_path, "r") as f:
                 data = json.load(f)
             overrides = {str(k): v for k, v in data.items()}
-            self.logger.info(
-                f"Loaded collection overrides for {len(overrides)} shop(s): "
-                f"{sorted(overrides.keys())}"
-            )
+            if overrides:
+                self.logger.info(
+                    f"Loaded collection overrides for {len(overrides)} shop(s): "
+                    f"{sorted(overrides.keys())}"
+                )
             return overrides
         except Exception as e:
             self.logger.error(f"Error loading collection overrides: {e}")
@@ -222,9 +326,8 @@ class ProductScraper(BaseScraper):
             if f.get("case_insensitive", False):
                 if pattern.lower() in title.lower():
                     return True
-            else:
-                if pattern in title:
-                    return True
+            elif pattern in title:
+                return True
 
         p_type = product.get("product_type", "")
         for f in self.filters.get("product_type_filters", []):
@@ -232,22 +335,19 @@ class ProductScraper(BaseScraper):
             if f.get("case_insensitive", False):
                 if pattern.lower() in p_type.lower():
                     return True
-            else:
-                if pattern in p_type:
-                    return True
+            elif pattern in p_type:
+                return True
 
         return False
 
-    # --------------------------------------------------------------- entry
+    # ------------------------------------------------------------- entry
     def scrape_single(self, shop_data: Dict[str, Any]) -> List[Dict[str, Any]]:
-        """Main entry point - routes to full or incremental based on mode."""
         if self.full_scrape_mode:
             return self._scrape_single_full(shop_data)
         return self._scrape_single_incremental(shop_data)
 
-    # ------------------------------------------------------- collection URLs
+    # ---------------------------------------------------- collection URLs
     def _collections_for_shop(self, shop_id: Any) -> Optional[List[str]]:
-        """Return a list of collection handles to scrape, or None to use /products.json."""
         override = self.collection_overrides.get(str(shop_id))
         if not override:
             return None
@@ -257,21 +357,9 @@ class ProductScraper(BaseScraper):
             return [override["collection_handle"]]
         return None
 
-    def _excluded_collections_for_shop(self, shop_id: Any) -> Set[str]:
-        """Return collection handles to exclude (post-filter mode)."""
-        override = self.collection_overrides.get(str(shop_id))
-        if not override:
-            return set()
-        return set(override.get("exclude_handles") or [])
-
     def _product_endpoints_for_shop(
         self, base_url: str, shop_id: Any
     ) -> List[Dict[str, Any]]:
-        """Return a list of `{url, params}` request targets for this shop.
-
-        - If the shop has collection overrides, one entry per collection.
-        - Otherwise, a single entry pointing at /products.json.
-        """
         base_url = base_url.rstrip("/")
         collections = self._collections_for_shop(shop_id)
 
@@ -279,12 +367,6 @@ class ProductScraper(BaseScraper):
             return [
                 {
                     "url": f"{base_url}/products.json",
-                    "params": {
-                        "limit": 250,
-                        "page": 1,   # caller overrides per page
-                        "currency": "CAD",
-                        "country": "CA",
-                    },
                     "collection": None,
                 }
             ]
@@ -292,24 +374,16 @@ class ProductScraper(BaseScraper):
         return [
             {
                 "url": f"{base_url}/collections/{handle}/products.json",
-                "params": {
-                    "limit": 250,
-                    "page": 1,
-                    "currency": "CAD",
-                    "country": "CA",
-                },
                 "collection": handle,
             }
             for handle in collections
         ]
 
-    # ----------------------------------------------------------- fetching
+    # ---------------------------------------------------------- fetching
     def _fetch_page_with_retry(
         self, session, url: str, params: dict, shop_id: str, page: int
     ) -> Optional[Dict]:
-        """Fetch a page with retry logic for 429 errors."""
         retry_count = 0
-
         while retry_count <= self.max_429_retries:
             try:
                 self.rate_limiter.wait_before_request(shop_id)
@@ -321,7 +395,7 @@ class ProductScraper(BaseScraper):
                         retry_count += 1
                         self.logger.warning(
                             f"Page {page} got 429, retry {retry_count}/{self.max_429_retries} "
-                            f"after {wait_time:.1f}s wait"
+                            f"after {wait_time:.1f}s"
                         )
                         continue
                     self.logger.error(
@@ -332,15 +406,14 @@ class ProductScraper(BaseScraper):
                 self.rate_limiter.wait(shop_id, response)
 
                 if response.status_code == 404:
-                    # Collection endpoint may not exist (unpublished)
                     self.logger.warning(
-                        f"Page {page} returned 404 for {url} — collection may be unpublished"
+                        f"Page {page} 404 for {url} — collection may be unpublished"
                     )
                     return None
 
                 if response.status_code != 200:
                     self.logger.warning(
-                        f"Page {page} returned status {response.status_code} for {url}"
+                        f"Page {page} status {response.status_code} for {url}"
                     )
                     return None
 
@@ -366,11 +439,7 @@ class ProductScraper(BaseScraper):
         collect: Dict[str, Dict[str, Any]],
         stats: Dict[str, int],
     ) -> None:
-        """Scrape all pages for one shop (all collections if override exists).
-
-        Populates `collect` keyed by product id (dedup across collections),
-        and updates `stats` counters.
-        """
+        """Scrape all pages for one shop (all collections if override exists)."""
         endpoints = self._product_endpoints_for_shop(base_url, shop_id)
 
         for endpoint in endpoints:
@@ -390,8 +459,12 @@ class ProductScraper(BaseScraper):
                     )
                     break
 
-                params = dict(endpoint["params"])
-                params["page"] = page
+                params = {
+                    "limit": 250,
+                    "page": page,
+                    "currency": "CAD",
+                    "country": "CA",
+                }
 
                 data = self._fetch_page_with_retry(session, url, params, shop_id, page)
 
@@ -422,10 +495,23 @@ class ProductScraper(BaseScraper):
 
                 for product in products:
                     try:
+                        # 0. Config filters (vendor/title/type)
                         vendor = product.get("vendor")
                         if self._should_skip_product(product, vendor):
+                            stats["skipped_config"] += 1
                             continue
 
+                        # 1. Non-tangible filter (services, gift cards, shipping...)
+                        nt, nt_reason = is_non_tangible(product)
+                        if nt:
+                            stats["skipped_non_tangible"] += 1
+                            self.logger.info(
+                                f"  🚫 Filtered non-tangible product "
+                                f"{product.get('handle')!r} (shop={shop_id}): {nt_reason}"
+                            )
+                            continue
+
+                        # 2. Test-product filter
                         test, reason = is_test_product(product)
                         if test:
                             stats["skipped_test"] += 1
@@ -435,12 +521,14 @@ class ProductScraper(BaseScraper):
                             )
                             continue
 
+                        # 3. OOS (incremental only)
                         if skip_oos:
                             variants = product.get("variants", [])
                             if not self._is_available(variants):
                                 stats["skipped_oos"] += 1
                                 continue
 
+                        # 4. Convert & dedupe
                         product_data = self._convert_to_product_data(
                             product, shop_id, base_url
                         )
@@ -468,7 +556,6 @@ class ProductScraper(BaseScraper):
                 time.sleep(1 if page % 5 == 0 else 0.3)
 
     def _scrape_single_full(self, shop_data: Dict[str, Any]) -> List[Dict[str, Any]]:
-        """FULL scrape: Get ALL products from a shop."""
         shop_id = shop_data.get("id")
         base_url = shop_data.get("url")
 
@@ -488,7 +575,13 @@ class ProductScraper(BaseScraper):
 
         try:
             collect: Dict[str, Dict[str, Any]] = {}
-            stats = {"skipped_oos": 0, "skipped_test": 0, "deduped": 0}
+            stats = {
+                "skipped_oos": 0,
+                "skipped_test": 0,
+                "skipped_non_tangible": 0,
+                "skipped_config": 0,
+                "deduped": 0,
+            }
 
             session = SessionManager.get_session(shop_id)
             self._scrape_shop_pages(
@@ -501,18 +594,11 @@ class ProductScraper(BaseScraper):
             )
 
             elapsed = time.time() - start_time
-            extra = []
-            if stats["skipped_oos"]:
-                extra.append(f"{stats['skipped_oos']} OOS skipped")
-            if stats["skipped_test"]:
-                extra.append(f"{stats['skipped_test']} test skipped")
-            if stats["deduped"]:
-                extra.append(f"{stats['deduped']} duplicate")
-            extra_str = f" ({', '.join(extra)})" if extra else ""
+            extra = self._format_stats(stats)
 
             self.logger.info(
                 f"✅ FULL scrape {shop_id}: {len(collect)} products"
-                f"{extra_str} in {elapsed:.1f}s"
+                f"{extra} in {elapsed:.1f}s"
             )
 
             try:
@@ -531,7 +617,6 @@ class ProductScraper(BaseScraper):
     def _scrape_single_incremental(
         self, shop_data: Dict[str, Any]
     ) -> List[Dict[str, Any]]:
-        """INCREMENTAL scrape - optimized to skip OOS products."""
         shop_id = shop_data.get("id")
         base_url = shop_data.get("url")
 
@@ -564,7 +649,13 @@ class ProductScraper(BaseScraper):
 
         try:
             collect: Dict[str, Dict[str, Any]] = {}
-            stats = {"skipped_oos": 0, "skipped_test": 0, "deduped": 0}
+            stats = {
+                "skipped_oos": 0,
+                "skipped_test": 0,
+                "skipped_non_tangible": 0,
+                "skipped_config": 0,
+                "deduped": 0,
+            }
 
             session = SessionManager.get_session(shop_id)
             self._scrape_shop_pages(
@@ -577,18 +668,11 @@ class ProductScraper(BaseScraper):
             )
 
             elapsed = time.time() - start_time
-            extra = []
-            if stats["skipped_oos"]:
-                extra.append(f"{stats['skipped_oos']} OOS skipped")
-            if stats["skipped_test"]:
-                extra.append(f"{stats['skipped_test']} test skipped")
-            if stats["deduped"]:
-                extra.append(f"{stats['deduped']} duplicate")
-            extra_str = f" ({', '.join(extra)})" if extra else ""
+            extra = self._format_stats(stats)
 
             self.logger.info(
                 f"✅ INCREMENTAL scrape {shop_id}: {len(collect)} products"
-                f"{extra_str} in {elapsed:.1f}s"
+                f"{extra} in {elapsed:.1f}s"
             )
 
             try:
@@ -604,11 +688,26 @@ class ProductScraper(BaseScraper):
             self.logger.error(f"Error in incremental scrape {shop_id}: {e}")
             return []
 
-    # --------------------------------------------------------- conversion
+    @staticmethod
+    def _format_stats(stats: Dict[str, int]) -> str:
+        """Format skip counts for the summary log line."""
+        parts = []
+        if stats.get("skipped_oos"):
+            parts.append(f"{stats['skipped_oos']} OOS")
+        if stats.get("skipped_non_tangible"):
+            parts.append(f"{stats['skipped_non_tangible']} non-tangible")
+        if stats.get("skipped_test"):
+            parts.append(f"{stats['skipped_test']} test")
+        if stats.get("skipped_config"):
+            parts.append(f"{stats['skipped_config']} config-filtered")
+        if stats.get("deduped"):
+            parts.append(f"{stats['deduped']} duplicate")
+        return f" ({', '.join(parts)} skipped)" if parts else ""
+
+    # -------------------------------------------------------- conversion
     def _convert_to_product_data(
         self, product: Dict[str, Any], shop_id: str, base_url: str
     ) -> Optional[ProductData]:
-        """Convert raw Shopify product to ProductData."""
         try:
             handle = product.get("handle", "")
             product_url = f"{base_url}/products/{handle}" if handle else ""
