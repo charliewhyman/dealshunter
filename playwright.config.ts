@@ -13,7 +13,7 @@ export default defineConfig({
     reporter: 'html',
     use: {
         actionTimeout: 0,
-        baseURL: 'http://localhost:5173',
+        baseURL: 'http://localhost:4321',
         trace: 'on-first-retry',
     },
     projects: [
@@ -29,7 +29,12 @@ export default defineConfig({
     ],
     webServer: {
         command: 'npm run dev',
-        port: 5173,
-        reuseExistingServer: !process.env.CI,
+        port: 4321,
+        reuseExistingServer: true,
+    },
+    // Add cross-origin isolation for fetch requests in Playwright
+    use: {
+      ...devices['Desktop Chrome'],
+      viewport: { width: 1920, height: 1080 },
     },
 });
