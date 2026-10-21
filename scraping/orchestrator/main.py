@@ -82,6 +82,27 @@ class PipelineOrchestrator:
             
             self.logger.info(f"Loaded {len(shops)} shops from configuration")
 
+            # Flatten nested list entries: [{...}, [{...}, {...}], ...] → [{...}, ...]
+            flat_shops = []
+            for i, entry in enumerate(shops):
+                if isinstance(entry, dict):
+                    flat_shops.append(entry)
+                elif isinstance(entry, list):
+                    nested = [x for x in entry if isinstance(x, dict)]
+                    self.logger.warning(
+                        f"Shop entry {i} was a list of {len(entry)} items; "
+                        f"flattened {len(nested)} dict(s)"
+                    )
+                    flat_shops.extend(nested)
+                else:
+                    self.logger.error(
+                        f"Skipping shop entry {i}: unsupported type {type(entry).__name__}"
+                    )
+            shops = flat_shops
+            if not shops:
+                self.logger.error("No valid shop dicts after normalization")
+                return []
+            
             # Resolve database IDs for configured shop URLs
             try:
                 urls = [s.get('url') for s in shops if s.get('url')]

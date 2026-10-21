@@ -37,11 +37,22 @@ class BaseScraper(ABC):
         pass
     
     def scrape_multiple(self, shops: List[Dict[str, Any]], 
-                       max_workers: Optional[int] = None) -> Dict[str, List[Dict[str, Any]]]:
+                        max_workers: Optional[int] = None) -> Dict[str, List[Dict[str, Any]]]:
         """Scrape data for multiple shops concurrently."""
         max_workers = max_workers or settings.SCRAPER_CONFIG['max_workers']
         results = {}
-        
+
+        if not isinstance(shops, list):
+            raise TypeError(
+                f"scrape_multiple expected list, got {type(shops).__name__}"
+            )
+        for i, shop in enumerate(shops):
+            if not isinstance(shop, dict):
+                raise TypeError(
+                    f"scrape_multiple: element {i} is {type(shop).__name__} "
+                    f"(expected dict). Value: {shop!r}"
+                )
+
         self.logger.info(f"Scraping {len(shops)} shops with {max_workers} workers")
         
         with ThreadPoolExecutor(max_workers=max_workers) as executor:
