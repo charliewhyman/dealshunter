@@ -4,14 +4,161 @@ from config.product_type_loader import ConfigLoader
 from core.logger import uploader_logger
 
 
+# ---------------------------------------------------------------------------
+# Module-level keyword tables (easy to test & extend)
+# ---------------------------------------------------------------------------
+_SIZE_PATTERNS: Dict[str, str] = {
+    "XS": r"\b(?:xs|xsmall|extra[ -]?small)\b",
+    "S":  r"\b(?:s|small)\b",
+    "M":  r"\b(?:m|med|medium)\b",
+    "L":  r"\b(?:l|large)\b",
+    "XL": r"\b(?:xl|extra[ -]?large|xtra[ -]?large)\b",
+    "XXL": r"\b(?:xxl|2xl|extra[ -]?extra[ -]?large)\b",
+    "3XL": r"\b(?:3xl|3x[ -]?large)\b",
+    "4XL": r"\b(?:4xl|4x[ -]?large)\b",
+    "5XL": r"\b(?:5xl|5x[ -]?large)\b",
+    "6XL": r"\b(?:6xl|6x[ -]?large)\b",
+    "7XL": r"\b(?:7xl|7x[ -]?large)\b",
+    "8XL": r"\b(?:8xl|8x[ -]?large)\b",
+    "9XL": r"\b(?:9xl|9x[ -]?large)\b",
+    "10XL": r"\b(?:10xl|10x[ -]?large)\b",
+    "11XL": r"\b(?:11xl|11x[ -]?large)\b",
+    "12XL": r"\b(?:12xl|12x[ -]?large)\b",
+}
+
+_COLOR_KEYWORDS = [
+    "red", "blue", "green", "yellow", "orange", "purple", "pink", "black",
+    "white", "gray", "grey", "brown", "beige", "tan", "cream", "ivory",
+    "navy", "teal", "turquoise", "cyan", "mint", "lime", "olive", "khaki",
+    "burgundy", "maroon", "wine", "plum", "lavender", "peach", "coral",
+    "amber", "gold", "silver", "bronze", "copper", "rose", "blush",
+    "scarlet", "crimson", "fuchsia", "magenta", "indigo", "violet",
+    "azure", "cobalt", "cerulean", "sapphire", "emerald", "jade",
+    "ruby", "cherry", "chocolate", "chestnut", "cinnamon", "russet",
+    "umber", "sienna", "burnt orange",
+]
+
+_INTENSITY_TOKENS = {
+    "pale": {"pale", "light"},
+    "light": {"light", "pale"},
+    "deep": {"deep", "dark", "rich"},
+    "dark": {"dark", "deep", "rich"},
+    "rich": {"rich", "deep", "dark"},
+    "bright": {"bright", "vivid", "bold"},
+    "vivid": {"vivid", "bright", "bold"},
+    "bold": {"bold", "bright", "vivid"},
+}
+
+_PATTERN_KEYWORDS = [
+    "striped", "plaid", "floral", "geometric", "polka dot", "polka dots",
+    "checkered", "check", "checked", "gingham", "herringbone", "tweed",
+    "jacquard", "ikat", "ombre", "tie dye", "graphic", "abstract",
+    "animal print", "zebra", "tiger", "leopard", "cheetah",
+    "houndstooth", "paisley", "mandala", "camo", "camouflage",
+    "lattice", "cable knit", "argyle",
+]
+
+_MATERIAL_KEYWORDS = [
+    "cotton", "polyester", "linen", "silk", "wool", "rayon", "spandex",
+    "nylon", "viscose", "acrylic", "modal", "bamboo", "tencel", "lyocell",
+    "jersey", "terry", "ribbed", "sateen", "satin", "chiffon", "voile",
+    "organza", "taffeta", "tulle", "lace", "mesh", "netting", "sequin",
+    "velvet", "velveteen", "corduroy", "denim", "jeans", "leather",
+    "faux leather", "pleather", "vinyl", "rubber", "latex", "neoprene",
+    "canvas", "suede", "faux suede", "microfiber", "fleece", "thermal",
+    "heavyweight", "lightweight", "breathable", "quick-dry",
+    "water-resistant", "waterproof", "wind-resistant", "moisture-wicking",
+    "stretch", "four-way stretch", "two-way stretch",
+]
+
+_FIT_KEYWORDS = {
+    "relaxed": "Relaxed", "loose": "Loose", "tight": "Tight", "snug": "Snug",
+    "fitted": "Fitted", "slim": "Slim", "skinny": "Skinny",
+    "oversized": "Oversized", "boxy": "Boxy", "drop shoulder": "Drop Shoulder",
+    "regular": "Regular", "straight": "Straight", "curvy": "Curvy",
+    "maternity": "Maternity", "plus size": "Plus Size", "petite": "Petite",
+    "tall": "Tall", "athletic": "Athletic",
+}
+
+_SLEEVE_KEYWORDS = {
+    "sleeveless": "Sleeveless",
+    "short sleeve": "Short Sleeve", "short sleeves": "Short Sleeve",
+    "long sleeve": "Long Sleeve", "long sleeves": "Long Sleeve",
+    "3/4 sleeve": "3/4 Sleeve", "3/4 sleeves": "3/4 Sleeve",
+    "cap sleeve": "Cap Sleeve", "cap sleeves": "Cap Sleeve",
+    "off shoulder": "Off Shoulder", "cold shoulder": "Cold Shoulder",
+    "cold shoulders": "Cold Shoulder",
+    "bell sleeve": "Bell Sleeve", "bell sleeves": "Bell Sleeve",
+    "puff sleeve": "Puff Sleeve", "puff sleeves": "Puff Sleeve",
+    "bishop sleeve": "Bishop Sleeve", "bishop sleeves": "Bishop Sleeve",
+    "balloon sleeve": "Balloon Sleeve", "balloon sleeves": "Balloon Sleeve",
+    "ruffle sleeve": "Ruffle Sleeve", "ruffle sleeves": "Ruffle Sleeve",
+    "flutter sleeve": "Flutter Sleeve", "flutter sleeves": "Flutter Sleeve",
+    "leg-of-mutton sleeve": "Leg-of-Mutton Sleeve",
+    "leg-of-mutton sleeves": "Leg-of-Mutton Sleeve",
+}
+
+_NECKLINE_KEYWORDS = {
+    "v-neck": "V-Neck", "v neck": "V-Neck", "v-neckline": "V-Neck",
+    "crew neck": "Crew Neck", "crew neckline": "Crew Neck",
+    "round neck": "Round Neck", "round neckline": "Round Neck",
+    "boat neck": "Boat Neck", "boat neckline": "Boat Neck",
+    "scoop neck": "Scoop Neck", "scoop neckline": "Scoop Neck",
+    "off shoulder": "Off Shoulder", "off the shoulder": "Off Shoulder",
+    "squared neck": "Squared Neck", "square neck": "Squared Neck",
+    "halter neck": "Halter Neck", "halter neckline": "Halter Neck",
+    "strapless": "Strapless",
+    "racerback": "Racerback", "racer back": "Racerback",
+    "deep v": "Deep V", "deep v-neck": "Deep V", "plunge": "Plunge",
+    "high neck": "High Neck", "mock neck": "Mock Neck",
+    "turtleneck": "Turtleneck", "turtle neck": "Turtleneck",
+    "mandarin collar": "Mandarin Collar", "collared": "Collared",
+    "shawl collar": "Shawl Collar", "wrap neck": "Wrap Neck",
+    "cowl neck": "Cowl Neck", "keyhole neck": "Keyhole Neck",
+}
+
+_WAIST_KEYWORDS = {
+    "high waist": "High Waist", "high waistline": "High Waist",
+    "mid rise": "Mid Rise", "mid rise waist": "Mid Rise",
+    "low rise": "Low Rise", "low rise waist": "Low Rise",
+    "waist cinched": "Waist Cinched", "waist defined": "Waist Defined",
+    "waist elastic": "Waist Elastic", "waist elasticized": "Waist Elastic",
+    "waist adjustable": "Waist Adjustable",
+    "waist drawstring": "Waist Drawstring",
+    "waist ruched": "Waist Ruched", "waist gathered": "Waist Gathered",
+    "waist pleated": "Waist Pleated", "waist smocked": "Waist Smocked",
+}
+
+_LENGTH_KEYWORDS = {
+    "mini length": "Mini Length", "mini-length": "Mini Length",
+    "knee length": "Knee Length", "knee-length": "Knee Length",
+    "midi length": "Midi Length", "midi-length": "Midi Length",
+    "maxi length": "Maxi Length", "maxi-length": "Maxi Length",
+    "floor length": "Floor Length", "floor-length": "Floor Length",
+    "ankle length": "Ankle Length", "ankle-length": "Ankle Length",
+    "cropped": "Cropped", "crop": "Cropped",
+}
+
+
+def _find_first(text: str, mapping: Union[Dict[str, str], List[str]]) -> Optional[str]:
+    """Return the canonical value for the first keyword found in `text`."""
+    if isinstance(mapping, dict):
+        for keyword, canonical in mapping.items():
+            if re.search(r"\b" + re.escape(keyword) + r"\b", text):
+                return canonical
+        return None
+    for keyword in mapping:
+        if re.search(r"\b" + re.escape(keyword) + r"\b", text):
+            return keyword
+    return None
+
+
 class ProductCategorizer:
-    """Service for categorizing products using JSON configuration with enhanced gender detection and metadata extraction."""
-    """Service for categorizing products using JSON configuration with enhanced gender detection."""
+    """Categorize products using JSON configuration with gender detection and metadata extraction."""
 
     def __init__(self):
         self.config = ConfigLoader.load_product_type_mapping()
-        
-        # Validate config structure
+
         if not self.config or not self.config.get("category_mapping"):
             uploader_logger.error("Invalid product type mapping config, using fallback")
             self.config = {
@@ -21,765 +168,210 @@ class ProductCategorizer:
                 "uncategorized_fallback": "Uncategorized",
                 "gender_age_patterns": {},
             }
-        
-        self._cache = {}  # Cache for category lookups
+
+        self._cache: Dict[str, Tuple[str, Optional[str]]] = {}
         self._prepare_keywords()
         self._init_size_patterns()
 
-        # Log initialization
         category_count = len(self.config.get("category_mapping", {}))
         uploader_logger.info(
             f"📊 ProductCategorizer initialized with {category_count} categories"
         )
 
-    def _prepare_keywords(self):
-        """Preprocess keywords for better matching."""
-        self._keyword_patterns = {}
-        category_mapping = self.config.get("category_mapping", {})
-
-        for category, rules in category_mapping.items():
-            # Create regex patterns for each keyword
-            patterns = []
-            for keyword in rules.get("keywords", []):
-                # Escape special characters and create word boundary pattern
-                pattern = r"\b" + re.escape(keyword) + r"\b"
-                patterns.append(pattern)
-
-            # Create exclude patterns
-            exclude_patterns = []
-            for exclude in rules.get("exclude", []):
-                pattern = r"\b" + re.escape(exclude) + r"\b"
-                exclude_patterns.append(pattern)
-
+    # ------------------------------------------------------------------ setup
+    def _prepare_keywords(self) -> None:
+        self._keyword_patterns: Dict[str, Dict[str, Any]] = {}
+        for category, rules in self.config.get("category_mapping", {}).items():
+            includes = [
+                r"\b" + re.escape(k) + r"\b" for k in rules.get("keywords", [])
+            ]
+            excludes = [
+                r"\b" + re.escape(e) + r"\b" for e in rules.get("exclude", [])
+            ]
             self._keyword_patterns[category] = {
-                "include": patterns,
-                "exclude": exclude_patterns,
+                "include": includes,
+                "exclude": excludes,
                 "raw_keywords": rules.get("keywords", []),
                 "raw_excludes": rules.get("exclude", []),
             }
 
-    def _init_size_patterns(self):
-        """Initialize size pattern matching."""
-        self._size_patterns = {
-            "XS": r"\bxs\b|\bextra small\b",
-            "XSS": r"\bxsmall\b|\bxs\b",
-            "S": r"\bs\b|\bsmall\b",
-            "SXL": r"\bsmall xl\b",
-            "M": r"\bm\b|\bmedium\b",
-            "MXXL": r"\bmedium xl\b|\bmedium xxl\b",
-            "L": r"\bl\b|\blarge\b",
-            "LXL": r"\blarge xl\b|\blarge xxl\b",
-            "XL": r"\b\b|\bextra large\b|\bxl\b",
-            "XXL": r"\b\b|\b2xl\b|\bextra extra large\b|\bxtra large\b",
-            "3XL": r"\b3xl\b|\b3x large\b",
-            "4XL": r"\b4xl\b|\b4x large\b",
-            "5XL": r"\b5xl\b|\b5x large\b",
-            "6XL": r"\b6xl\b|\b6x large\b",
-            "7XL": r"\b7xl\b|\b7x large\b",
-            "8XL": r"\b8xl\b|\b8x large\b",
-            "9XL": r"\b9xl\b|\b9x large\b",
-            "10XL": r"\b10xl\b|\b10x large\b",
-            "11XL": r"\b11xl\b|\b11x large\b",
-            "12XL": r"\b12xl\b|\b12x large\b",
-        }
-        self._size_keywords = {
-            "XS": ["xs", "extra small", "xsmall"],
-            "S": ["s", "small"],
-            "M": ["m", "medium", "med"],
-            "L": ["l", "large"],
-            "XL": ["xl", "extra large", "xtra large"],
-            "XXL": ["xxl", "2xl", "double xl"],
-            "3XL": ["3xl"],
-            "4XL": ["4xl"],
-            "5XL": ["5xl"],
-            "6XL": ["6xl"],
-            "7XL": ["7xl"],
-            "8XL": ["8xl"],
-            "9XL": ["9xl"],
-            "10XL": ["10xl"],
-            "11XL": ["11xl"],
-            "12XL": ["12xl"],
-        }
+    def _init_size_patterns(self) -> None:
+        self._size_patterns = _SIZE_PATTERNS
 
+    # --------------------------------------------------------------- helpers
     def _normalize_text(self, text: str) -> str:
-        """Normalize text for matching."""
         if not text or not isinstance(text, str):
             return ""
-        return text.lower().strip()
+        # Lowercase, unify separators, strip punctuation
+        t = text.lower().strip()
+        t = re.sub(r"[_\-/]+", " ", t)
+        t = re.sub(r"[^\w\s]", " ", t)
+        t = re.sub(r"\s+", " ", t).strip()
+        return t
 
-    def _extract_metadata_from_text(self, text: str) -> Dict[str, Any]:
-        """Extract all metadata from text."""
-        metadata = {
-            "size": None,
-            "color": None,
-            "pattern": None,
-            "material": None,
-            "fit": None,
-            "sleeve_length": None,
-            "neckline": None,
-            "waist": None,
-            "length": None,
-            "closure": None,
-            "style": None,
-            "occasion": None,
-            "season": None,
-            "temperature": None,
-            "care_instructions": None,
-        }
-
-        if not text:
-            return metadata
-
-        text_lower = text.lower()
-
-        # Extract size
-        for size, pattern in self._size_patterns.items():
-            if re.search(pattern, text_lower):
-                metadata["size"] = size
-                break
-
-        # Extract colors (with color intensity)
-        color_intensity_keywords = {
-            "pale": 1,
-            "light": 2,
-            "medium": 3,
-            "deep": 4,
-            "rich": 5,
-            "bright": 6,
-            "vivid": 7,
-            "bold": 8,
-            "dark": 9,
-        }
-
-        colors = []
-        color_keywords = [
-            "red", "blue", "green", "yellow", "orange", "purple", "pink", "black",
-            "white", "gray", "grey", "brown", "beige", "tan", "cream", "ivory",
-            "navy", "teal", "turquoise", "cyan", "mint", "lime", "olive", "khaki",
-            "burgundy", "maroon", "wine", "plum", "lavender", "peach", "coral",
-            "amber", "gold", "silver", "bronze", "copper", "rose", "blush",
-            "scarlet", "crimson", "fuchsia", "magenta", "indigo", "violet",
-            "azure", "cobalt", "cerulean", "sapphire", "emerald", "jade",
-            "ruby", "cherry", "chocolate", "chestnut", "cinnamon", "russet",
-            "umber", "sienna", "burnt orange", "candy", "pastel", "neon",
-            "pastel pink", "pastel blue", "pastel green", "pastel yellow",
-            "pastel purple", "pastel orange", "pastel red", "pastel teal",
-            "pastel mint", "pastel lavender", "pastel peach", "pastel coral",
-            "pastel lilac", "pastel mint green", "pastel sky blue",
-            "pastel seafoam", "pastel periwinkle", "pastel salmon",
-            "pastel apricot", "pastel tangerine", "pastel lemon",
-            "pastel lime", "pastel olive", "pastel mustard",
-        ]
-
-        for color in color_keywords:
-            if color in text_lower:
-                colors.append(color)
-
-        if colors:
-            # Apply intensity modifier if present
-            if "pale" in text_lower:
-                colors = [c for c in colors if "pale" in c.lower() or "light" in c.lower()]
-            elif "light" in text_lower:
-                colors = [c for c in colors if "light" in c.lower() or "pale" in c.lower()]
-            elif "medium" in text_lower:
-                colors = [c for c in colors if "medium" in c.lower()]
-            elif "dark" in text_lower or "deep" in text_lower:
-                colors = [c for c in colors if "dark" in c.lower() or "deep" in c.lower() or "rich" in c.lower()]
-            elif "bright" in text_lower or "vivid" in text_lower:
-                colors = [c for c in colors if "bright" in c.lower() or "vivid" in c.lower() or "bold" in c.lower()]
-
-            # If no color matches intensity, keep original
-            if not colors:
-                colors = color_keywords
-
-            metadata["color"] = ", ".join(colors[:3])  # Limit to top 3
-
-        # Extract pattern
-        pattern_keywords = [
-            "striped", "plaid", "floral", "florals", "floral print",
-            "geometric", "geometric print", "dot", "dots", "polka dot",
-            "polka dots", "checkered", "check", "checked", "gingham",
-            "herringbone", "tweed", "jacquard", "ikat", "ombre",
-            "tie dye", "graphic", "graphic print", "abstract", "abstract print",
-            "animal print", "animal prints", "zebra", "tiger", "leopard",
-            "leopard print", "leopard print", "cheetah", "paw print",
-            "houndstooth", "paisley", "mandala", "mandala print",
-            "mandalas", "mandala prints", "camo", "camo print", "camouflage",
-            "camouflage print", "camo pattern", "camouflage pattern",
-            "lattice", "lattice print", "lattice pattern",
-            "cable knit", "cable knit pattern",
-            "argyle", "argyle pattern",
-        ]
-
-        for pattern in pattern_keywords:
-            if pattern in text_lower:
-                metadata["pattern"] = pattern
-                break
-
-        # Extract material
-        material_keywords = [
-            "cotton", "polyester", "linen", "silk", "wool", "rayon",
-            "spandex", "nylon", "viscose", "acrylic", "modal",
-            "bamboo", "bamboo rayon", "tencel", "lyocell", "jersey",
-            "terry", "terry cloth", "ribbed", "sateen", "satin",
-            "chiffon", "voile", "organza", "taffeta", "tulle",
-            "lace", "mesh", "netting", "sequin", "sequins",
-            "velvet", "velveteen", "corduroy", "denim", "jeans",
-            "leather", "faux leather", "synthetic leather", "pleather",
-            "vinyl", "rubber", "latex", "neoprene", "canvas",
-            "suede", "faux suede", "microfiber", "fleece", "thermal",
-            "brushed cotton", "brushed cotton fleece",
-            "heavyweight", "lightweight", "breathable", "quick-dry",
-            "water-resistant", "waterproof", "wind-resistant", "moisture-wicking",
-            "stretch", "four-way stretch", "two-way stretch",
-        ]
-
-        for material in material_keywords:
-            if material in text_lower:
-                metadata["material"] = material
-                break
-
-        # Extract fit
-        fit_keywords = {
-            "relaxed": "Relaxed",
-            "loose": "Loose",
-            "tight": "Tight",
-            "snug": "Snug",
-            "fitted": "Fitted",
-            "slim": "Slim",
-            "skinny": "Skinny",
-            "oversized": "Oversized",
-            "boxy": "Boxy",
-            "drop shoulder": "Drop Shoulder",
-            "regular": "Regular",
-            "straight": "Straight",
-            "curvy": "Curvy",
-            "maternity": "Maternity",
-            "plus size": "Plus Size",
-            "petite": "Petite",
-            "tall": "Tall",
-            "athletic": "Athletic",
-            "athletic fit": "Athletic",
-        }
-
-        for fit_keyword in fit_keywords:
-            if fit_keyword in text_lower:
-                metadata["fit"] = fit_keywords[fit_keyword]
-                break
-
-        # Extract sleeve length
-        sleeve_keywords = {
-            "sleeveless": "Sleeveless",
-            "short sleeve": "Short Sleeve",
-            "short sleeves": "Short Sleeve",
-            "long sleeve": "Long Sleeve",
-            "long sleeves": "Long Sleeve",\n            "3/4 sleeve": "3/4 Sleeve",
-            "3/4 sleeves": "3/4 Sleeve",
-            "cap sleeve": "Cap Sleeve",
-            "cap sleeves": "Cap Sleeve",
-            "off shoulder": "Off Shoulder",
-            "cold shoulder": "Cold Shoulder",
-            "cold shoulders": "Cold Shoulder",
-            "bell sleeve": "Bell Sleeve",
-            "bell sleeves": "Bell Sleeve",
-            "puff sleeve": "Puff Sleeve",
-            "puff sleeves": "Puff Sleeve",
-            "bishop sleeve": "Bishop Sleeve",
-            "bishop sleeves": "Bishop Sleeve",
-            "balloon sleeve": "Balloon Sleeve",
-            "balloon sleeves": "Balloon Sleeve",
-            "ruffle sleeve": "Ruffle Sleeve",
-            "ruffle sleeves": "Ruffle Sleeve",
-            "flutter sleeve": "Flutter Sleeve",
-            "flutter sleeves": "Flutter Sleeve",
-            "leg-of-mutton sleeve": "Leg-of-Mutton Sleeve",
-            "leg-of-mutton sleeves": "Leg-of-Mutton Sleeve",
-            "bishop sleeve": "Bishop Sleeve",
-            "bishop sleeves": "Bishop Sleeve",
-        }
-
-        for sleeve_keyword in sleeve_keywords:
-            if sleeve_keyword in text_lower:
-                metadata["sleeve_length"] = sleeve_keywords[sleeve_keyword]
-                break
-
-        # Extract neckline
-        neckline_keywords = {
-            "v-neck": "V-Neck",
-            "v-neckline": "V-Neck",
-            "v neck": "V-Neck",
-            "v neck line": "V-Neck",
-            "v neck line": "V-Neck",
-            "crew neck": "Crew Neck",
-            "crew neckline": "Crew Neck",
-            "crew neck line": "Crew Neck",
-            "round neck": "Round Neck",
-            "round neckline": "Round Neck",
-            "round neck line": "Round Neck",
-            "boat neck": "Boat Neck",
-            "boat neckline": "Boat Neck",
-            "boat neck line": "Boat Neck",
-            "scoop neck": "Scoop Neck",
-            "scoop neckline": "Scoop Neck",
-            "scoop neck line": "Scoop Neck",
-            "off shoulder": "Off Shoulder",
-            "off shoulder neckline": "Off Shoulder",
-            "off shoulder neck line": "Off Shoulder",
-            "squared neck": "Squared Neck",
-            "squared neckline": "Squared Neck",
-            "squared neck line": "Squared Neck",
-            "halter neck": "Halter Neck",
-            "halter neckline": "Halter Neck",
-            "halter neck line": "Halter Neck",
-            "off the shoulder": "Off Shoulder",
-            "off the shoulder neckline": "Off Shoulder",
-            "off the shoulder neck line": "Off Shoulder",
-            "strapless": "Strapless",
-            "strapless neckline": "Strapless",
-            "strapless neck line": "Strapless",
-            "scoop back": "Scoop Back",
-            "scoop back neckline": "Scoop Back",
-            "scoop back neck line": "Scoop Back",
-            "square back": "Square Back",
-            "square back neckline": "Square Back",
-            "square back neck line": "Square Back",
-            "racerback": "Racerback",
-            "racer back": "Racerback",
-            "racer back neckline": "Racerback",
-            "racer back neck line": "Racerback",
-            "junge back": "Junge Back",
-            "junge back neckline": "Junge Back",
-            "junge back neck line": "Junge Back",
-            "deep v": "Deep V",
-            "deep v-neck": "Deep V",
-            "deep v neck": "Deep V",
-            "deep v neckline": "Deep V",
-            "deep v neck line": "Deep V",
-            "plunge": "Plunge",
-            "plunge neckline": "Plunge",
-            "plunge neck line": "Plunge",
-            "high neck": "High Neck",
-            "high neck line": "High Neck",
-            "mock neck": "Mock Neck",
-            "mock neck line": "Mock Neck",
-            "turtleneck": "Turtleneck",
-            "turtle neck": "Turtleneck",
-            "turtle neck line": "Turtleneck",
-            "turnover neck": "Turnover Neck",
-            "turnover neck line": "Turnover Neck",
-            "mandarin collar": "Mandarin Collar",
-            "mandarin collar neckline": "Mandarin Collar",
-            "mandarin collar neck line": "Mandarin Collar",
-            "collared": "Collared",
-            "collar": "Collared",
-            "collar neckline": "Collared",
-            "collar neck line": "Collared",
-            "shawl collar": "Shawl Collar",
-            "shawl collar neckline": "Shawl Collar",
-            "shawl collar neck line": "Shawl Collar",
-            "wrap neck": "Wrap Neck",
-            "wrap neck line": "Wrap Neck",
-            "cowl neck": "Cowl Neck",
-            "cowl neckline": "Cowl Neck",
-            "cowl neck line": "Cowl Neck",
-            "keyhole neck": "Keyhole Neck",
-            "keyhole neckline": "Keyhole Neck",
-            "keyhole neck line": "Keyhole Neck",
-        }
-
-        for neckline_keyword in neckline_keywords:
-            if neckline_keyword in text_lower:
-                metadata["neckline"] = neckline_keywords[neckline_keyword]
-                break
-
-        # Extract waist
-        waist_keywords = {
-            "high waist": "High Waist",
-            "high waistline": "High Waist",
-            "high waist line": "High Waist",
-            "mid rise": "Mid Rise",
-            "mid rise waist": "Mid Rise",
-            "mid rise waistline": "Mid Rise",
-            "mid rise waist line": "Mid Rise",
-            "low rise": "Low Rise",
-            "low rise waist": "Low Rise",
-            "low rise waistline": "Low Rise",
-            "low rise waist line": "Low Rise",
-            "waist cinched": "Waist Cinched",
-            "waist cinched in": "Waist Cinched",
-            "waist cinched in": "Waist Cinched",
-            "waist defined": "Waist Defined",
-            "waist defined": "Waist Defined",
-            "waist elastic": "Waist Elastic",
-            "waist elasticized": "Waist Elastic",
-            "waist adjustable": "Waist Adjustable",
-            "waist drawstring": "Waist Drawstring",
-            "waist ruched": "Waist Ruched",
-            "waist gathered": "Waist Gathered",
-            "waist pleated": "Waist Pleated",
-            "waist smocked": "Waist Smocked",
-        }
-
-        for waist_keyword in waist_keywords:
-            if waist_keyword in text_lower:
-                metadata["waist"] = waist_keywords[waist_keyword]
-                break
-
-        # Extract length
-        length_keywords = {
-            "mini length": "Mini Length",
-            "mini length": "Mini Length",
-            "mini-length": "Mini Length",
-            "mini-length": "Mini Length",
-            "mini length": "Mini Length",
-            "mini length": "Mini Length",
-            "mini length": "Mini Length",
-            "mini length": "Mini Length",
-            "mini length": "Mini Length",
-            "mini length": "Mini Length",
-            "mini length": "Mini Length",
-            "mini length": "Mini Length",
-            "mini length": "Mini Length",
-            "mini length": "Mini Length",
-            "mini length": "Mini Length",
-            "mini length": "Mini Length",
-            "mini length": "Mini Length",
-            "mini length": "Mini Length",
-            "mini length": "Mini Length",
-            "mini length": "Mini Length",
-            "mini length": "Mini Length",
-            "mini length": "Mini Length",
-            "mini length": "Mini Length",
-            "mini length": "Mini Length",
-            "mini length": "Mini Length",
-            "mini length": "Mini Length",
-            "mini length": "Mini Length",
-            "mini length": "Mini Length",
-            "mini length": "Mini Length",
-            "mini length": "Mini Length",
-            "mini length": "Mini Length",
-            "mini length": "Mini Length",
-            "mini length": "Mini Length",
-            "mini length": "Mini Length",
-            "mini length": "Mini Length",
-            "mini length": "Mini Length",
-            "mini length": "Mini Length",
-            "mini length": "Mini Length",
-            "mini length": "Mini Length",
-            "mini length": "Mini Length",
-            "mini length": "Mini Length",
-            "mini length": "Mini Length",
-            "mini length": "Mini Length",
-            "mini length": "Mini Length",
-            "mini length": "Mini Length",
-            "mini length": "Mini Length",
-            "mini length": "Mini Length",
-            "mini length": "Mini Length",
-            "mini length": "Mini Length",
-            "mini length": "Mini Length",
-            "mini length": "Mini Length",
-            "mini length": "Mini Length",
-            "mini length": "Mini Length",
-            "mini length": "Mini Length",
-            "mini length": "Mini Length",
-            "mini length": "Mini Length",
-            "mini length": "Mini Length",
-            "mini length": "Mini Length",
-            "mini length": "Mini Length",
-            "mini length": "Mini Length",
-            "mini length": "Mini Length",
-            "mini length": "Mini Length",
-            "mini length": "Mini Length",
-            "mini length": "Mini Length",
-            "mini length": "Mini Length",
-            "mini length": "Mini Length",
-            "mini length": "Mini Length",
-            "mini length": "Mini Length",
-            "mini length": "Mini Length",
-            "mini length": "Mini Length",
-            "mini length": "Mini Length",
-            "mini length": "Mini Length",
-            "mini length": "Mini Length",
-            "mini length": "Mini Length",
-            "mini length": "Mini Length",
-            "mini length": "Mini Length",
-            "mini length": "Mini Length",
-            "mini length": "Mini Length",
-            "mini length": "Mini Length",
-            "mini length": "Mini Length",
-            "mini length": "Mini Length",
-            "mini length": "Mini Length",
-            "mini length": "Mini Length",
-            "mini length": "Mini Length",
-            "mini length": "Mini Length",
-            "mini length": "Mini Length",
-            "mini length": "Mini Length",
-            "mini length": "Mini Length",
-            "mini length": "Mini Length",
-            "mini length": "Mini Length",
-            "mini length": "Mini Length",
-            "mini length": "Mini Length",
-            "mini length": "Mini Length",
-            "mini length": "Mini Length",
-            "mini length": "Mini Length",
-            "mini length": "Mini Length",
-            "mini length": "Mini Length",
-            "mini length": "Mini Length",
-            "mini length": "Mini Length",
-            "mini length": "Mini Length",
-            "mini length": "Mini Length",
-            "mini length": "Mini Length",
-            "mini length": "Mini Length",
-            "mini length": "Mini Length",
-            "mini length": "Mini Length",
-            "mini length": "Mini Length",
-            "mini length": "Mini Length",
-            "mini length": "Mini Length",
-            "mini length": "Mini Length",
-            "mini length": "Mini Length",
-            "mini length": "Mini Length",
-            "mini length": "Mini Length",
-            "mini length": "Mini Length",
-            "mini length": "Mini Length",
-            "mini length": "Mini Length",
-            "mini length": "Mini Length",
-            "mini length": "Mini Length",
-            "mini length": "Mini Length",
-            "mini length": "Mini Length",
-            "mini length": "Mini Length",
-            "mini length": "Mini Length",
-            "mini length": "Mini Length",
-            "mini length": "Mini Length",
-            "mini length": "Mini Length",
-            "mini length": "Mini Length",
-            "mini length": "Mini Length",
-            "mini length": "Mini Length",
-            "mini length": "Mini Length",
-            "mini length": "Mini Length",
-            "mini length": "Mini Length",
-            "mini length": "Mini Length",
-            "mini length": "Mini Length",
-            "mini length": "Mini Length",
-            "mini length": "Mini Length",
-            "mini length": "Mini Length",
-            "mini length": "Mini Length",
-            "mini length": "Mini Length",
-            "mini length": "Mini Length",
-            "mini length": "Mini Length",
-            "mini length": "Mini Length",
-            "mini length": "Mini Length",
-            "mini length": "Mini Length",
-            "mini length": "Mini Length",
-            "mini length": "Mini Length",
-            "mini length": "Mini Length",
-            "mini length": "Mini Length",
-            "mini length": "Mini Length",
-            "mini length": "Mini Length",
-            "mini length": "Mini Length",
-            "mini length": "Mini Length",
-            "mini length": "Mini Length",
-            "mini length": "Mini Length",
-            "mini length": "Mini Length",
-
+    def _calculate_match_score(
         self, text: str, patterns: List[str], keywords: List[str]
     ) -> int:
-        """Calculate a match score based on keyword presence and specificity."""
         score = 0
-
-        # Check each pattern
         for pattern in patterns:
             if re.search(pattern, text):
                 score += 10
-
-        # Additional scoring based on exact matches and specificity
         for keyword in keywords:
-            # Exact match gets highest score
-            if f" {keyword} " in f" {text} ":
-                score += 15
-            # Contains with word boundaries
-            elif re.search(r"\b" + re.escape(keyword) + r"\b", text):
-                score += 10
-            # Simple contains (lowest score)
+            kw = re.escape(keyword)
+            if re.search(r"\b" + kw + r"\b", text):
+                score += 15 if f" {keyword} " in f" {text} " else 10
             elif keyword in text:
                 score += 5
-
         return score
 
+    # ------------------------------------------------------------- metadata
+    def _extract_metadata_from_text(self, text: str) -> Dict[str, Any]:
+        metadata: Dict[str, Any] = {
+            k: None
+            for k in (
+                "size", "color", "pattern", "material", "fit", "sleeve_length",
+                "neckline", "waist", "length", "closure", "style", "occasion",
+                "season", "temperature", "care_instructions",
+            )
+        }
+        if not text:
+            return metadata
+
+        text_lower = self._normalize_text(text)
+
+        # Size: iterate from most specific to least (longest patterns first)
+        for size in sorted(self._size_patterns, key=lambda s: -len(s)):
+            if re.search(self._size_patterns[size], text_lower):
+                metadata["size"] = size
+                break
+
+        # Color with intensity modifier
+        colors = [c for c in _COLOR_KEYWORDS if c in text_lower]
+        if colors:
+            for intensity, allowed in _INTENSITY_TOKENS.items():
+                if intensity in text_lower:
+                    filtered = [
+                        c for c in colors
+                        if any(a in c for a in allowed) or any(a in text_lower for a in allowed)
+                    ]
+                    # If nothing fits, keep the original colors (don't reset to global list!)
+                    colors = filtered or colors
+                    break
+            metadata["color"] = ", ".join(colors[:3])
+
+        metadata["pattern"] = _find_first(text_lower, _PATTERN_KEYWORDS)
+        metadata["material"] = _find_first(text_lower, _MATERIAL_KEYWORDS)
+        metadata["fit"] = _find_first(text_lower, _FIT_KEYWORDS)
+        metadata["sleeve_length"] = _find_first(text_lower, _SLEEVE_KEYWORDS)
+        metadata["neckline"] = _find_first(text_lower, _NECKLINE_KEYWORDS)
+        metadata["waist"] = _find_first(text_lower, _WAIST_KEYWORDS)
+        metadata["length"] = _find_first(text_lower, _LENGTH_KEYWORDS)
+        return metadata
+
+    # --------------------------------------------------------------- gender
     def extract_gender_age(
         self, product_type: str, tags: Union[List[str], str, None] = None
     ) -> str:
-        """
-        Extract gender/age category from product type and tags.
-        Checks both the product type string and any tags for gender indicators.
-        """
+        default = self.config.get("default_gender_age", "Unisex")
         if not product_type:
-            return self.config.get("default_gender_age", "Unisex")
+            return default
 
-        # Normalize product type
-        normalized_type = self._normalize_text(product_type)
-
-        # Build combined text to search
-        texts_to_search = [normalized_type]
-
-        # Add tags if provided
+        texts = [self._normalize_text(product_type)]
         if tags:
             if isinstance(tags, list):
-                for tag in tags:
-                    if tag:  # Skip None/empty tags
-                        texts_to_search.append(self._normalize_text(str(tag)))
+                texts.extend(self._normalize_text(str(t)) for t in tags if t)
             elif isinstance(tags, str):
-                texts_to_search.append(self._normalize_text(tags))
-
-        # Also create a combined string for broader matching
-        combined_text = " ".join(texts_to_search)
+                texts.append(self._normalize_text(tags))
+        combined = " ".join(texts)
 
         patterns = self.config.get("gender_age_patterns", {})
-
-        # Track matches with scores
-        gender_scores = {}
+        scores: Dict[str, int] = {}
 
         for category, pattern_list in patterns.items():
             score = 0
-
-            # Check each text individually
-            for text in texts_to_search:
-                for pattern in pattern_list:
-                    if re.search(r"\b" + re.escape(pattern) + r"\b", text):
+            for p in pattern_list:
+                p_esc = re.escape(p)
+                for text in texts:
+                    if re.search(r"\b" + p_esc + r"\b", text):
                         score += 10
-                    elif pattern in text:
+                    elif p in text:
                         score += 5
-
-            # Check combined text
-            for pattern in pattern_list:
-                if re.search(r"\b" + re.escape(pattern) + r"\b", combined_text):
+                if re.search(r"\b" + p_esc + r"\b", combined):
                     score += 5
-                elif pattern in combined_text:
+                elif p in combined:
                     score += 2
-
             if score > 0:
-                gender_scores[category] = score
+                scores[category] = score
 
-        # Pick best match
-        if gender_scores:
-            best_gender = max(gender_scores.items(), key=lambda x: x[1])[0]
-            uploader_logger.debug(
-                f"Matched gender '{best_gender}' with score {gender_scores[best_gender]}"
-            )
-            return best_gender
+        if scores:
+            best = max(scores.items(), key=lambda x: x[1])[0]
+            uploader_logger.debug(f"Matched gender '{best}' with score {scores[best]}")
+            return best
 
-        # No match found, use default
-        default = self.config.get("default_gender_age", "Unisex")
-        uploader_logger.debug(f"No gender match found, using default: '{default}'")
+        uploader_logger.debug(f"No gender match, using default: '{default}'")
         return default
 
     def extract_gender_age_with_unisex_expansion(
         self, product_type: str, tags: Union[List[str], str, None] = None
     ) -> Tuple[str, List[str]]:
-        """
-        Extract gender/age category with unisex expansion.
-        Returns: (primary_gender, all_gender_categories)
+        primary = self.extract_gender_age(product_type, tags)
 
-        For unisex items, returns ('Unisex', ['Unisex', 'Men', 'Women'])
-        For women's items, returns ('Women', ['Women'])
-        For men's items, returns ('Men', ['Men'])
-        """
-        primary_gender = self.extract_gender_age(product_type, tags)
+        # Normalize to canonical plural form used by config
+        canon = {"Women": "Womens", "Men": "Mens",
+                 "Womens": "Womens", "Mens": "Mens"}.get(primary, primary)
 
-        if primary_gender == "Unisex":
-            # Unisex items should appear in both Men's and Women's categories
-            all_genders = ["Unisex", "Men", "Women"]
-        elif primary_gender == "Womens":
-            all_genders = ["Womens"]
-        elif primary_gender == "Mens":
-            all_genders = ["Mens"]
-        elif primary_gender in ["Kids", "Baby"]:
-            all_genders = [primary_gender]
-        elif primary_gender == "Women":
-            all_genders = ["Women"]
-        elif primary_gender == "Men":
-            all_genders = ["Men"]
-        else:
-            # Fallback for any other category
-            all_genders = [primary_gender]
+        if canon == "Unisex":
+            return primary, ["Unisex", "Mens", "Womens"]
+        if canon in ("Womens", "Mens", "Kids", "Baby"):
+            return primary, [canon]
+        return primary, [primary]
 
-        return primary_gender, all_genders
-
+    # ----------------------------------------------------------- categorize
     def categorize_product(self, product_type: str) -> Tuple[str, Optional[str]]:
-        """Categorize product based on keywords.
-        Returns: (top_level_category, subcategory)
-        """
-        # Check cache first
-        cache_key = product_type
-        if cache_key in self._cache:
-            return self._cache[cache_key]
+        if product_type in self._cache:
+            return self._cache[product_type]
 
         normalized = self._normalize_text(product_type)
+        fallback = (self.config.get("uncategorized_fallback", "Uncategorized"), None)
 
         if not normalized:
-            result = (self.config.get("uncategorized_fallback", "Uncategorized"), None)
-            self._cache[cache_key] = result
-            uploader_logger.debug(f"No product type provided, using fallback: {result}")
-            return result
+            self._cache[product_type] = fallback
+            return fallback
 
-        # Track all matches with scores
-        matches = []
-
+        matches: List[Tuple[int, str]] = []
         for category, patterns in self._keyword_patterns.items():
-            # Calculate match score
-            match_score = self._calculate_match_score(
+            score = self._calculate_match_score(
                 normalized, patterns["include"], patterns["raw_keywords"]
             )
+            # Excludes: apply as a hard skip (cleaner than penalty math)
+            if any(re.search(p, normalized) for p in patterns["exclude"]):
+                continue
+            if any(e.lower() in normalized for e in patterns["raw_excludes"]):
+                continue
+            if score > 0:
+                specificity = category.count(" - ")
+                score += specificity * 5
+                matches.append((score, category))
 
-            # Check for excludes (case-insensitive)
-            exclude_score = 0
-            for exclude_pattern in patterns["exclude"]:
-                if re.search(exclude_pattern, normalized, re.IGNORECASE):
-                    exclude_score += 20  # Heavy penalty for excluded terms
-                    break
-
-            for exclude in patterns["raw_excludes"]:
-                if exclude.lower() in normalized:
-                    exclude_score += 10
-                    break
-
-            # Final score
-            final_score = match_score - exclude_score
-
-            if final_score > 0:
-                # Add specificity bonus (more specific categories get higher score)
-                specificity = len(category.split(" - "))  # More dashes = more specific
-                final_score += specificity * 5
-
-                matches.append((final_score, category))
-
-        # Sort by score (highest first)
         matches.sort(key=lambda x: x[0], reverse=True)
 
         if matches:
             best_score, best_category = matches[0]
-
-            # Log the match for debugging
             uploader_logger.debug(
-                f"Categorized '{product_type}' as '{
-            best_category}' (score: {best_score})"
+                f"Categorized '{product_type}' as '{best_category}' (score: {best_score})"
             )
-
-            # Extract top-level category
             if " - " in best_category:
-                top_level, subcategory = best_category.split(" - ", 1)
-                result = (top_level, best_category)
+                top_level, _ = best_category.split(" - ", 1)
+                result: Tuple[str, Optional[str]] = (top_level, best_category)
             else:
                 result = (best_category, None)
+        else:
+            result = fallback
+            uploader_logger.debug(
+                f"No category match for '{product_type}', fallback: {result}"
+            )
 
-            self._cache[cache_key] = result
-            return result
-
-        # No match found
-        result = (self.config.get("uncategorized_fallback", "Uncategorized"), None)
-        self._cache[cache_key] = result
-        uploader_logger.debug(
-            f"No category match found for '{product_type}', using fallback: {result}"
-        )
+        self._cache[product_type] = result
         return result
 
     def categorize_product_with_context(
@@ -790,27 +382,20 @@ class ProductCategorizer:
         vendor: Optional[str] = None,
         tags: Union[List[str], str, None] = None,
     ) -> Tuple[str, Optional[str]]:
-        """
-        Enhanced categorization using multiple data sources.
-        Falls back to product_type only if no better match found.
-        """
-        # Flatten tags into a single searchable string (filter empty strings)
-        tags_text = None
+        tags_text: Optional[str] = None
         if tags:
             if isinstance(tags, list):
-                tags_text = " ".join(str(t) for t in tags if t and t.strip())
+                tags_text = " ".join(str(t) for t in tags if t and str(t).strip())
             elif isinstance(tags, str):
-                tags_text = tags.strip() if tags.strip() else None
+                tags_text = tags.strip() or None
 
-        # Priority weights for different sources
         weights = {
             "product_type": 1.5,
             "title": 1.2,
-            "description": 0.3,  # Reduced: long descriptions caused false positives
+            "description": 0.3,
             "vendor": 0.5,
-            "tags": 0.6,  # Tags often encode product category (e.g. "excludeFromTieredUnderwear")
+            "tags": 0.6,
         }
-
         sources = [
             (product_type, "product_type"),
             (title, "title"),
@@ -819,60 +404,35 @@ class ProductCategorizer:
             (tags_text, "tags"),
         ]
 
-        all_matches = {}
-
-        for text, source_name in sources:
+        aggregate: Dict[str, float] = {}
+        for text, source in sources:
             if not text:
                 continue
-
             normalized = self._normalize_text(text)
-
-            # Find matches in this text
             for category, patterns in self._keyword_patterns.items():
-                match_score = self._calculate_match_score(
+                if any(re.search(p, normalized) for p in patterns["exclude"]):
+                    continue
+                if any(e.lower() in normalized for e in patterns["raw_excludes"]):
+                    continue
+                score = self._calculate_match_score(
                     normalized, patterns["include"], patterns["raw_keywords"]
                 )
+                if score > 0:
+                    aggregate[category] = aggregate.get(category, 0.0) + score * weights[source]
 
-                # Apply source weight
-                weighted_score = match_score * weights[source_name]
-
-                # Check excludes (case-insensitive)
-                exclude_penalty = 0
-                for exclude in patterns["raw_excludes"]:
-                    if exclude.lower() in normalized:
-                        exclude_penalty = 30  # Heavy penalty
-                        break
-
-                final_score = weighted_score - exclude_penalty
-
-                if exclude_penalty > 0:
-                    # Skip excluded categories entirely
-                    continue
-
-                if final_score > 0:
-                    # Add to aggregate scores
-                    if category not in all_matches:
-                        all_matches[category] = 0
-                    all_matches[category] += final_score
-
-        if all_matches:
-            # Pick best category
-            best_category = max(all_matches.items(), key=lambda x: x[1])[0]
-            best_score = all_matches[best_category]
-
+        if aggregate:
+            best_category = max(aggregate.items(), key=lambda x: x[1])[0]
             uploader_logger.debug(
-                f"Categorized with context: '{best_category}' (score: {best_score})"
+                f"Categorized with context: '{best_category}' (score: {aggregate[best_category]})"
             )
-
             if " - " in best_category:
-                top_level, subcategory = best_category.split(" - ", 1)
+                top_level, _ = best_category.split(" - ", 1)
                 return (top_level, best_category)
-            else:
-                return (best_category, None)
+            return (best_category, None)
 
-        # Fall back to product_type only
         return self.categorize_product(product_type)
 
+    # --------------------------------------------------------------- public
     def get_category_info(
         self,
         product_type: str,
@@ -881,17 +441,6 @@ class ProductCategorizer:
         description: Optional[str] = None,
         vendor: Optional[str] = None,
     ) -> Dict[str, Any]:
-        """Get complete category information for a product.
-        Returns a dictionary where some values may be None.
-
-        Args:
-            product_type: The product type string
-            tags: Optional list of tags or string of tags for gender detection
-            title: Optional product title for better categorization
-            description: Optional description for better categorization
-        vendor: Optional vendor for better categorization
-        """
-        # Use enhanced categorization if additional context is provided
         if title or description or vendor or tags:
             top_level, subcategory = self.categorize_product_with_context(
                 product_type, title, description, vendor, tags
@@ -902,87 +451,56 @@ class ProductCategorizer:
         primary_gender, all_genders = self.extract_gender_age_with_unisex_expansion(
             product_type, tags
         )
-
-        # Determine grouped product type
-        if subcategory:
-            grouped_type = subcategory
-        else:
-            grouped_type = top_level
+        grouped = subcategory or top_level
 
         return {
-            "grouped_product_type": grouped_type,
+            "grouped_product_type": grouped,
             "top_level_category": top_level,
-            "subcategory": subcategory,  # This can be None
+            "subcategory": subcategory,
             "gender_age": primary_gender,
             "gender_categories": all_genders,
-            "is_unisex": primary_gender == "Unisex" or "Unisex" in all_genders,
+            "is_unisex": primary_gender == "Unisex",
         }
 
-    def get_category_info_with_defaults(
-        self,
-        product_type: str,
-        tags: Union[List[str], str, None] = None,
-        title: Optional[str] = None,
-        description: Optional[str] = None,
-        vendor: Optional[str] = None,
-    ) -> Dict[str, Any]:
-        """Get complete category information with default values instead of None."""
-        category_info = self.get_category_info(
-            product_type, tags, title, description, vendor
-        )
-
-        # Replace None with empty string or other defaults
+    def get_category_info_with_defaults(self, *args, **kwargs) -> Dict[str, Any]:
+        info = self.get_category_info(*args, **kwargs)
         return {
-            "grouped_product_type": category_info["grouped_product_type"] or "",
-            "top_level_category": category_info["top_level_category"] or "",
-            "subcategory": category_info["subcategory"]
-            or "",  # Convert None to empty string
-            "gender_age": category_info["gender_age"] or "",
-            "gender_categories": category_info["gender_categories"] or [],
-            "is_unisex": category_info.get("is_unisex", False),
+            "grouped_product_type": info["grouped_product_type"] or "",
+            "top_level_category": info["top_level_category"] or "",
+            "subcategory": info["subcategory"] or "",
+            "gender_age": info["gender_age"] or "",
+            "gender_categories": info["gender_categories"] or [],
+            "is_unisex": info.get("is_unisex", False),
         }
 
-    def clear_cache(self):
-        """Clear the categorization cache."""
+    def clear_cache(self) -> None:
         self._cache.clear()
         uploader_logger.debug("🧹 Cleared product categorization cache")
 
-    def reload_config(self):
-        """Reload configuration from file."""
+    def reload_config(self) -> None:
         self.config = ConfigLoader.load_product_type_mapping()
-        self._prepare_keywords()  # Re-prepare keywords
+        self._prepare_keywords()
         self.clear_cache()
-        category_count = len(self.config.get("category_mapping", {}))
         uploader_logger.info(
-            f"🔄 Reloaded product type mapping with {category_count} categories"
+            f"🔄 Reloaded product type mapping with "
+            f"{len(self.config.get('category_mapping', {}))} categories"
         )
 
     def get_category_hierarchy(self, product_type: str) -> Dict[str, Any]:
-        """
-        Returns structured hierarchy for UI filters.
-        Useful for building breadcrumbs and multi-level filtering.
-        """
         top_level, subcategory = self.categorize_product(product_type)
-
-        hierarchy = {
+        hierarchy: Dict[str, Any] = {
             "level_1": top_level,
             "level_2": None,
             "level_3": None,
             "breadcrumb": [top_level],
             "filter_path": top_level.lower().replace(" ", "-"),
         }
-
         if subcategory:
             parts = subcategory.split(" - ")
-            for i, part in enumerate(
-                parts[1:], 1
-            ):  # Skip level_1 (already in parts[0])
-                hierarchy[f"level_{i+1}"] = part
+            for i, part in enumerate(parts[1:], 1):
+                hierarchy[f"level_{i + 1}"] = part
                 hierarchy["breadcrumb"].append(part)
-
-            # Update filter path
             hierarchy["filter_path"] = "/".join(
                 p.lower().replace(" ", "-") for p in parts
             )
-
         return hierarchy
