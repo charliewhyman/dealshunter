@@ -197,14 +197,16 @@ app.get('/api/products', async (c) => {
         // Sort
         switch (filters.sortOrder) {
             case 'price_asc':
-                dbQuery = dbQuery.orderBy('min_price', 'asc').orderBy('id', 'desc');
+                // NULL prices sort last (treat as highest value)
+                dbQuery = dbQuery.orderBy(sql`COALESCE(min_price, 999999) ASC NULLS LAST`).orderBy('id', 'desc');
                 break;
             case 'price_desc':
-                dbQuery = dbQuery.orderBy(sql`min_price DESC NULLS LAST`).orderBy('id', 'desc');
+                // NULL prices sort last (treat as highest value)
+                dbQuery = dbQuery.orderBy(sql`COALESCE(min_price, 999999) DESC NULLS LAST`).orderBy('id', 'desc');
                 break;
             case 'discount_desc':
             default:
-                dbQuery = dbQuery.orderBy(sql`max_discount_percentage DESC NULLS LAST`).orderBy('created_at', 'desc').orderBy('id', 'desc');
+                dbQuery = dbQuery.orderBy(sql`COALESCE(max_discount_percentage, 0) DESC NULLS LAST`).orderBy('created_at', 'desc').orderBy('id', 'desc');
                 break;
         }
 
