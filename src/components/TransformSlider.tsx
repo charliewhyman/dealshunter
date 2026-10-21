@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import { Range } from 'react-range';
 
 type TransformSliderProps = {
@@ -23,11 +23,13 @@ export default function TransformSlider({
   const maxVal = value[1];
 
   const [internalValues, setInternalValues] = useState<[number, number]>([minVal, maxVal]);
+  const [previousValue, setPreviousValue] = useState<[number, number]>([minVal, maxVal]);
 
-  // Keep internal UI values in sync when parent value changes
-  useEffect(() => {
+  // Synchronize internal UI values when the parent value changes.
+  if (previousValue[0] !== minVal || previousValue[1] !== maxVal) {
+    setPreviousValue([minVal, maxVal]);
     setInternalValues([minVal, maxVal]);
-  }, [minVal, maxVal]);
+  }
 
   const handleChange = (vals: number[]) => {
     const newValues = [vals[0], vals[1]] as [number, number];
