@@ -166,30 +166,13 @@ export function HomePage({
     return '';
   });
 
-  const [selectedShopName, setSelectedShopName] = useState<string[]>(() => {
-    return parseArrayParam(searchParams.get('shop'));
-  });
+  const selectedShopName = parseArrayParam(searchParams.get('shop'));
 
-  const [selectedGroupedTypes, setSelectedGroupedTypes] = useState<string[]>(() => {
-    const fromUrl = parseArrayParam(searchParams.get('type'));
-    if (fromUrl.length > 0) return fromUrl;
-    if (categoryConfig?.filterDefaults?.selectedGroupedTypes) return categoryConfig.filterDefaults.selectedGroupedTypes;
-    return [];
-  });
+  const selectedGroupedTypes = parseArrayParam(searchParams.get('type'));
 
-  const [selectedTopLevelCategories, setSelectedTopLevelCategories] = useState<string[]>(() => {
-    const fromUrl = parseArrayParam(searchParams.get('category'));
-    if (fromUrl.length > 0) return fromUrl;
-    if (categoryConfig?.filterDefaults?.selectedTopLevelCategories) return categoryConfig.filterDefaults.selectedTopLevelCategories;
-    return [];
-  });
+  const selectedTopLevelCategories = parseArrayParam(searchParams.get('category'));
 
-  const [selectedGenderAges, setSelectedGenderAges] = useState<string[]>(() => {
-    const fromUrl = parseArrayParam(searchParams.get('gender'));
-    if (fromUrl.length > 0) return fromUrl;
-    if (categoryConfig?.filterDefaults?.selectedGenderAges) return categoryConfig.filterDefaults.selectedGenderAges;
-    return [];
-  });
+  const selectedGenderAges = parseArrayParam(searchParams.get('gender'));
 
   const [onSaleOnly, setOnSaleOnly] = useState<boolean>(() => {
     const fromUrl = searchParams.get('sale');
@@ -212,9 +195,7 @@ export function HomePage({
     return [...PRICE_RANGE];
   });
 
-  const [selectedSizeGroups, setSelectedSizeGroups] = useState<string[]>(() => {
-    return parseArrayParam(searchParams.get('size'));
-  });
+  const selectedSizeGroups = parseArrayParam(searchParams.get('size'));
 
   const [productPricings, setProductPricings] = useState<Record<string, {
     variantPrice: number | null;
@@ -291,6 +272,9 @@ export function HomePage({
   // ============================================================================
 
   useEffect(() => {
+    // Skip sync if we're currently updating filters from URL
+    if (isSyncingFromUrl.current) return;
+
     isSyncingFromUrl.current = true;
 
     if (searchParams.has('search')) {
@@ -305,27 +289,6 @@ export function HomePage({
           ? sortParam
           : 'discount_desc';
       if (urlSort !== sortOrder) setSortOrder(urlSort);
-    }
-
-    if (searchParams.has('shop')) {
-      const urlShops = parseArrayParam(searchParams.get('shop'));
-      if (JSON.stringify(urlShops) !== JSON.stringify(selectedShopName)) setSelectedShopName(urlShops);
-    }
-    if (searchParams.has('size')) {
-      const urlSizes = parseArrayParam(searchParams.get('size'));
-      if (JSON.stringify(urlSizes) !== JSON.stringify(selectedSizeGroups)) setSelectedSizeGroups(urlSizes);
-    }
-    if (searchParams.has('type')) {
-      const urlTypes = parseArrayParam(searchParams.get('type'));
-      if (JSON.stringify(urlTypes) !== JSON.stringify(selectedGroupedTypes)) setSelectedGroupedTypes(urlTypes);
-    }
-    if (searchParams.has('category')) {
-      const urlCats = parseArrayParam(searchParams.get('category'));
-      if (JSON.stringify(urlCats) !== JSON.stringify(selectedTopLevelCategories)) setSelectedTopLevelCategories(urlCats);
-    }
-    if (searchParams.has('gender')) {
-      const urlGenders = parseArrayParam(searchParams.get('gender'));
-      if (JSON.stringify(urlGenders) !== JSON.stringify(selectedGenderAges)) setSelectedGenderAges(urlGenders);
     }
     if (searchParams.has('sale')) {
       const urlSale = searchParams.get('sale') === 'true';
@@ -636,38 +599,39 @@ export function HomePage({
   // ============================================================================
   // EFFECT - Handle Category Page Navigation / Reset
   // ============================================================================
-  const [isCategoryInitialized, setIsCategoryInitialized] = useState(false);
-
   useEffect(() => {
     if (!categoryConfig) {
-      setIsCategoryInitialized(true);
       return;
     }
+
     const d = categoryConfig.filterDefaults;
+    const newParams = new URLSearchParams(searchParams);
+    let changed = false;
 
-    if (!searchParams.has('category') && d.selectedTopLevelCategories) {
-      setSelectedTopLevelCategories(d.selectedTopLevelCategories);
-    }
-    if (!searchParams.has('gender') && d.selectedGenderAges) {
-      setSelectedGenderAges(d.selectedGenderAges);
-    }
-    if (!searchParams.has('type') && d.selectedGroupedTypes) {
-      setSelectedGroupedTypes(d.selectedGroupedTypes);
-    }
-    if (!searchParams.has('search') && d.query) {
-      setSearchQuery(d.query);
-    }
-    if (!searchParams.has('size')) setSelectedSizeGroups([]);
-    if (!searchParams.has('shop')) setSelectedShopName([]);
-    if (!searchParams.has('price')) setSelectedPriceRange([...PRICE_RANGE]);
-    if (!searchParams.has('sale')) setOnSaleOnly(false);
-    if (!searchParams.has('made_in_canada')) {
-      setMadeInCanadaOnly(categoryConfig.slug === 'made-in-canada');
+    if (!newParams.has('search') && d.query) {
+      newParams.set('search', d.query);
+      changed = true;
     }
 
-    setIsCategoryInitialized(true);
-  }, [PRICE_RANGE, categoryConfig, categoryConfig?.slug, searchParams]);
+    if (!newParams.has('price')) {
+      newParams.set('price', PRICE_RANGE.join(','));
+      changed = true;
+    }
 
+    if (!newParams.has('sale')) {
+      newParams.set('sale', 'false');
+      changed = true;
+    }
+
+    if (!newParams.has('made_in_canada') && categoryConfig.slug === 'made-in-canada') {
+      newParams.set('made_in_canada', 'true');
+      changed = true;
+    }
+
+    if (changed) {
+      setSearchParams(newParams, { replace: true });
+    }
+  }, [PRICE_RANGE, categoryConfig, searchParams, setSearchParams]);
   // ============================================================================
   // EFFECT - New deals since your last visit (localStorage)
   // ============================================================================
@@ -741,31 +705,6 @@ export function HomePage({
       };
     }
   }, [categoryConfig]);
-
-  // ============================================================================
-  // EFFECT - Redirect to Home if Category Filters Cleared
-  // ============================================================================
-
-  useEffect(() => {
-    if (!userInteractedRef.current) return;
-    if (!categoryConfig?.filterDefaults) return;
-    if (!isCategoryInitialized) return;
-
-    const defaults = categoryConfig.filterDefaults;
-    let shouldRedirect = false;
-
-    if (defaults.selectedTopLevelCategories?.length && selectedTopLevelCategories.length === 0) {
-      shouldRedirect = true;
-    }
-    if (defaults.selectedGenderAges?.length && selectedGenderAges.length === 0) {
-      shouldRedirect = true;
-    }
-
-    if (shouldRedirect) {
-      userInteractedRef.current = false;
-      navigate('/', { replace: true });
-    }
-  }, [categoryConfig, selectedTopLevelCategories, selectedGenderAges, navigate, isCategoryInitialized]);
 
   // ============================================================================
   // FETCH INITIAL FILTER OPTIONS
