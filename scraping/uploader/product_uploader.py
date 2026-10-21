@@ -224,6 +224,14 @@ class ProductProcessor:
         if min_price is None:
             self.stats["skipped_no_price"] += 1
             return True, "no valid price"
+        
+        if min_price is None or min_price >= 99999:
+            self.stats["skipped_no_price"] += 1
+            return True, "no valid price"
+        
+        if min_price is None or min_price <= 0:
+            self.stats["skipped_no_price"] += 1
+            return True, "no valid price"
 
         # Check minimum price threshold
         if min_price < self.min_price_threshold:
