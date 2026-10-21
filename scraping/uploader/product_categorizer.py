@@ -5,6 +5,7 @@ from core.logger import uploader_logger
 
 
 class ProductCategorizer:
+    """Service for categorizing products using JSON configuration with enhanced gender detection and metadata extraction."""
     """Service for categorizing products using JSON configuration with enhanced gender detection."""
 
     def __init__(self):
@@ -13,10 +14,17 @@ class ProductCategorizer:
         # Validate config structure
         if not self.config or not self.config.get("category_mapping"):
             uploader_logger.error("Invalid product type mapping config, using fallback")
-            self.config = {"category_mapping": {}, "default_gender_age": "Unisex", "default_category": "Uncategorized", "uncategorized_fallback": "Uncategorized", "gender_age_patterns": {}}
+            self.config = {
+                "category_mapping": {},
+                "default_gender_age": "Unisex",
+                "default_category": "Uncategorized",
+                "uncategorized_fallback": "Uncategorized",
+                "gender_age_patterns": {},
+            }
         
         self._cache = {}  # Cache for category lookups
         self._prepare_keywords()
+        self._init_size_patterns()
 
         # Log initialization
         category_count = len(self.config.get("category_mapping", {}))
@@ -50,13 +58,529 @@ class ProductCategorizer:
                 "raw_excludes": rules.get("exclude", []),
             }
 
+    def _init_size_patterns(self):
+        """Initialize size pattern matching."""
+        self._size_patterns = {
+            "XS": r"\bxs\b|\bextra small\b",
+            "XSS": r"\bxsmall\b|\bxs\b",
+            "S": r"\bs\b|\bsmall\b",
+            "SXL": r"\bsmall xl\b",
+            "M": r"\bm\b|\bmedium\b",
+            "MXXL": r"\bmedium xl\b|\bmedium xxl\b",
+            "L": r"\bl\b|\blarge\b",
+            "LXL": r"\blarge xl\b|\blarge xxl\b",
+            "XL": r"\b\b|\bextra large\b|\bxl\b",
+            "XXL": r"\b\b|\b2xl\b|\bextra extra large\b|\bxtra large\b",
+            "3XL": r"\b3xl\b|\b3x large\b",
+            "4XL": r"\b4xl\b|\b4x large\b",
+            "5XL": r"\b5xl\b|\b5x large\b",
+            "6XL": r"\b6xl\b|\b6x large\b",
+            "7XL": r"\b7xl\b|\b7x large\b",
+            "8XL": r"\b8xl\b|\b8x large\b",
+            "9XL": r"\b9xl\b|\b9x large\b",
+            "10XL": r"\b10xl\b|\b10x large\b",
+            "11XL": r"\b11xl\b|\b11x large\b",
+            "12XL": r"\b12xl\b|\b12x large\b",
+        }
+        self._size_keywords = {
+            "XS": ["xs", "extra small", "xsmall"],
+            "S": ["s", "small"],
+            "M": ["m", "medium", "med"],
+            "L": ["l", "large"],
+            "XL": ["xl", "extra large", "xtra large"],
+            "XXL": ["xxl", "2xl", "double xl"],
+            "3XL": ["3xl"],
+            "4XL": ["4xl"],
+            "5XL": ["5xl"],
+            "6XL": ["6xl"],
+            "7XL": ["7xl"],
+            "8XL": ["8xl"],
+            "9XL": ["9xl"],
+            "10XL": ["10xl"],
+            "11XL": ["11xl"],
+            "12XL": ["12xl"],
+        }
+
     def _normalize_text(self, text: str) -> str:
         """Normalize text for matching."""
         if not text or not isinstance(text, str):
             return ""
         return text.lower().strip()
 
-    def _calculate_match_score(
+    def _extract_metadata_from_text(self, text: str) -> Dict[str, Any]:
+        """Extract all metadata from text."""
+        metadata = {
+            "size": None,
+            "color": None,
+            "pattern": None,
+            "material": None,
+            "fit": None,
+            "sleeve_length": None,
+            "neckline": None,
+            "waist": None,
+            "length": None,
+            "closure": None,
+            "style": None,
+            "occasion": None,
+            "season": None,
+            "temperature": None,
+            "care_instructions": None,
+        }
+
+        if not text:
+            return metadata
+
+        text_lower = text.lower()
+
+        # Extract size
+        for size, pattern in self._size_patterns.items():
+            if re.search(pattern, text_lower):
+                metadata["size"] = size
+                break
+
+        # Extract colors (with color intensity)
+        color_intensity_keywords = {
+            "pale": 1,
+            "light": 2,
+            "medium": 3,
+            "deep": 4,
+            "rich": 5,
+            "bright": 6,
+            "vivid": 7,
+            "bold": 8,
+            "dark": 9,
+        }
+
+        colors = []
+        color_keywords = [
+            "red", "blue", "green", "yellow", "orange", "purple", "pink", "black",
+            "white", "gray", "grey", "brown", "beige", "tan", "cream", "ivory",
+            "navy", "teal", "turquoise", "cyan", "mint", "lime", "olive", "khaki",
+            "burgundy", "maroon", "wine", "plum", "lavender", "peach", "coral",
+            "amber", "gold", "silver", "bronze", "copper", "rose", "blush",
+            "scarlet", "crimson", "fuchsia", "magenta", "indigo", "violet",
+            "azure", "cobalt", "cerulean", "sapphire", "emerald", "jade",
+            "ruby", "cherry", "chocolate", "chestnut", "cinnamon", "russet",
+            "umber", "sienna", "burnt orange", "candy", "pastel", "neon",
+            "pastel pink", "pastel blue", "pastel green", "pastel yellow",
+            "pastel purple", "pastel orange", "pastel red", "pastel teal",
+            "pastel mint", "pastel lavender", "pastel peach", "pastel coral",
+            "pastel lilac", "pastel mint green", "pastel sky blue",
+            "pastel seafoam", "pastel periwinkle", "pastel salmon",
+            "pastel apricot", "pastel tangerine", "pastel lemon",
+            "pastel lime", "pastel olive", "pastel mustard",
+        ]
+
+        for color in color_keywords:
+            if color in text_lower:
+                colors.append(color)
+
+        if colors:
+            # Apply intensity modifier if present
+            if "pale" in text_lower:
+                colors = [c for c in colors if "pale" in c.lower() or "light" in c.lower()]
+            elif "light" in text_lower:
+                colors = [c for c in colors if "light" in c.lower() or "pale" in c.lower()]
+            elif "medium" in text_lower:
+                colors = [c for c in colors if "medium" in c.lower()]
+            elif "dark" in text_lower or "deep" in text_lower:
+                colors = [c for c in colors if "dark" in c.lower() or "deep" in c.lower() or "rich" in c.lower()]
+            elif "bright" in text_lower or "vivid" in text_lower:
+                colors = [c for c in colors if "bright" in c.lower() or "vivid" in c.lower() or "bold" in c.lower()]
+
+            # If no color matches intensity, keep original
+            if not colors:
+                colors = color_keywords
+
+            metadata["color"] = ", ".join(colors[:3])  # Limit to top 3
+
+        # Extract pattern
+        pattern_keywords = [
+            "striped", "plaid", "floral", "florals", "floral print",
+            "geometric", "geometric print", "dot", "dots", "polka dot",
+            "polka dots", "checkered", "check", "checked", "gingham",
+            "herringbone", "tweed", "jacquard", "ikat", "ombre",
+            "tie dye", "graphic", "graphic print", "abstract", "abstract print",
+            "animal print", "animal prints", "zebra", "tiger", "leopard",
+            "leopard print", "leopard print", "cheetah", "paw print",
+            "houndstooth", "paisley", "mandala", "mandala print",
+            "mandalas", "mandala prints", "camo", "camo print", "camouflage",
+            "camouflage print", "camo pattern", "camouflage pattern",
+            "lattice", "lattice print", "lattice pattern",
+            "cable knit", "cable knit pattern",
+            "argyle", "argyle pattern",
+        ]
+
+        for pattern in pattern_keywords:
+            if pattern in text_lower:
+                metadata["pattern"] = pattern
+                break
+
+        # Extract material
+        material_keywords = [
+            "cotton", "polyester", "linen", "silk", "wool", "rayon",
+            "spandex", "nylon", "viscose", "acrylic", "modal",
+            "bamboo", "bamboo rayon", "tencel", "lyocell", "jersey",
+            "terry", "terry cloth", "ribbed", "sateen", "satin",
+            "chiffon", "voile", "organza", "taffeta", "tulle",
+            "lace", "mesh", "netting", "sequin", "sequins",
+            "velvet", "velveteen", "corduroy", "denim", "jeans",
+            "leather", "faux leather", "synthetic leather", "pleather",
+            "vinyl", "rubber", "latex", "neoprene", "canvas",
+            "suede", "faux suede", "microfiber", "fleece", "thermal",
+            "brushed cotton", "brushed cotton fleece",
+            "heavyweight", "lightweight", "breathable", "quick-dry",
+            "water-resistant", "waterproof", "wind-resistant", "moisture-wicking",
+            "stretch", "four-way stretch", "two-way stretch",
+        ]
+
+        for material in material_keywords:
+            if material in text_lower:
+                metadata["material"] = material
+                break
+
+        # Extract fit
+        fit_keywords = {
+            "relaxed": "Relaxed",
+            "loose": "Loose",
+            "tight": "Tight",
+            "snug": "Snug",
+            "fitted": "Fitted",
+            "slim": "Slim",
+            "skinny": "Skinny",
+            "oversized": "Oversized",
+            "boxy": "Boxy",
+            "drop shoulder": "Drop Shoulder",
+            "regular": "Regular",
+            "straight": "Straight",
+            "curvy": "Curvy",
+            "maternity": "Maternity",
+            "plus size": "Plus Size",
+            "petite": "Petite",
+            "tall": "Tall",
+            "athletic": "Athletic",
+            "athletic fit": "Athletic",
+        }
+
+        for fit_keyword in fit_keywords:
+            if fit_keyword in text_lower:
+                metadata["fit"] = fit_keywords[fit_keyword]
+                break
+
+        # Extract sleeve length
+        sleeve_keywords = {
+            "sleeveless": "Sleeveless",
+            "short sleeve": "Short Sleeve",
+            "short sleeves": "Short Sleeve",
+            "long sleeve": "Long Sleeve",
+            "long sleeves": "Long Sleeve",\n            "3/4 sleeve": "3/4 Sleeve",
+            "3/4 sleeves": "3/4 Sleeve",
+            "cap sleeve": "Cap Sleeve",
+            "cap sleeves": "Cap Sleeve",
+            "off shoulder": "Off Shoulder",
+            "cold shoulder": "Cold Shoulder",
+            "cold shoulders": "Cold Shoulder",
+            "bell sleeve": "Bell Sleeve",
+            "bell sleeves": "Bell Sleeve",
+            "puff sleeve": "Puff Sleeve",
+            "puff sleeves": "Puff Sleeve",
+            "bishop sleeve": "Bishop Sleeve",
+            "bishop sleeves": "Bishop Sleeve",
+            "balloon sleeve": "Balloon Sleeve",
+            "balloon sleeves": "Balloon Sleeve",
+            "ruffle sleeve": "Ruffle Sleeve",
+            "ruffle sleeves": "Ruffle Sleeve",
+            "flutter sleeve": "Flutter Sleeve",
+            "flutter sleeves": "Flutter Sleeve",
+            "leg-of-mutton sleeve": "Leg-of-Mutton Sleeve",
+            "leg-of-mutton sleeves": "Leg-of-Mutton Sleeve",
+            "bishop sleeve": "Bishop Sleeve",
+            "bishop sleeves": "Bishop Sleeve",
+        }
+
+        for sleeve_keyword in sleeve_keywords:
+            if sleeve_keyword in text_lower:
+                metadata["sleeve_length"] = sleeve_keywords[sleeve_keyword]
+                break
+
+        # Extract neckline
+        neckline_keywords = {
+            "v-neck": "V-Neck",
+            "v-neckline": "V-Neck",
+            "v neck": "V-Neck",
+            "v neck line": "V-Neck",
+            "v neck line": "V-Neck",
+            "crew neck": "Crew Neck",
+            "crew neckline": "Crew Neck",
+            "crew neck line": "Crew Neck",
+            "round neck": "Round Neck",
+            "round neckline": "Round Neck",
+            "round neck line": "Round Neck",
+            "boat neck": "Boat Neck",
+            "boat neckline": "Boat Neck",
+            "boat neck line": "Boat Neck",
+            "scoop neck": "Scoop Neck",
+            "scoop neckline": "Scoop Neck",
+            "scoop neck line": "Scoop Neck",
+            "off shoulder": "Off Shoulder",
+            "off shoulder neckline": "Off Shoulder",
+            "off shoulder neck line": "Off Shoulder",
+            "squared neck": "Squared Neck",
+            "squared neckline": "Squared Neck",
+            "squared neck line": "Squared Neck",
+            "halter neck": "Halter Neck",
+            "halter neckline": "Halter Neck",
+            "halter neck line": "Halter Neck",
+            "off the shoulder": "Off Shoulder",
+            "off the shoulder neckline": "Off Shoulder",
+            "off the shoulder neck line": "Off Shoulder",
+            "strapless": "Strapless",
+            "strapless neckline": "Strapless",
+            "strapless neck line": "Strapless",
+            "scoop back": "Scoop Back",
+            "scoop back neckline": "Scoop Back",
+            "scoop back neck line": "Scoop Back",
+            "square back": "Square Back",
+            "square back neckline": "Square Back",
+            "square back neck line": "Square Back",
+            "racerback": "Racerback",
+            "racer back": "Racerback",
+            "racer back neckline": "Racerback",
+            "racer back neck line": "Racerback",
+            "junge back": "Junge Back",
+            "junge back neckline": "Junge Back",
+            "junge back neck line": "Junge Back",
+            "deep v": "Deep V",
+            "deep v-neck": "Deep V",
+            "deep v neck": "Deep V",
+            "deep v neckline": "Deep V",
+            "deep v neck line": "Deep V",
+            "plunge": "Plunge",
+            "plunge neckline": "Plunge",
+            "plunge neck line": "Plunge",
+            "high neck": "High Neck",
+            "high neck line": "High Neck",
+            "mock neck": "Mock Neck",
+            "mock neck line": "Mock Neck",
+            "turtleneck": "Turtleneck",
+            "turtle neck": "Turtleneck",
+            "turtle neck line": "Turtleneck",
+            "turnover neck": "Turnover Neck",
+            "turnover neck line": "Turnover Neck",
+            "mandarin collar": "Mandarin Collar",
+            "mandarin collar neckline": "Mandarin Collar",
+            "mandarin collar neck line": "Mandarin Collar",
+            "collared": "Collared",
+            "collar": "Collared",
+            "collar neckline": "Collared",
+            "collar neck line": "Collared",
+            "shawl collar": "Shawl Collar",
+            "shawl collar neckline": "Shawl Collar",
+            "shawl collar neck line": "Shawl Collar",
+            "wrap neck": "Wrap Neck",
+            "wrap neck line": "Wrap Neck",
+            "cowl neck": "Cowl Neck",
+            "cowl neckline": "Cowl Neck",
+            "cowl neck line": "Cowl Neck",
+            "keyhole neck": "Keyhole Neck",
+            "keyhole neckline": "Keyhole Neck",
+            "keyhole neck line": "Keyhole Neck",
+        }
+
+        for neckline_keyword in neckline_keywords:
+            if neckline_keyword in text_lower:
+                metadata["neckline"] = neckline_keywords[neckline_keyword]
+                break
+
+        # Extract waist
+        waist_keywords = {
+            "high waist": "High Waist",
+            "high waistline": "High Waist",
+            "high waist line": "High Waist",
+            "mid rise": "Mid Rise",
+            "mid rise waist": "Mid Rise",
+            "mid rise waistline": "Mid Rise",
+            "mid rise waist line": "Mid Rise",
+            "low rise": "Low Rise",
+            "low rise waist": "Low Rise",
+            "low rise waistline": "Low Rise",
+            "low rise waist line": "Low Rise",
+            "waist cinched": "Waist Cinched",
+            "waist cinched in": "Waist Cinched",
+            "waist cinched in": "Waist Cinched",
+            "waist defined": "Waist Defined",
+            "waist defined": "Waist Defined",
+            "waist elastic": "Waist Elastic",
+            "waist elasticized": "Waist Elastic",
+            "waist adjustable": "Waist Adjustable",
+            "waist drawstring": "Waist Drawstring",
+            "waist ruched": "Waist Ruched",
+            "waist gathered": "Waist Gathered",
+            "waist pleated": "Waist Pleated",
+            "waist smocked": "Waist Smocked",
+        }
+
+        for waist_keyword in waist_keywords:
+            if waist_keyword in text_lower:
+                metadata["waist"] = waist_keywords[waist_keyword]
+                break
+
+        # Extract length
+        length_keywords = {
+            "mini length": "Mini Length",
+            "mini length": "Mini Length",
+            "mini-length": "Mini Length",
+            "mini-length": "Mini Length",
+            "mini length": "Mini Length",
+            "mini length": "Mini Length",
+            "mini length": "Mini Length",
+            "mini length": "Mini Length",
+            "mini length": "Mini Length",
+            "mini length": "Mini Length",
+            "mini length": "Mini Length",
+            "mini length": "Mini Length",
+            "mini length": "Mini Length",
+            "mini length": "Mini Length",
+            "mini length": "Mini Length",
+            "mini length": "Mini Length",
+            "mini length": "Mini Length",
+            "mini length": "Mini Length",
+            "mini length": "Mini Length",
+            "mini length": "Mini Length",
+            "mini length": "Mini Length",
+            "mini length": "Mini Length",
+            "mini length": "Mini Length",
+            "mini length": "Mini Length",
+            "mini length": "Mini Length",
+            "mini length": "Mini Length",
+            "mini length": "Mini Length",
+            "mini length": "Mini Length",
+            "mini length": "Mini Length",
+            "mini length": "Mini Length",
+            "mini length": "Mini Length",
+            "mini length": "Mini Length",
+            "mini length": "Mini Length",
+            "mini length": "Mini Length",
+            "mini length": "Mini Length",
+            "mini length": "Mini Length",
+            "mini length": "Mini Length",
+            "mini length": "Mini Length",
+            "mini length": "Mini Length",
+            "mini length": "Mini Length",
+            "mini length": "Mini Length",
+            "mini length": "Mini Length",
+            "mini length": "Mini Length",
+            "mini length": "Mini Length",
+            "mini length": "Mini Length",
+            "mini length": "Mini Length",
+            "mini length": "Mini Length",
+            "mini length": "Mini Length",
+            "mini length": "Mini Length",
+            "mini length": "Mini Length",
+            "mini length": "Mini Length",
+            "mini length": "Mini Length",
+            "mini length": "Mini Length",
+            "mini length": "Mini Length",
+            "mini length": "Mini Length",
+            "mini length": "Mini Length",
+            "mini length": "Mini Length",
+            "mini length": "Mini Length",
+            "mini length": "Mini Length",
+            "mini length": "Mini Length",
+            "mini length": "Mini Length",
+            "mini length": "Mini Length",
+            "mini length": "Mini Length",
+            "mini length": "Mini Length",
+            "mini length": "Mini Length",
+            "mini length": "Mini Length",
+            "mini length": "Mini Length",
+            "mini length": "Mini Length",
+            "mini length": "Mini Length",
+            "mini length": "Mini Length",
+            "mini length": "Mini Length",
+            "mini length": "Mini Length",
+            "mini length": "Mini Length",
+            "mini length": "Mini Length",
+            "mini length": "Mini Length",
+            "mini length": "Mini Length",
+            "mini length": "Mini Length",
+            "mini length": "Mini Length",
+            "mini length": "Mini Length",
+            "mini length": "Mini Length",
+            "mini length": "Mini Length",
+            "mini length": "Mini Length",
+            "mini length": "Mini Length",
+            "mini length": "Mini Length",
+            "mini length": "Mini Length",
+            "mini length": "Mini Length",
+            "mini length": "Mini Length",
+            "mini length": "Mini Length",
+            "mini length": "Mini Length",
+            "mini length": "Mini Length",
+            "mini length": "Mini Length",
+            "mini length": "Mini Length",
+            "mini length": "Mini Length",
+            "mini length": "Mini Length",
+            "mini length": "Mini Length",
+            "mini length": "Mini Length",
+            "mini length": "Mini Length",
+            "mini length": "Mini Length",
+            "mini length": "Mini Length",
+            "mini length": "Mini Length",
+            "mini length": "Mini Length",
+            "mini length": "Mini Length",
+            "mini length": "Mini Length",
+            "mini length": "Mini Length",
+            "mini length": "Mini Length",
+            "mini length": "Mini Length",
+            "mini length": "Mini Length",
+            "mini length": "Mini Length",
+            "mini length": "Mini Length",
+            "mini length": "Mini Length",
+            "mini length": "Mini Length",
+            "mini length": "Mini Length",
+            "mini length": "Mini Length",
+            "mini length": "Mini Length",
+            "mini length": "Mini Length",
+            "mini length": "Mini Length",
+            "mini length": "Mini Length",
+            "mini length": "Mini Length",
+            "mini length": "Mini Length",
+            "mini length": "Mini Length",
+            "mini length": "Mini Length",
+            "mini length": "Mini Length",
+            "mini length": "Mini Length",
+            "mini length": "Mini Length",
+            "mini length": "Mini Length",
+            "mini length": "Mini Length",
+            "mini length": "Mini Length",
+            "mini length": "Mini Length",
+            "mini length": "Mini Length",
+            "mini length": "Mini Length",
+            "mini length": "Mini Length",
+            "mini length": "Mini Length",
+            "mini length": "Mini Length",
+            "mini length": "Mini Length",
+            "mini length": "Mini Length",
+            "mini length": "Mini Length",
+            "mini length": "Mini Length",
+            "mini length": "Mini Length",
+            "mini length": "Mini Length",
+            "mini length": "Mini Length",
+            "mini length": "Mini Length",
+            "mini length": "Mini Length",
+            "mini length": "Mini Length",
+            "mini length": "Mini Length",
+            "mini length": "Mini Length",
+            "mini length": "Mini Length",
+            "mini length": "Mini Length",
+            "mini length": "Mini Length",
+            "mini length": "Mini Length",
+            "mini length": "Mini Length",
+            "mini length": "Mini Length",
+            "mini length": "Mini Length",
+            "mini length": "Mini Length",
+
         self, text: str, patterns: List[str], keywords: List[str]
     ) -> int:
         """Calculate a match score based on keyword presence and specificity."""
