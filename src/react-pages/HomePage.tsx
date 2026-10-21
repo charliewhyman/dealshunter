@@ -161,7 +161,7 @@ export function HomePage({
   // STATE - What's new (server-driven deal diff + local new-product strip)
   // ============================================================================
   const scope = categoryConfig?.slug ?? '__home';
-  const [dealBaselineAt, setDealBaselineAt] = useState<string | null>(() => getDealBaseline(scope));
+  const [dealBaselineAt, setDealBaselineAt] = useState<string | null>(null);
   const [newDeals, setNewDeals] = useState<ProductWithDetails[]>([]);
   const [newDealsLoading, setNewDealsLoading] = useState(false);
   const [now] = useState(() => Date.now());
@@ -650,50 +650,51 @@ export function HomePage({
   //     always return zero on the first visit. Instead we set the baseline
   //     silently on first visit, and fetch deals on subsequent visits.
   useEffect(() => {
-    if (typeof window === 'undefined') return;
-    if (!categoryConfig && initialProducts.length === 0) {
-      // Wait for the first products to load before establishing a baseline.
-      return;
-    }
+  if (typeof window === 'undefined') return;
+
+  queueMicrotask(() => {
     const existing = getDealBaseline(scope);
-    if (!existing) {
+    if (existing) {
+      setDealBaselineAt(existing);
+    } else {
       const iso = new Date().toISOString();
       setDealBaseline(scope, iso);
-      setDealBaselineForState(iso);
-      return;
+      setDealBaselineAt(iso);
     }
-    setDealBaselineForState(existing);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [scope, categoryConfig, initialProducts.length]);
+  });
+}, [scope]);
 
-  // Local helper to keep state in sync with what's actually in storage.
-  function setDealBaselineForState(iso: string) {
-    if (dealBaselineAt !== iso) setDealBaselineAt(iso);
-  }
+// (2) Fetch the deal diff from the server whenever scope or baseline changes.
+// Gated on dealBaselineAt (not a separate "resolved" flag): the fetch must
+// not run before the baseline exists, and the baseline is the only thing
+// the request needs.
+useEffect(() => {
+  if (!dealBaselineAt) return;
+  let cancelled = false;
+  queueMicrotask(() => {
+    if (!cancelled) {
+      setNewDealsLoading(true);
+      setNewDeals([]);
+    }
+  });
 
-  // (2) Fetch the deal diff from the server whenever scope or baseline changes.
-  useEffect(() => {
-    if (!dealBaselineAt) return;
-    let cancelled = false;
-    setNewDealsLoading(true);
+  apiClient
+    .fetchNewDealsSince(dealBaselineAt, NEW_DEALS_LIMIT)
+    .then(rows => {
+      if (cancelled) return;
+      setNewDeals(Array.isArray(rows) ? rows : []);
+    })
+    .catch(err => {
+      if (cancelled) return;
+      console.error('Failed to fetch new deals since baseline:', err);
+      setNewDeals([]);
+    })
+    .finally(() => {
+      if (!cancelled) setNewDealsLoading(false);
+    });
 
-    apiClient
-      .fetchNewDealsSince(dealBaselineAt, NEW_DEALS_LIMIT)
-      .then(rows => {
-        if (cancelled) return;
-        setNewDeals(Array.isArray(rows) ? rows : []);
-      })
-      .catch(err => {
-        if (cancelled) return;
-        console.error('Failed to fetch new deals since baseline:', err);
-        setNewDeals([]);
-      })
-      .finally(() => {
-        if (!cancelled) setNewDealsLoading(false);
-      });
-
-    return () => { cancelled = true; };
-  }, [dealBaselineAt, scope]);
+  return () => { cancelled = true; };
+}, [dealBaselineAt, scope]);
 
   // ============================================================================
   // PRE-WARM CONNECTION ON APP START
@@ -999,13 +1000,8 @@ export function HomePage({
     // 1) Server-driven deal rows (independent of pagination).
     const baselineTs = dealBaselineAt ? Date.parse(dealBaselineAt) : 0;
     for (const p of newDeals) {
-      // The server already determined this is "new or deeper since baseline".
-      // We don't distinguish new-vs-deeper here because the API contract
-      // only returns the product; if you want separate badges, add a
-      // `deal_kind: 'new' | 'deeper'` field to the response and branch here.
-      const id = String(p.id);
       const pct = p.max_discount_percentage ?? 0;
-      upsert(p, 'sale', Number.isFinite(baselineTs) ? baselineTs + pct : Date.now());
+        upsert(p, 'sale', Number.isFinite(baselineTs) ? baselineTs + pct : now);
     }
 
     // 2) Local new-product strip from currently-loaded page.
@@ -1517,11 +1513,14 @@ export function HomePage({
                   <span className="text-sm font-normal text-gray-500">({newItems.length})</span>
                 </h2>
                 <p className="text-sm text-gray-500 dark:text-gray-400 mb-3">
-                  Deals that changed
                   {dealBaselineAt
-                    ? ` since ${new Date(dealBaselineAt).toLocaleDateString('en-CA', { weekday: 'long' })}`
-                    : ''}
-                  , and products added in the last {NEW_IN_CATALOG_DAYS} days.
+                    ? `Deals that changed since ${new Date(dealBaselineAt).toLocaleDateString('en-CA', {
+                        weekday: 'long',
+                        timeZone: 'UTC',
+                      })}.`
+                    : 'Recent deals and new products.'}
+                  {' '}
+                  Plus products added in the last {NEW_IN_CATALOG_DAYS} days.
                 </p>
                 <div className="grid grid-cols-2 gap-2 sm:gap-3 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
                   {newItems.map(({ product, badges }) => {
@@ -1535,30 +1534,13 @@ export function HomePage({
                           else cardRefs.current.delete(`nw-${pid}`);
                         }}
                       >
-                        <div className="relative">
-                          <div className="absolute top-1.5 left-1.5 z-10 flex flex-wrap gap-1">
-                            {badges.includes('new') && (
-                              <span className="px-1.5 py-0.5 text-[10px] font-semibold rounded bg-blue-600 text-white shadow">
-                                NEW
-                              </span>
-                            )}
-                            {badges.includes('sale') && (
-                              <span className="px-1.5 py-0.5 text-[10px] font-semibold rounded bg-orange-500 text-white shadow">
-                                ON SALE
-                              </span>
-                            )}
-                            {badges.includes('deeper') && (
-                              <span className="px-1.5 py-0.5 text-[10px] font-semibold rounded bg-red-600 text-white shadow">
-                                DEAL ↓
-                              </span>
-                            )}
-                          </div>
-                          <ProductCard
-                            product={product}
-                            pricing={productPricings[pid]}
-                            isLcp={false}
-                          />
-                        </div>
+                        <ProductCard
+                          product={product}
+                          pricing={productPricings[pid]}
+                          isLcp={false}
+                          isNew={badges.includes('new')}
+                          isNewDeal={badges.includes('sale') || badges.includes('deeper')}
+                        />
                       </div>
                     );
                   })}
