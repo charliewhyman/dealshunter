@@ -180,7 +180,7 @@ export function HomePage({
 
   const madeInCanadaOnly =
     searchParams.has('made_in_canada')
-      ? searchParams.get('made_in_canada') === 'true'
+      ? searchParams.get('made_in_canada') !== 'false'
       : categoryConfig?.slug === 'made-in-canada';
 
   const selectedPriceRange =
@@ -222,7 +222,7 @@ export function HomePage({
     } else {
       newParams.set(key, value);
     }
-    setSearchParams(newParams, { replace: true });
+    setSearchParams(newParams, { replace: false });
   }, [searchParams, setSearchParams]);
 
   // ============================================================================
@@ -258,6 +258,14 @@ export function HomePage({
       updateFilter('price', null);
     }
   }, [selectedPriceRange, PRICE_RANGE, updateFilter]);
+
+  // Debounced price filter to prevent scroll jumps on every keystroke
+  const debouncedPriceUpdate = useCallback(
+    debounce((filters: FilterOptions) => {
+      fetchFilteredProducts(filters, 0, sortOrder, true);
+    }, 300),
+    [fetchFilteredProducts, sortOrder]
+  );
 
   // ============================================================================
   // EFFECTS - URL Sync
@@ -614,6 +622,11 @@ export function HomePage({
       changed = true;
     }
 
+    // Don't override user's explicit 'false' value
+    if (newParams.has('made_in_canada') && newParams.get('made_in_canada') === 'false') {
+      changed = true; // Mark as changed so we don't add the default
+    }
+
     if (changed) {
       setSearchParams(newParams, { replace: true });
     }
@@ -858,6 +871,10 @@ export function HomePage({
     navigate('/', { replace: true });
   };
 
+  const handleMadeInCanadaChange = useCallback((e: ChangeEvent<HTMLInputElement>) => {
+    updateFilter('made_in_canada', e.target.checked ? 'true' : 'false');
+  }, [updateFilter]);
+
   // ============================================================================
   // COMPUTED VALUES
   // ============================================================================
@@ -1013,14 +1030,24 @@ export function HomePage({
                     >
                       <div className="flex items-center justify-between mb-4">
                         <h3 className="font-semibold text-gray-900 dark:text-gray-100 hidden lg:block">Filters</h3>
-                        {activeFilterCount > 0 && (
+                        <div className="flex items-center gap-3">
+                          {activeFilterCount > 0 && (
+                            <button
+                              onClick={handleClearAllFilters}
+                              className="text-xs text-blue-600 dark:text-blue-400 hover:text-blue-800 dark:hover:text-blue-300 font-medium"
+                            >
+                              Clear all
+                            </button>
+                          )}
                           <button
-                            onClick={handleClearAllFilters}
+                            onClick={() => {
+                              fetchFilteredProducts(currentFilters, 0, sortOrder, true);
+                            }}
                             className="text-xs text-blue-600 dark:text-blue-400 hover:text-blue-800 dark:hover:text-blue-300 font-medium"
                           >
-                            Clear all
+                            Apply
                           </button>
-                        )}
+                        </div>
                       </div>
 
                       <div className="space-y-3">
@@ -1030,7 +1057,7 @@ export function HomePage({
                               type="checkbox"
                               checked={madeInCanadaOnly}
                               onChange={(e) =>
-                                updateFilter('made_in_canada', e.target.checked ? 'true' : null)
+                                updateFilter('made_in_canada', e.target.checked ? 'true' : 'false')
                               }
                               className="h-4 w-4 shrink-0 rounded border-gray-300 text-red-600 focus:ring-2 focus:ring-red-500 dark:border-gray-600 dark:bg-gray-700"
                             />
