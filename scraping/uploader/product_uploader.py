@@ -104,7 +104,7 @@ class HtmlSanitizer:
             if len(text) > max_length:
                 text = text[:max_length].rsplit(" ", 1)[0] + "..."
             return text
-        except:
+        except:  # noqa: E722
             return ""
 
 
@@ -126,11 +126,17 @@ class ProductProcessor:
         self.min_price_threshold = min_price_threshold
         self.preserve_html = preserve_html
 
+        # SNAPSHOT: previous DB state per product (id -> row dict), populated
+        # by the uploader before each file is processed.
+        self.previous_state: Dict[str, Dict[str, Any]] = {}
+
         # Collections
         self.collections = {
             "products": [],
             "variants": [],
             "images": [],
+            # SNAPSHOT: append-only product_snapshots rows
+            "snapshots": [],
         }
 
         # Statistics
@@ -146,6 +152,8 @@ class ProductProcessor:
             "html_descriptions": 0,
             "plain_text_descriptions": 0,
             "failed_descriptions": 0,
+            # SNAPSHOT
+            "snapshots_recorded": 0,
         }
 
     def _process_description(
@@ -267,6 +275,17 @@ class ProductProcessor:
             "width": width,
             "height": height,
         }
+
+    @staticmethod
+    def _num(v: Any) -> Optional[float]:
+        """Normalize numeric (Decimal / str / None) to float for comparison."""
+        # SNAPSHOT: psycopg returns Decimal for numeric; we must compare like-for-like
+        if v is None:
+            return None
+        try:
+            return float(v)
+        except (TypeError, ValueError):
+            return None
 
     def process_product(self, product: Dict[str, Any]) -> Optional[str]:
         """Process a single product and its related data with enhanced gender detection."""
@@ -472,6 +491,31 @@ class ProductProcessor:
                 or datetime.now().isoformat(),
             }
 
+            # SNAPSHOT: record a snapshot only when a tracked field actually
+            # changed (or the product is new). Normalize numerics so a Decimal
+            # from the DB doesn't compare != a float.
+            prev = self.previous_state.get(product_id)
+            changed = (
+                prev is None
+                or self._num(prev.get("min_price")) != self._num(min_price)
+                or self._num(prev.get("max_discount_percentage"))
+                != self._num(max_discount)
+                or bool(prev.get("on_sale")) != bool(on_sale)
+                or bool(prev.get("in_stock")) != bool(in_stock)
+            )
+            if changed:
+                self.collections["snapshots"].append(
+                    {
+                        "product_id": product_id,
+                        "variant_id": None,
+                        "min_price": min_price,
+                        "max_discount_percentage": max_discount,
+                        "on_sale": bool(on_sale),
+                        "in_stock": bool(in_stock),
+                    }
+                )
+                self.stats["snapshots_recorded"] += 1
+
             self.collections["products"].append(product_data)
             self.stats["uploaded"] += 1
 
@@ -571,7 +615,12 @@ class ProductProcessor:
             "products": [],
             "variants": [],
             "images": [],
+            # SNAPSHOT
+            "snapshots": [],
         }
+        # SNAPSHOT: previous_state is set per-file by the uploader, but clear
+        # here too so a stray reset doesn't leak stale data across files.
+        self.previous_state = {}
         self.reset_stats()
 
     def reset_stats(self):
@@ -588,6 +637,8 @@ class ProductProcessor:
             "html_descriptions": 0,
             "plain_text_descriptions": 0,
             "failed_descriptions": 0,
+            # SNAPSHOT
+            "snapshots_recorded": 0,
         }
 
     def reload_categorization_config(self):
@@ -692,6 +743,100 @@ class ProductUploader(BaseUploader):
             uploader_logger.error(f"Error fetching shop names: {e}")
 
         return shop_id_to_name
+
+    # SNAPSHOT: fetch previous min_price/discount/on_sale/in_stock for a batch
+    # of product ids. Batched to avoid one round-trip per product.
+    def _get_previous_product_state(
+        self, product_ids: List[str]
+    ) -> Dict[str, Dict[str, Any]]:
+        """Fetch min_price / max_discount_percentage / on_sale / in_stock."""
+        prev: Dict[str, Dict[str, Any]] = {}
+        if not product_ids:
+            return prev
+
+        batch_size = 200
+        total_batches = (len(product_ids) - 1) // batch_size + 1
+
+        for i in range(0, len(product_ids), batch_size):
+            batch = product_ids[i : i + batch_size]
+            batch_num = i // batch_size + 1
+
+            def do_fetch(conn, _batch=batch):
+                with conn.cursor() as cur:
+                    cur.execute(
+                        """
+                        SELECT id, min_price, max_discount_percentage, on_sale, in_stock
+                        FROM products_with_details_core
+                        WHERE id = ANY(%s)
+                        """,
+                        (_batch,),
+                    )
+                    return cur.fetchall()
+
+            rows = self._safe_execute_query(
+                do_fetch,
+                f"Fetch previous product state batch {batch_num}/{total_batches}",
+                max_retries=2,
+            )
+            if rows:
+                for row in rows:
+                    prev[str(row["id"])] = {
+                        "min_price": row["min_price"],
+                        "max_discount_percentage": row["max_discount_percentage"],
+                        "on_sale": row["on_sale"],
+                        "in_stock": row["in_stock"],
+                    }
+
+        return prev
+
+    # SNAPSHOT: append-only insert. Snapshots have no unique key, so they must
+    # NOT go through the upsert machinery (on_conflict="id" would be meaningless).
+    def _insert_snapshots(self, snapshots: List[Dict[str, Any]]) -> bool:
+        """Insert product_snapshots rows (plain INSERT, no upsert)."""
+        if not snapshots:
+            return True
+
+        batch_size = 100
+        total_batches = (len(snapshots) - 1) // batch_size + 1
+        all_ok = True
+
+        for i in range(0, len(snapshots), batch_size):
+            batch = snapshots[i : i + batch_size]
+            batch_num = i // batch_size + 1
+
+            def do_insert(conn, _batch=batch):
+                from psycopg2.extras import execute_values  # type: ignore[reportMissingModuleSource]
+
+                with conn.cursor() as cur:
+                    execute_values(
+                        cur,
+                        """
+                        INSERT INTO product_snapshots
+                          (product_id, variant_id, min_price, max_discount_percentage, on_sale, in_stock)
+                        VALUES %s
+                        """,
+                        [
+                            (
+                                s["product_id"],
+                                s["variant_id"],
+                                s["min_price"],
+                                s["max_discount_percentage"],
+                                s["on_sale"],
+                                s["in_stock"],
+                            )
+                            for s in _batch
+                        ],
+                    )
+
+            ok = self._safe_execute_query(
+                do_insert,
+                f"Insert product snapshots batch {batch_num}/{total_batches}",
+                max_retries=3,
+            )
+            if not ok:
+                all_ok = False
+
+        return all_ok
 
     def _is_timeout_error(self, error: Exception) -> bool:
         """Check if error is a timeout error."""
@@ -948,7 +1093,6 @@ class ProductUploader(BaseUploader):
 
     def _execute_single_delete(self, table_name: str, record_id: str) -> bool:
         """Execute a single record delete with retry."""
-        config = self.timeout_retry_config
         max_retries = 3
 
         for attempt in range(1, max_retries + 1):
@@ -1026,6 +1170,19 @@ class ProductUploader(BaseUploader):
 
             # Get shop names for all shops in this file
             shop_id_to_name = self._get_shop_names_mapping(all_shop_ids)
+
+            # SNAPSHOT: batch-fetch previous state for every product id in the
+            # file so process_product can diff against it.
+            raw_product_ids = [
+                str(p["id"]) for p in products if p.get("id") is not None
+            ]
+            self.product_processor.previous_state = (
+                self._get_previous_product_state(raw_product_ids)
+            )
+            self.logger.debug(
+                f"Fetched previous state for "
+                f"{len(self.product_processor.previous_state)} products"
+            )
 
             product_ids = []
 
@@ -1125,6 +1282,22 @@ class ProductUploader(BaseUploader):
                             self.logger.info(f"✅ Uploaded {len(images)} images")
                         else:
                             self.logger.error("❌ Failed to upload images")
+
+                    # SNAPSHOT: append snapshot rows AFTER products succeeded so
+                    # we never record a state that isn't in products_with_details_core.
+                    snapshots = self.product_processor.collections.get(
+                        "snapshots", []
+                    )
+                    if snapshots:
+                        self.logger.info(
+                            f"📸 Recording {len(snapshots)} product snapshots..."
+                        )
+                        if self._insert_snapshots(snapshots):
+                            self.logger.info(
+                                f"✅ Recorded {len(snapshots)} snapshots"
+                            )
+                        else:
+                            self.logger.error("❌ Failed to record some snapshots")
 
                     # Clean up stale records is deferred to process_all
                     # if product_ids: ... (logic moved)
@@ -1286,6 +1459,8 @@ class ProductUploader(BaseUploader):
                 "total_processed": 0,
                 "uploaded": 0,
                 "skipped": 0,
+                # SNAPSHOT
+                "snapshots_recorded": 0,
             },
             "description_stats": {
                 "html_descriptions": 0,
@@ -1331,6 +1506,10 @@ class ProductUploader(BaseUploader):
                 results["filter_stats"]["skipped"] += (
                     stats["total_processed"] - stats["uploaded"]
                 )
+                # SNAPSHOT
+                results["filter_stats"]["snapshots_recorded"] += stats.get(
+                    "snapshots_recorded", 0
+                )
                 results["description_stats"]["html_descriptions"] += desc_stats[
                     "html_descriptions"
                 ]
@@ -1352,7 +1531,7 @@ class ProductUploader(BaseUploader):
         if shop_product_ids:
             self.logger.info(f"\n{'='*60}")
             self.logger.info(
-                "🧹 Performing deferred cleanup for {len(shop_product_ids)} shops"
+                f"🧹 Performing deferred cleanup for {len(shop_product_ids)} shops"
             )
             self.logger.info(f"{'='*60}")
 
@@ -1401,6 +1580,11 @@ class ProductUploader(BaseUploader):
             self.logger.info(f"\n📈 Percentages:")
             self.logger.info(f"  • Upload rate: {upload_percentage}%")
             self.logger.info(f"  • Skip rate: {skip_percentage}%")
+
+        # SNAPSHOT
+        snapshots = results["filter_stats"].get("snapshots_recorded", 0)
+        if snapshots > 0:
+            self.logger.info(f"\n📸 Snapshots recorded: {snapshots:,}")
 
         # Description statistics
         desc_stats = results["description_stats"]
