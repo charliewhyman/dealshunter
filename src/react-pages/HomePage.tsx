@@ -27,6 +27,13 @@ const NEW_IN_CATALOG_DAYS = 7;
 
 type SortOrder = 'price_asc' | 'price_desc' | 'discount_desc';
 
+type NewBadge = 'new' | 'sale' | 'deeper';
+type NewItem = {
+  product: ProductWithDetails;
+  badges: NewBadge[];
+  sortKey: number;
+};
+
 // ============================================================================
 // SIZE SORTING
 // ============================================================================
@@ -935,33 +942,42 @@ export function HomePage({
   // "New in the catalog" — created_at within the last N days
   const [now] = useState(() => Date.now());
 
-  const newInCatalogProducts = useMemo(() => {
+  const newItems = useMemo<NewItem[]>(() => {
     const cutoff = now - NEW_IN_CATALOG_DAYS * 86400e3;
+    const byId = new Map<string, NewItem>();
 
-    return products.filter(p => {
-      if (!p.created_at) return false;
+    const upsert = (p: ProductWithDetails, badge: NewBadge, ts: number) => {
+      const id = String(p.id);
+      const existing = byId.get(id);
+      if (existing) {
+        if (!existing.badges.includes(badge)) existing.badges.push(badge);
+        existing.sortKey = Math.max(existing.sortKey, ts);
+      } else {
+        byId.set(id, { product: p, badges: [badge], sortKey: ts });
+      }
+    };
 
-      const ts = Date.parse(p.created_at);
-      return Number.isFinite(ts) && ts > cutoff;
-    });
-  }, [products, now]);
+    for (const p of products) {
+      const publishedRaw = p.published_at_external ?? p.created_at; // fallback for older rows
+      if (publishedRaw) {
+        const ts = Date.parse(publishedRaw);
+        if (Number.isFinite(ts) && ts > cutoff) upsert(p, 'new', ts);
+      }
+      const id = String(p.id);
+      const baseline = dealSignals.baselineAt ?? 0;
+      if (dealSignals.newDeals.has(id)) upsert(p, 'sale', baseline);
+      if (dealSignals.deeperDeals.has(id)) upsert(p, 'deeper', baseline);
+    }
 
-  // "New deals since your last visit" — on_sale flip or deeper discount
-  const newDealsProducts = useMemo(
-    () => products.filter(p =>
-      dealSignals.newDeals.has(String(p.id)) ||
-      dealSignals.deeperDeals.has(String(p.id))
-    ),
-    [products, dealSignals]
-  );
+    return [...byId.values()].sort((a, b) => b.sortKey - a.sortKey);
+  }, [products, dealSignals, now]);
 
-  // Main grid excludes anything shown in the two sections above it
+  // Main grid excludes anything shown in the "What's new" section.
   const displayProducts = useMemo(() => {
     const excluded = new Set<string>();
-    for (const p of newDealsProducts) excluded.add(String(p.id));
-    for (const p of newInCatalogProducts) excluded.add(String(p.id));
+    for (const item of newItems) excluded.add(String(item.product.id));
     return products.filter(p => !excluded.has(String(p.id)));
-  }, [products, newDealsProducts, newInCatalogProducts]);
+  }, [products, newItems]);
 
   // ============================================================================
   // RENDER
@@ -1446,75 +1462,62 @@ export function HomePage({
               </div>
             )}
 
-            {/* New deals since your last visit */}
-            {newDealsProducts.length > 0 && dealSignals.baselineAt && (
-              <section id="new-deals-section" className="mb-8">
+                        {/* What's new: new products + new/deeper deals, merged */}
+            {newItems.length > 0 && (
+              <section id="whats-new-section" className="mb-8">
                 <h2 className="text-xl font-semibold text-gray-900 dark:text-gray-100 mb-1">
-                  New deals since your last visit{' '}
-                  <span className="text-sm font-normal text-gray-500">({newDealsProducts.length})</span>
+                  What's new{' '}
+                  <span className="text-sm font-normal text-gray-500">({newItems.length})</span>
                 </h2>
                 <p className="text-sm text-gray-500 dark:text-gray-400 mb-3">
-                  Went on sale since{' '}
-                  {new Date(dealSignals.baselineAt).toLocaleDateString('en-CA', { weekday: 'long' })}.
+                  New products in the catalog and deals that changed
+                  {dealSignals.baselineAt
+                    ? ` since ${new Date(dealSignals.baselineAt).toLocaleDateString('en-CA', { weekday: 'long' })}`
+                    : ''}.
                 </p>
                 <div className="grid grid-cols-2 gap-2 sm:gap-3 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
-                  {newDealsProducts.map(product => {
+                  {newItems.map(({ product, badges }) => {
                     const pid = String(product.id);
                     return (
                       <div
-                        key={`nd-${product.id}-${product.shop_id}`}
+                        key={`nw-${product.id}-${product.shop_id}`}
                         data-prod-id={pid}
                         ref={(el) => {
-                          if (el) cardRefs.current.set(`nd-${pid}`, el);
-                          else cardRefs.current.delete(`nd-${pid}`);
+                          if (el) cardRefs.current.set(`nw-${pid}`, el);
+                          else cardRefs.current.delete(`nw-${pid}`);
                         }}
                       >
-                        <ProductCard
-                          product={product}
-                          pricing={productPricings[pid]}
-                          isLcp={false}
-                        />
+                        <div className="relative">
+                          <div className="absolute top-1.5 left-1.5 z-10 flex flex-wrap gap-1">
+                            {badges.includes('new') && (
+                              <span className="px-1.5 py-0.5 text-[10px] font-semibold rounded bg-blue-600 text-white shadow">
+                                NEW
+                              </span>
+                            )}
+                            {badges.includes('sale') && (
+                              <span className="px-1.5 py-0.5 text-[10px] font-semibold rounded bg-orange-500 text-white shadow">
+                                ON SALE
+                              </span>
+                            )}
+                            {badges.includes('deeper') && (
+                              <span className="px-1.5 py-0.5 text-[10px] font-semibold rounded bg-red-600 text-white shadow">
+                                DEAL ↓
+                              </span>
+                            )}
+                          </div>
+                          <ProductCard
+                            product={product}
+                            pricing={productPricings[pid]}
+                            isLcp={false}
+                          />
+                        </div>
                       </div>
                     );
                   })}
                 </div>
               </section>
             )}
-
-            {/* New in the catalog */}
-            {newInCatalogProducts.length > 0 && (
-              <section id="new-in-catalog-section" className="mb-8">
-                <h2 className="text-xl font-semibold text-gray-900 dark:text-gray-100 mb-1">
-                  New in the catalog{' '}
-                  <span className="text-sm font-normal text-gray-500">({newInCatalogProducts.length})</span>
-                </h2>
-                <p className="text-sm text-gray-500 dark:text-gray-400 mb-3">
-                  Added in the last {NEW_IN_CATALOG_DAYS} days.
-                </p>
-                <div className="grid grid-cols-2 gap-2 sm:gap-3 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
-                  {newInCatalogProducts.map(product => {
-                    const pid = String(product.id);
-                    return (
-                      <div
-                        key={`nc-${product.id}-${product.shop_id}`}
-                        data-prod-id={pid}
-                        ref={(el) => {
-                          if (el) cardRefs.current.set(`nc-${pid}`, el);
-                          else cardRefs.current.delete(`nc-${pid}`);
-                        }}
-                      >
-                        <ProductCard
-                          product={product}
-                          pricing={productPricings[pid]}
-                          isLcp={false}
-                        />
-                      </div>
-                    );
-                  })}
-                </div>
-              </section>
-            )}
-
+            
             <div className="mb-8">
               <h2 className="text-xl font-semibold text-gray-900 dark:text-gray-100 mb-3">
                 {categoryConfig

@@ -21,6 +21,7 @@ export interface ProductWithDetails {
   created_at: string;
   url: string;
   description?: string;
+  published_at_external: string;
   updated_at_external?: string;
   in_stock: boolean;
   made_in_canada?: boolean;
