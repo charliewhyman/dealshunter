@@ -1,5 +1,5 @@
-import { render, screen, waitFor } from '@testing-library/react';
-import { HomePage } from '../pages/HomePage';
+import { render, screen } from '@testing-library/react';
+import { HomePage } from './HomePage';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { BrowserRouter } from 'react-router-dom';
 
@@ -20,7 +20,9 @@ vi.mock('../hooks/useProductPricing', () => ({
 
 // Mock ProductCard to simplify testing
 vi.mock('../components/ProductCard', () => ({
-  ProductCard: ({ product }: any) => <div data-testid="product-card">{product.title}</div>,
+  ProductCard: ({ product }: { product: { title: string } }) => (
+    <div data-testid="product-card">{product.title}</div>
+  ),
 }));
 
 describe('HomePage', () => {

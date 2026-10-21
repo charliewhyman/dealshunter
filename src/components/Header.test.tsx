@@ -1,3 +1,4 @@
+import '@testing-library/jest-dom/vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
 import { Header } from './Header';
 import { describe, it, expect, vi } from 'vitest';

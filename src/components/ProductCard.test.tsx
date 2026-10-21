@@ -27,16 +27,17 @@ const mockProduct: ProductWithDetails = {
   ],
   variants: [
     {
-        id: 1,
-        title: 'Variant 1',
-        price: 100,
-        discount_percentage: 0,
-        available: true
+      id: 1,
+      title: 'Variant 1',
+      price: 100,
+      discount_percentage: 0,
+      available: true
     }
   ],
   tags: ['test'],
   grouped_product_type: 'Test Type',
-  vendor: 'Test Vendor'
+  vendor: 'Test Vendor',
+  published_at_external: ''
 };
 
 describe('ProductCard', () => {
