@@ -1,4 +1,4 @@
-import { FormEvent, useEffect, useRef } from 'react';
+import { type FormEvent, useEffect, useRef } from 'react';
 import { Link } from 'react-router-dom';
 import AsyncLucideIcon from './AsyncLucideIcon';
 

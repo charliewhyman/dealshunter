@@ -1,5 +1,5 @@
 import { Routes, Route, useSearchParams, useNavigate } from 'react-router-dom';
-import { FormEvent, useCallback } from 'react';
+import { type FormEvent, useCallback } from 'react';
 import { Header } from './components/Header';
 import { HomePage } from './react-pages/HomePage';
 import ProductPage from './react-pages/ProductPage';
