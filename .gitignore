@@ -49,3 +49,10 @@ scraping/data/
 scraping/logs/
 
 .venv/
+
+# Test outputs
+e2e/test-results/
+playwright-report/
+test-results/
+coverage/
+.nyc_output/
