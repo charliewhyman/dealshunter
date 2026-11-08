@@ -288,30 +288,66 @@ export function HomePage({
   }, [selectedPriceRange, PRICE_RANGE, updateFilter]);
 
   // ============================================================================
-  // EFFECTS - URL Sync
+  // EFFECT - URL Normalization (single source of truth)
   // ============================================================================
-
-  const isSyncingFromUrl = useRef(false);
+  // FIX #4: One effect owns URL normalization. Keyed only on category slug so it
+  // runs once per category entry, not on every filter change. Uses a functional
+  // setSearchParams updater so it never reads stale searchParams, and returns
+  // the previous value unchanged when nothing needs normalizing (prevents the
+  // extra history entry that the old dual-effect setup pushed).
+  //
+  // The made_in_canada=false param is deliberately preserved so the checkbox
+  // can be unchecked on the made-in-canada category. The old dual-effect setup
+  // raced with itself and could push two history entries for one page load.
 
   useEffect(() => {
-    if (isSyncingFromUrl.current) return;
-    isSyncingFromUrl.current = true;
+    setSearchParams(prev => {
+      const next = new URLSearchParams(prev);
+      let changed = false;
 
-    if (searchParams.has('made_in_canada')) {
-      const urlMadeInCanada = searchParams.get('made_in_canada') === 'true';
-      if (urlMadeInCanada !== madeInCanadaOnly) updateFilter('made_in_canada', urlMadeInCanada ? 'true' : 'false');
-    }
-    if (searchParams.has('price')) {
-      const urlPrice = parsePriceRange(searchParams.get('price'), ABS_MIN_PRICE, ABS_MAX_PRICE);
-      if (urlPrice) {
-        if (urlPrice[0] !== selectedPriceRange[0] || urlPrice[1] !== selectedPriceRange[1]) {
-          updateFilter('price', urlPrice.join(','));
+      // Clamp/repair price if present.
+      if (next.has('price')) {
+        const parsed = parsePriceRange(next.get('price'), ABS_MIN_PRICE, ABS_MAX_PRICE);
+        if (parsed) {
+          const canonical = parsed.join(',');
+          if (next.get('price') !== canonical) {
+            next.set('price', canonical);
+            changed = true;
+          }
+        } else {
+          next.delete('price');
+          changed = true;
         }
       }
-    }
 
-    setTimeout(() => { isSyncingFromUrl.current = false; }, 0);
-  }, [PRICE_RANGE, madeInCanadaOnly, onSaleOnly, searchParams, searchQuery, selectedGenderAges, selectedGroupedTypes, selectedPriceRange, selectedShopName, selectedSizeGroups, selectedTopLevelCategories, sortOrder, updateFilter]);
+      // Apply category defaults only when the param is absent.
+      if (categoryConfig) {
+        const d = categoryConfig.filterDefaults;
+
+        if (!next.has('search') && d.query) {
+          next.set('search', d.query);
+          changed = true;
+        }
+        if (!next.has('price')) {
+          next.set('price', PRICE_RANGE.join(','));
+          changed = true;
+        }
+        if (!next.has('sale')) {
+          next.set('sale', 'false');
+          changed = true;
+        }
+        if (categoryConfig.slug === 'made-in-canada' && !next.has('made_in_canada')) {
+          next.set('made_in_canada', 'true');
+          changed = true;
+        }
+      }
+
+      if (!changed) return prev;
+      return next;
+    }, { replace: true });
+    // Keyed on slug only. filterDefaults and PRICE_RANGE are stable config values.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [categoryConfig?.slug]);
 
   // ============================================================================
   // UTILITY FUNCTIONS
@@ -602,41 +638,6 @@ export function HomePage({
   // FIX #1: autoLoadCount removed from deps — the callback is now stable across
   // auto-loads, which prevents the infinite-scroll effect from re-subscribing.
   }, [scheduleIdle, fetchBatchPricingFor]);
-
-  // ============================================================================
-  // EFFECT - Handle Category Page Navigation / Reset
-  // ============================================================================
-  useEffect(() => {
-    if (!categoryConfig) return;
-
-    const d = categoryConfig.filterDefaults;
-    const newParams = new URLSearchParams(searchParams);
-    let changed = false;
-
-    if (!newParams.has('search') && d.query) {
-      newParams.set('search', d.query);
-      changed = true;
-    }
-    if (!newParams.has('price')) {
-      newParams.set('price', PRICE_RANGE.join(','));
-      changed = true;
-    }
-    if (!newParams.has('sale')) {
-      newParams.set('sale', 'false');
-      changed = true;
-    }
-    if (!newParams.has('made_in_canada') && categoryConfig.slug === 'made-in-canada') {
-      newParams.set('made_in_canada', 'true');
-      changed = true;
-    }
-    if (newParams.has('made_in_canada') && newParams.get('made_in_canada') === 'false') {
-      changed = true;
-    }
-
-    if (changed) {
-      setSearchParams(newParams, { replace: true });
-    }
-  }, [PRICE_RANGE, categoryConfig, searchParams, setSearchParams]);
 
   // ============================================================================
   // EFFECT - Server-side "new deals since last visit"
