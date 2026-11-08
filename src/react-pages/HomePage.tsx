@@ -143,7 +143,7 @@ export function HomePage({
   const [products, setProducts] = useState<ProductWithDetails[]>(initialProducts);
   const [searchParams, setSearchParams] = useSearchParams();
   const [loading, setLoading] = useState(initialProducts.length === 0);
-  const [initialLoad, setInitialLoad] = useState(initialProducts.length === 0);
+  // FIX #2: initialLoad state removed — skeleton is derived from loading && empty.
   const [hasMore, setHasMore] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [isFilterChanging, setIsFilterChanging] = useState(false);
@@ -439,6 +439,7 @@ export function HomePage({
   // single source of truth. This makes fetchFilteredProducts stable across
   // auto-loads, so the infinite-scroll effect stops re-subscribing the observer
   // on every page load (which was dropping observerLockRef and re-firing).
+  // FIX #2: no initialLoad calls — skeleton is derived from loading && empty.
 
   const fetchFilteredProducts = useCallback(async (
     filters: FilterOptions,
@@ -474,7 +475,6 @@ export function HomePage({
         startTransition(() => {
           setProducts(prev => [...prev, ...productsToShow]);
           setHasMore(hasMoreData);
-          setInitialLoad(false);
           setError(null);
           setLoading(false);
           setIsFilterChanging(false);
@@ -547,7 +547,6 @@ export function HomePage({
         if (isFilterChange) setProducts(productsToShow);
         else setProducts(prev => [...prev, ...productsToShow]);
         setHasMore(hasMoreData);
-        setInitialLoad(false);
         setError(null);
         setLoading(false);
         setIsFilterChanging(false);
@@ -592,7 +591,6 @@ export function HomePage({
       startTransition(() => {
         setError(errorMessage);
         setHasMore(false);
-        setInitialLoad(false);
         setLoading(false);
         setIsFilterChanging(false);
       });
@@ -836,7 +834,6 @@ export function HomePage({
       setIsFilterChanging(true);
       setHasMore(true);
       setError(null);
-      setInitialLoad(false);
       setLoading(true);
     });
 
@@ -950,7 +947,9 @@ export function HomePage({
     .sort()
     .map(g => ({ value: g, label: g }));
 
-  const isFetchingEmpty = loading && products.length === 0 && !initialLoad;
+  // FIX #2: skeleton is the single empty-loading state; covers first mount,
+  // category switch, and retry. Drops the redundant isFetchingEmpty branch.
+  const showSkeleton = loading && products.length === 0;
 
   const filterActions: FilterActions = useMemo(() => ({
     setGroupedTypes: (types: string[]) => updateFilter('type', types),
@@ -1473,7 +1472,7 @@ export function HomePage({
                       onClick={() => {
                         setError(null);
                         setProducts([]);
-                        setInitialLoad(true);
+                        // FIX #2: no setInitialLoad(true) — loading && empty implies skeleton.
                         fetchFilteredProducts(
                           { selectedShopName, selectedSizeGroups, selectedGroupedTypes, selectedTopLevelCategories, selectedGenderAges, onSaleOnly, madeInCanadaOnly, searchQuery, selectedPriceRange },
                           0,
@@ -1551,13 +1550,9 @@ export function HomePage({
               </div>
 
               <div className="grid grid-cols-2 gap-2 sm:gap-3 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5" data-grid-container>
-                {initialLoad ? (
+                {/* FIX #2: single skeleton branch replaces initialLoad/isFetchingEmpty split. */}
+                {showSkeleton ? (
                   <ProductGridSkeleton count={10} />
-                ) : isFetchingEmpty ? (
-                  <div className="col-span-full flex flex-col items-center justify-center min-h-50">
-                    <AsyncLucideIcon name="Loader2" className="animate-spin h-8 w-8 text-gray-600 dark:text-gray-300 mb-3" />
-                    <p className="text-gray-900 dark:text-gray-100 text-sm">Loading products…</p>
-                  </div>
                 ) : displayProducts.length === 0 && !loading ? (
                   <div className="col-span-full flex flex-col items-center justify-center min-h-50 py-8">
                     <AsyncLucideIcon name="Search" className="h-12 w-12 text-gray-400 dark:text-gray-600 mb-4" />
@@ -1679,11 +1674,13 @@ export function HomePage({
 // SKELETON COMPONENT
 // ============================================================================
 
+// FIX #2 (polish): match the real card's transform wrapper so the skeleton
+// occupies the same box and doesn't cause CLS when real cards swap in.
 function ProductGridSkeleton({ count }: { count: number }) {
   return (
     <>
       {Array.from({ length: count }).map((_, i) => (
-        <div key={i} className="animate-pulse">
+        <div key={i} className="animate-pulse transform transition-transform duration-300">
           <div className="bg-gray-200 dark:bg-gray-800 rounded-lg aspect-square mb-2"></div>
           <div className="h-4 bg-gray-200 dark:bg-gray-800 rounded w-3/4 mb-2"></div>
           <div className="h-4 bg-gray-200 dark:bg-gray-800 rounded w-1/2"></div>
