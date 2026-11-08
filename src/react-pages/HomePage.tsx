@@ -24,9 +24,9 @@ const REGULAR_LOAD_TIMEOUT_MS = 30000;
 const MAX_CACHE_ENTRIES = 10;
 
 // "What's new" configuration
-const NEW_IN_CATALOG_DAYS = 3;         // tighter than before — 1,008/7d was too many
-const NEW_IN_CATALOG_LIMIT = 20;       // hard cap for the local new-product strip
-const NEW_DEALS_LIMIT = 60;            // server-side deal diff cap
+const NEW_IN_CATALOG_DAYS = 3;
+const NEW_IN_CATALOG_LIMIT = 20;
+const NEW_DEALS_LIMIT = 60;
 
 type SortOrder = 'price_asc' | 'price_desc' | 'discount_desc';
 type NewBadge = 'new' | 'sale' | 'deeper';
@@ -149,8 +149,8 @@ export function HomePage({
   const [isFilterChanging, setIsFilterChanging] = useState(false);
   const navigate = useNavigate();
 
+  // FIX #1: autoLoadCount state removed — the ref is the single source of truth.
   const autoLoadCountRef = useRef(0);
-  const [autoLoadCount, setAutoLoadCount] = useState(0);
 
   const [showLoadMoreButton, setShowLoadMoreButton] = useState(false);
   const [showFilters, setShowFilters] = useState(false);
@@ -435,6 +435,10 @@ export function HomePage({
   // ============================================================================
   // MAIN FETCH FUNCTION
   // ============================================================================
+  // FIX #1: autoLoadCount is no longer read from state. autoLoadCountRef is the
+  // single source of truth. This makes fetchFilteredProducts stable across
+  // auto-loads, so the infinite-scroll effect stops re-subscribing the observer
+  // on every page load (which was dropping observerLockRef and re-firing).
 
   const fetchFilteredProducts = useCallback(async (
     filters: FilterOptions,
@@ -450,7 +454,6 @@ export function HomePage({
 
     if (isFilterChange) {
       autoLoadCountRef.current = 0;
-      setAutoLoadCount(0);
       setShowLoadMoreButton(false);
       if (currentRequestRef.current) currentRequestRef.current.abort();
       currentRequestRef.current = null;
@@ -465,29 +468,25 @@ export function HomePage({
       if (cached) {
         const hasMoreData = cached.data.length > ITEMS_PER_PAGE;
         const productsToShow = hasMoreData ? cached.data.slice(0, ITEMS_PER_PAGE) : cached.data;
+
+        // FIX #1: single transition, ref-based count, button toggle folded in.
+        autoLoadCountRef.current += 1;
         startTransition(() => {
-          setProducts(prev => isFilterChange ? productsToShow : [...prev, ...productsToShow]);
+          setProducts(prev => [...prev, ...productsToShow]);
           setHasMore(hasMoreData);
           setInitialLoad(false);
           setError(null);
           setLoading(false);
           setIsFilterChanging(false);
+          if (autoLoadCountRef.current >= MAX_AUTO_LOADS) setShowLoadMoreButton(true);
         });
         isFetchingRef.current = false;
         observerLockRef.current = false;
         inFlightRequestsRef.current.delete(requestKey);
         canLoadMoreRef.current = false;
         setTimeout(() => { canLoadMoreRef.current = true; }, LOAD_COOLDOWN);
-        if (!isFilterChange) {
-          autoLoadCountRef.current += 1;
-          setAutoLoadCount(autoLoadCountRef.current);
 
-          const newCount = autoLoadCountRef.current;
-          startTransition(() => {
-            if (newCount >= MAX_AUTO_LOADS) setShowLoadMoreButton(true);
-          });
-        }
-        if (hasMoreData && autoLoadCount < MAX_AUTO_LOADS) {
+        if (hasMoreData && autoLoadCountRef.current < MAX_AUTO_LOADS) {
           scheduleIdle(async () => {
             const nextOffset = offset + ITEMS_PER_PAGE;
             const nextKey = `${JSON.stringify(filters)}-${nextOffset}-${sort}`;
@@ -538,6 +537,12 @@ export function HomePage({
         for (const key of toRemove) delete prefetchCacheRef.current[key];
       }
 
+      // FIX #1: increment ref before the transition; single transition handles
+      // all result state including the load-more button visibility.
+      if (!isFilterChange) {
+        autoLoadCountRef.current += 1;
+      }
+
       startTransition(() => {
         if (isFilterChange) setProducts(productsToShow);
         else setProducts(prev => [...prev, ...productsToShow]);
@@ -546,6 +551,7 @@ export function HomePage({
         setError(null);
         setLoading(false);
         setIsFilterChanging(false);
+        if (autoLoadCountRef.current >= MAX_AUTO_LOADS) setShowLoadMoreButton(true);
       });
 
       if (productsToShow.length > 0) {
@@ -553,17 +559,7 @@ export function HomePage({
         scheduleIdle(() => fetchBatchPricingFor(ids));
       }
 
-      if (!isFilterChange) {
-        autoLoadCountRef.current += 1;
-        setAutoLoadCount(autoLoadCountRef.current);
-
-        const newCount = autoLoadCountRef.current;
-        startTransition(() => {
-          if (newCount >= MAX_AUTO_LOADS) setShowLoadMoreButton(true);
-        });
-      }
-
-      if (hasMoreData && autoLoadCount < MAX_AUTO_LOADS) {
+      if (hasMoreData && autoLoadCountRef.current < MAX_AUTO_LOADS) {
         scheduleIdle(async () => {
           const nextOffset = offset + ITEMS_PER_PAGE;
           const nextKey = `${JSON.stringify(filters)}-${nextOffset}-${sort}`;
@@ -605,7 +601,9 @@ export function HomePage({
       isFetchingRef.current = false;
       observerLockRef.current = false;
     }
-  }, [autoLoadCount, scheduleIdle, fetchBatchPricingFor]);
+  // FIX #1: autoLoadCount removed from deps — the callback is now stable across
+  // auto-loads, which prevents the infinite-scroll effect from re-subscribing.
+  }, [scheduleIdle, fetchBatchPricingFor]);
 
   // ============================================================================
   // EFFECT - Handle Category Page Navigation / Reset
@@ -645,56 +643,48 @@ export function HomePage({
   // ============================================================================
   // EFFECT - Server-side "new deals since last visit"
   // ============================================================================
-  // (1) On first mount for a scope, establish a baseline if we don't have one.
-  //     We do NOT want to fetch deals against a baseline of "now" — that would
-  //     always return zero on the first visit. Instead we set the baseline
-  //     silently on first visit, and fetch deals on subsequent visits.
   useEffect(() => {
-  if (typeof window === 'undefined') return;
+    if (typeof window === 'undefined') return;
 
-  queueMicrotask(() => {
-    const existing = getDealBaseline(scope);
-    if (existing) {
-      setDealBaselineAt(existing);
-    } else {
-      const iso = new Date().toISOString();
-      setDealBaseline(scope, iso);
-      setDealBaselineAt(iso);
-    }
-  });
-}, [scope]);
+    queueMicrotask(() => {
+      const existing = getDealBaseline(scope);
+      if (existing) {
+        setDealBaselineAt(existing);
+      } else {
+        const iso = new Date().toISOString();
+        setDealBaseline(scope, iso);
+        setDealBaselineAt(iso);
+      }
+    });
+  }, [scope]);
 
-// (2) Fetch the deal diff from the server whenever scope or baseline changes.
-// Gated on dealBaselineAt (not a separate "resolved" flag): the fetch must
-// not run before the baseline exists, and the baseline is the only thing
-// the request needs.
-useEffect(() => {
-  if (!dealBaselineAt) return;
-  let cancelled = false;
-  queueMicrotask(() => {
-    if (!cancelled) {
-      setNewDealsLoading(true);
-      setNewDeals([]);
-    }
-  });
-
-  apiClient
-    .fetchNewDealsSince(dealBaselineAt, NEW_DEALS_LIMIT)
-    .then(rows => {
-      if (cancelled) return;
-      setNewDeals(Array.isArray(rows) ? rows : []);
-    })
-    .catch(err => {
-      if (cancelled) return;
-      console.error('Failed to fetch new deals since baseline:', err);
-      setNewDeals([]);
-    })
-    .finally(() => {
-      if (!cancelled) setNewDealsLoading(false);
+  useEffect(() => {
+    if (!dealBaselineAt) return;
+    let cancelled = false;
+    queueMicrotask(() => {
+      if (!cancelled) {
+        setNewDealsLoading(true);
+        setNewDeals([]);
+      }
     });
 
-  return () => { cancelled = true; };
-}, [dealBaselineAt, scope]);
+    apiClient
+      .fetchNewDealsSince(dealBaselineAt, NEW_DEALS_LIMIT)
+      .then(rows => {
+        if (cancelled) return;
+        setNewDeals(Array.isArray(rows) ? rows : []);
+      })
+      .catch(err => {
+        if (cancelled) return;
+        console.error('Failed to fetch new deals since baseline:', err);
+        setNewDeals([]);
+      })
+      .finally(() => {
+        if (!cancelled) setNewDealsLoading(false);
+      });
+
+    return () => { cancelled = true; };
+  }, [dealBaselineAt, scope]);
 
   // ============================================================================
   // PRE-WARM CONNECTION ON APP START
@@ -853,7 +843,6 @@ useEffect(() => {
     if (currentRequestRef.current) currentRequestRef.current.abort();
 
     autoLoadCountRef.current = 0;
-    setAutoLoadCount(0);
 
     inFlightRequestsRef.current.clear();
     prevFilterKeyRef.current = currentFilterKey;
@@ -864,6 +853,8 @@ useEffect(() => {
   // ============================================================================
   // INFINITE SCROLL OBSERVER
   // ============================================================================
+  // FIX #1: fetchFilteredProducts is now stable, so this effect only re-subscribes
+  // on genuine dependency changes instead of on every auto-load counter tick.
 
   useEffect(() => {
     const target = observerRef.current;
@@ -871,15 +862,13 @@ useEffect(() => {
 
     const handleIntersect = (entries: IntersectionObserverEntry[]) => {
       const [entry] = entries;
-      if (entry.isIntersecting &&
-          !isFetchingRef.current &&
-          !observerLockRef.current &&
-          canLoadMoreRef.current) {
-        observerLockRef.current = true;
-        canLoadMoreRef.current = false;
-        fetchFilteredProducts(currentFilters, products.length, sortOrder, false);
-        setTimeout(() => { canLoadMoreRef.current = true; }, LOAD_COOLDOWN);
-      }
+      if (!entry.isIntersecting) return;
+      if (isFetchingRef.current || observerLockRef.current || !canLoadMoreRef.current) return;
+
+      observerLockRef.current = true;
+      canLoadMoreRef.current = false;
+      fetchFilteredProducts(currentFilters, products.length, sortOrder, false);
+      setTimeout(() => { canLoadMoreRef.current = true; }, LOAD_COOLDOWN);
     };
 
     const io = new IntersectionObserver(handleIntersect, {
@@ -997,15 +986,12 @@ useEffect(() => {
       }
     };
 
-    // 1) Server-driven deal rows (independent of pagination).
     const baselineTs = dealBaselineAt ? Date.parse(dealBaselineAt) : 0;
     for (const p of newDeals) {
       const pct = p.max_discount_percentage ?? 0;
-        upsert(p, 'sale', Number.isFinite(baselineTs) ? baselineTs + pct : now);
+      upsert(p, 'sale', Number.isFinite(baselineTs) ? baselineTs + pct : now);
     }
 
-    // 2) Local new-product strip from currently-loaded page.
-    //    Uses published_at_external (real publish date) with created_at fallback.
     let localNewCount = 0;
     for (const p of products) {
       if (localNewCount >= NEW_IN_CATALOG_LIMIT) break;
@@ -1020,7 +1006,6 @@ useEffect(() => {
     return [...byId.values()].sort((a, b) => b.sortKey - a.sortKey);
   }, [products, newDeals, dealBaselineAt, now]);
 
-  // Main grid excludes anything shown in the "What's new" section.
   const displayProducts = useMemo(() => {
     const excluded = new Set<string>();
     for (const item of newItems) excluded.add(String(item.product.id));
@@ -1505,7 +1490,7 @@ useEffect(() => {
               </div>
             )}
 
-            {/* What's new: server deal diff + local new-product strip, merged */}
+            {/* What's new */}
             {newItems.length > 0 && (
               <section id="whats-new-section" className="mb-8">
                 <h2 className="text-xl font-semibold text-gray-900 dark:text-gray-100 mb-1">
@@ -1644,7 +1629,9 @@ useEffect(() => {
                 </div>
               )}
 
-              {!showLoadMoreButton && hasMore && autoLoadCount < MAX_AUTO_LOADS && !isFilterChanging && products.length > 0 && (
+              {/* FIX #1: dropped autoLoadCount from this gate — showLoadMoreButton
+                  already becomes true at MAX_AUTO_LOADS, making the clause redundant. */}
+              {!showLoadMoreButton && hasMore && !isFilterChanging && products.length > 0 && (
                 <div ref={observerRef} className="h-20" />
               )}
 
