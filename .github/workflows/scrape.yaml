@@ -91,7 +91,7 @@ jobs:
       - name: Run scraper
         id: run_scraper
         env:
-          VITE_DATABASE_URL: ${{ secrets.VITE_DATABASE_URL }}
+          vite_database_url: ${{ secrets.vite_database_url }}
           ENVIRONMENT: production
         run: |
           cd scraping

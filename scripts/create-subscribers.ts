@@ -5,7 +5,7 @@ import { sql } from 'kysely';
 dotenv.config();
 
 async function createTable() {
-    const dbUrl = process.env.VITE_DATABASE_URL || process.env.DATABASE_URL;
+    const dbUrl = process.env.vite_database_url || process.env.DATABASE_URL;
     if (!dbUrl) {
         throw new Error('Database connection string is missing');
     }

@@ -7,7 +7,7 @@ export const onRequest = defineMiddleware(async (context, next) => {
 
   if (url.pathname.startsWith('/api/')) {
     const bindings = env as {
-      VITE_DATABASE_URL: string;
+      vite_database_url: string;
       DATABASE_URL?: string;
     };
 

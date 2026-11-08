@@ -33,13 +33,13 @@ class DatabaseClient:
 
     def _initialize(self):
         """Initialize Database configuration and connection pool."""
-        self.connection_string = os.environ.get("VITE_DATABASE_URL")
-        # Fallback to DATABASE_URL if VITE_DATABASE_URL is not set
+        self.connection_string = os.environ.get("vite_database_url")
+        # Fallback to DATABASE_URL if vite_database_url is not set
         if not self.connection_string:
             self.connection_string = os.environ.get("DATABASE_URL")
 
         if not self.connection_string:
-            raise ValueError("VITE_DATABASE_URL or DATABASE_URL not set")
+            raise ValueError("vite_database_url or DATABASE_URL not set")
 
         # Clean connection string (handle "psql postgres://..." format from GitHub Actions)
         cleaned_url = self.connection_string.strip()
