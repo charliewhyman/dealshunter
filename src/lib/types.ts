@@ -65,3 +65,41 @@ export type DistinctGenderAges = Database['distinct_gender_ages'];
 export interface ProductWithShop extends ProductsWithDetailsCore {
     made_in_canada: boolean | null;
 }
+
+// ============================================================================
+// ALERTS
+// ============================================================================
+
+export type AlertFrequency = 'instant' | 'daily' | 'weekly';
+
+export type RuleMatch = {
+  subscriber_id: number;
+  email: string;
+  rule_id: string;
+  frequency: AlertFrequency;
+  product_id: bigint;
+  title: string;
+  min_price: number;
+  max_discount_percentage: number;
+  image_url: string | null;
+  product_url: string | null;
+};
+
+export type WatchMatch = {
+  subscriber_id: number;
+  email: string;
+  watch_id: string;
+  frequency: AlertFrequency;
+  product_id: bigint;
+  title: string;
+  min_price: number;
+  max_discount_percentage: number;
+  image_url: string | null;
+  product_url: string | null;
+};
+
+export type TokenPayload = {
+  subscriberId: number;
+  purpose: 'unsubscribe' | 'manage';
+  exp: number;
+};
