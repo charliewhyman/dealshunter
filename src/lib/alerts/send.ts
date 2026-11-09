@@ -24,30 +24,18 @@ export type SendOptions = {
   subscriberId?: number;
   dryRun?: boolean;
   limit?: number;
+  /** When set, only groups whose email is in this list will be sent to.
+   *  Applied before the limit, so allowlisted subscribers are never dropped
+   *  by the cap. Emails are matched case-insensitively. */
+  emailAllowlist?: string[];
 };
 
 export type SendReport = {
   results: SendResult[];
-  /** True when the loop stopped early because Resend returned 429. */
   rateLimited: boolean;
-  /** Human-readable rate-limit message if applicable. */
   rateLimitMessage?: string;
 };
 
-/**
- * Send alert emails for the given frequency (or all frequencies if unset).
- *
- * Design notes baked into this function:
- * - Groups are sorted by item count desc before applying `limit`, so a capped
- *   batch prioritizes the subscribers with the most content to show.
- * - Per-subscriber try/catch — one bad email address does not abort the batch.
- * - Resend 429 breaks the loop *without* marking remaining groups as sent, so
- *   the next cron run picks them up. Duplicate risk is preferable to a dropped
- *   alert because the dedupe window is 7 days and a duplicate weekly email is
- *   a minor annoyance.
- * - `recordSent` runs *after* a successful send. If it fails, we log and
- *   continue — the email was delivered, accept the duplicate-on-retry risk.
- */
 export async function sendAlerts(opts: SendOptions = {}): Promise<SendReport> {
   const dryRun = opts.dryRun ?? false;
   const limit = opts.limit ?? DEFAULT_LIMIT;
@@ -61,20 +49,33 @@ export async function sendAlerts(opts: SendOptions = {}): Promise<SendReport> {
     return { results: [], rateLimited: false };
   }
 
-  // Sort groups so the highest-value subscribers survive the `limit` cap.
-  const groups = groupMatches(ruleMatches, watchMatches).sort(
-    (a, b) => b.items.length - a.items.length
-  );
+  const allGroups = groupMatches(ruleMatches, watchMatches);
 
-  const capped = groups.slice(0, limit);
-  const skippedByCap = groups.length - capped.length;
+  // Apply the allowlist filter *before* the limit so a small allowlist is
+  // never accidentally suppressed by sorting (e.g., allowlisted subscriber
+  // has 1 item, non-allowlisted has 10 — without pre-filter, limit=5 would
+  // drop the allowlisted one).
+  const allowlist = (opts.emailAllowlist ?? [])
+    .map(s => s.trim().toLowerCase())
+    .filter(Boolean);
+
+  const groups =
+    allowlist.length > 0
+      ? allGroups.filter(g => allowlist.includes(g.email.toLowerCase()))
+      : allGroups;
+
+  if (groups.length === 0) {
+    return { results: [], rateLimited: false };
+  }
+
+  const sorted = groups.sort((a, b) => b.items.length - a.items.length);
+  const capped = sorted.slice(0, limit);
+  const skippedByCap = sorted.length - capped.length;
 
   const results: SendResult[] = [];
 
-  // Record any groups we didn't get to because of the limit, so the caller
-  // (and the dry-run output) can see that the cap was hit.
   if (skippedByCap > 0) {
-    for (const g of groups.slice(limit)) {
+    for (const g of sorted.slice(limit)) {
       results.push({
         subscriber_id: g.subscriber_id,
         email: g.email,
@@ -112,7 +113,6 @@ export async function sendAlerts(opts: SendOptions = {}): Promise<SendReport> {
       });
 
       if (res.error) {
-        // Resend returns errors in the response body, not as thrown errors.
         const msg = res.error.message ?? 'unknown resend error';
         const isRateLimit =
           (res.error as { name?: string }).name === 'rate_limit_exceeded' ||
@@ -142,9 +142,6 @@ export async function sendAlerts(opts: SendOptions = {}): Promise<SendReport> {
         continue;
       }
 
-      // Success path: log the send. If recordSent fails, log to console and
-      // continue — the email was delivered, and next run may resend. See the
-      // design note in the docblock.
       try {
         await recordSent(group);
       } catch (err) {
@@ -162,7 +159,6 @@ export async function sendAlerts(opts: SendOptions = {}): Promise<SendReport> {
         status: 'sent',
       });
     } catch (err) {
-      // Anything thrown by the SDK itself (network, DNS, serialization).
       const msg = (err as Error).message ?? 'unknown send error';
       const isRateLimit = /rate.?limit|429/i.test(msg);
       if (isRateLimit) {
@@ -184,21 +180,12 @@ export async function sendAlerts(opts: SendOptions = {}): Promise<SendReport> {
         status: 'error',
         error: msg,
       });
-      // continue to next group — one failure must not abort the batch
     }
   }
 
   return { results, rateLimited: false };
 }
 
-/**
- * Append a group's sent_log_entries to alert_rules.sent_log, then trim to
- * the most recent 200 entries by sent_at desc.
- *
- * The JSON.stringify(...)::jsonb pattern is required because the Neon HTTP
- * driver serializes a JS Array as a Postgres array literal (text[]), not JSON.
- * Explicit ::jsonb cast tells Postgres how to interpret the string.
- */
 async function recordSent(group: SubscriberGroup): Promise<void> {
   const entriesJson = JSON.stringify(group.sent_log_entries);
 
@@ -218,10 +205,6 @@ async function recordSent(group: SubscriberGroup): Promise<void> {
   `;
 }
 
-/**
- * Trim sent_log entries older than `days` across all subscribers.
- * Call once per day from the endpoint, not per-run.
- */
 export async function pruneSentLogs(days = 30): Promise<number> {
   const rows = await sql`
     UPDATE alert_rules
