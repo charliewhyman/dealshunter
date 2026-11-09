@@ -1,0 +1,12 @@
+{
+  "name": "curatedcanada-cron",
+  "private": true,
+  "version": "1.0.0",
+  "scripts": {
+    "deploy": "wrangler deploy -c ./wrangler.toml",
+    "tail": "wrangler tail curatedcanada-cron"
+  },
+  "devDependencies": {
+    "wrangler": "^4.0.0"
+  }
+}
