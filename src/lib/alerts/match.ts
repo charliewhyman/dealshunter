@@ -8,6 +8,19 @@ type MatchFilters = {
   frequency?: AlertFrequency;
 };
 
+/**
+ * Fetch up to 50 top-discount products per rule per subscriber.
+ *
+ * The LATERAL subquery does the ORDER BY + LIMIT inside Postgres. Without
+ * it, the outer query returns every matching product (potentially thousands
+ * per subscriber), which burns the Worker's CPU limit parsing the JSON
+ * response and iterating in groupMatches. With the inner LIMIT, the Worker
+ * sees at most 50 * rules_per_subscriber rows.
+ *
+ * 50 is chosen so that after dedupe across multiple rules a single
+ * subscriber still has enough to fill the 20-item email cap. If you raise
+ * MAX_ITEMS_PER_EMAIL later, raise this too (rule of thumb: 2.5x the cap).
+ */
 export async function matchRuleAlerts(opts: MatchFilters = {}): Promise<RuleMatch[]> {
   const filterSub = opts.subscriberId ?? null;
   const filterFreq = opts.frequency ?? null;
@@ -35,24 +48,36 @@ export async function matchRuleAlerts(opts: MatchFilters = {}): Promise<RuleMatc
     FROM alert_rules ar
     JOIN subscribers sub ON sub.id = ar.subscriber_id
     CROSS JOIN LATERAL jsonb_array_elements(ar.rules) AS r
-    JOIN products_with_details_core p
-      ON p.is_archived = false
-     AND p.in_stock = true
-     AND p.on_sale = true
-     AND p.max_discount_percentage >= COALESCE((r->>'min_discount')::numeric, 0)
-     AND ((r->>'max_price') IS NULL OR p.min_price <= (r->>'max_price')::numeric)
-     AND (COALESCE((r->>'made_in_canada_only')::boolean, false) = false
-          OR p.tags && ARRAY['made-in-canada'])
-     AND (jsonb_array_length(COALESCE(r->'categories', '[]'::jsonb)) = 0
-          OR p.top_level_category = ANY (ARRAY(SELECT jsonb_array_elements_text(r->'categories'))))
-     AND (jsonb_array_length(COALESCE(r->'types', '[]'::jsonb)) = 0
-          OR p.grouped_product_type = ANY (ARRAY(SELECT jsonb_array_elements_text(r->'types'))))
-     AND (jsonb_array_length(COALESCE(r->'genders', '[]'::jsonb)) = 0
-          OR p.gender_age = ANY (ARRAY(SELECT jsonb_array_elements_text(r->'genders'))))
-     AND (jsonb_array_length(COALESCE(r->'shop_ids', '[]'::jsonb)) = 0
-          OR p.shop_id::text = ANY (ARRAY(SELECT jsonb_array_elements_text(r->'shop_ids'))))
-     AND (jsonb_array_length(COALESCE(r->'sizes', '[]'::jsonb)) = 0
-          OR p.size_groups && ARRAY(SELECT jsonb_array_elements_text(r->'sizes')))
+    JOIN LATERAL (
+      SELECT
+        pc.id,
+        pc.title,
+        pc.min_price,
+        pc.max_discount_percentage,
+        pc.images,
+        pc.url,
+        pc.shop_id
+      FROM products_with_details_core pc
+      WHERE pc.is_archived = false
+        AND pc.in_stock = true
+        AND pc.on_sale = true
+        AND pc.max_discount_percentage >= COALESCE((r->>'min_discount')::numeric, 0)
+        AND ((r->>'max_price') IS NULL OR pc.min_price <= (r->>'max_price')::numeric)
+        AND (COALESCE((r->>'made_in_canada_only')::boolean, false) = false
+             OR pc.tags && ARRAY['made-in-canada'])
+        AND (jsonb_array_length(COALESCE(r->'categories', '[]'::jsonb)) = 0
+             OR pc.top_level_category = ANY (ARRAY(SELECT jsonb_array_elements_text(r->'categories'))))
+        AND (jsonb_array_length(COALESCE(r->'types', '[]'::jsonb)) = 0
+             OR pc.grouped_product_type = ANY (ARRAY(SELECT jsonb_array_elements_text(r->'types'))))
+        AND (jsonb_array_length(COALESCE(r->'genders', '[]'::jsonb)) = 0
+             OR pc.gender_age = ANY (ARRAY(SELECT jsonb_array_elements_text(r->'genders'))))
+        AND (jsonb_array_length(COALESCE(r->'shop_ids', '[]'::jsonb)) = 0
+             OR pc.shop_id::text = ANY (ARRAY(SELECT jsonb_array_elements_text(r->'shop_ids'))))
+        AND (jsonb_array_length(COALESCE(r->'sizes', '[]'::jsonb)) = 0
+             OR pc.size_groups && ARRAY(SELECT jsonb_array_elements_text(r->'sizes')))
+      ORDER BY pc.max_discount_percentage DESC NULLS LAST
+      LIMIT 50
+    ) p ON true
     LEFT JOIN shops sh ON sh.id = p.shop_id
     WHERE sub.consent_given = true
       AND (${filterSub}::integer IS NULL OR ar.subscriber_id = ${filterSub})
@@ -66,6 +91,12 @@ export async function matchRuleAlerts(opts: MatchFilters = {}): Promise<RuleMatc
   `;
 }
 
+/**
+ * Watch alerts: the LATERAL join is unnecessary here because the watch
+ * already pins a specific product ID (p.id = w->>'product_id'). The query
+ * returns at most one row per active watch, so the CPU cost is O(watches),
+ * not O(products).
+ */
 export async function matchWatchAlerts(opts: MatchFilters = {}): Promise<WatchMatch[]> {
   const filterSub = opts.subscriberId ?? null;
   const filterFreq = opts.frequency ?? null;
