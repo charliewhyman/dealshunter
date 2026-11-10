@@ -2,14 +2,15 @@ import { Hono } from 'hono';
 import { cors } from 'hono/cors';
 import { getDb } from './db';
 import { sql, Kysely } from 'kysely';
-import type { Database, ProductWithShop } from '../src/lib/types';
+import type { Database, ProductWithShop, AlertFrequency } from '../src/lib/types';
 import { verifyToken } from '@/lib/alerts/token';
-
+import { sendAlerts, pruneSentLogs } from '@/lib/alerts/send';
 
 export const app = new Hono<{
     Bindings: {
         vite_database_url: string;
-        DATABASE_URL?: string
+        DATABASE_URL?: string;
+        CRON_SECRET?: string;
     },
     Variables: {
         db: Kysely<Database>;
@@ -36,9 +37,6 @@ declare module 'hono' {
 }
 
 // ── Error helpers ──────────────────────────────────────────────────────────
-// Centralized so every route can do `catch (error)` (which is `unknown`)
-// without repeating the narrowing. `message` always exists on Error, and
-// `stack` may or may not depending on the thrower (Hono, Neon, etc.).
 function toErrorMessage(error: unknown): string {
     if (error instanceof Error) return error.message;
     return String(error);
@@ -92,7 +90,6 @@ app.use('*', async (c, next) => {
     }
     await next();
 });
-
 
 interface FilterOptions {
     selectedShopName?: string[];
@@ -224,8 +221,7 @@ app.get('/api/products', async (c) => {
 
 // ============================================================================
 // /api/products/new-deals
-// MUST be registered BEFORE /api/products/:id, otherwise Hono matches
-// "new-deals" as the :id param and Postgres rejects it as a bigint.
+// MUST be registered BEFORE /api/products/:id
 // ============================================================================
 app.get('/api/products/new-deals', async (c) => {
     try {
@@ -249,10 +245,6 @@ app.get('/api/products/new-deals', async (c) => {
             .where('s.variant_id', 'is', null)
             .where('s.taken_at', '>=', baselineDate)
             .where('s.on_sale', '=', true)
-            // "Latest in-window snapshot per product" as an anti-join:
-            // keep `s` iff there is no strictly newer in-window snapshot
-            // for the same product. Types cleanly — no scalar-subquery
-            // comparison against a Date column.
             .where((eb) =>
                 eb.not(
                     eb.exists(
@@ -295,10 +287,6 @@ app.get('/api/products/:id', async (c) => {
             .leftJoin('shops', 'products_with_details_core.shop_id', 'shops.id')
             .selectAll('products_with_details_core')
             .select(sql<boolean | null>`shops.made_in_canada`.as('made_in_canada'))
-            // bigint columns come back as strings from the Neon driver, but
-            // Kysely's generated types declare them as numbers. Passing the
-            // route param as-is is correct at runtime; the cast is a known
-            // limitation of the Neon type generator, not a logic issue.
             // eslint-disable-next-line @typescript-eslint/no-explicit-any
             .where('products_with_details_core.id', '=', id as any)
             .executeTakeFirst()) as ProductWithShop | undefined;
@@ -326,7 +314,6 @@ app.get('/api/out/:id', async (c) => {
 
         const product = await db.selectFrom('products_with_details_core')
             .select(['url', 'id'])
-            // Same bigint-as-string mismatch as /api/products/:id.
             // eslint-disable-next-line @typescript-eslint/no-explicit-any
             .where('id', '=', productIdStr as any)
             .executeTakeFirst();
@@ -569,4 +556,38 @@ app.get('/api/genders', async (c) => {
             error: 'Internal Server Error',
         }, 500);
     }
+});
+
+app.get('/api/cron/send-alerts', async (c) => {
+  const secret = c.env?.CRON_SECRET;
+  const provided = c.req.header('x-cron-secret');
+  if (!secret || provided !== secret) {
+    return c.json({ ok: false, error: 'unauthorized' }, 401);
+  }
+
+  const freq = c.req.query('frequency');
+  const frequency: AlertFrequency | undefined =
+    freq === 'instant' || freq === 'daily' || freq === 'weekly'
+      ? freq
+      : undefined;
+
+  const dryRun = c.req.query('dry') === '1';
+
+  try {
+    const report = await sendAlerts({ frequency, dryRun });
+    const pruned = frequency === 'daily' && !dryRun ? await pruneSentLogs(30) : 0;
+
+    return c.json({
+      ok: true,
+      frequency: frequency ?? 'all',
+      dry_run: dryRun,
+      sent: report.results.filter(r => r.status === 'sent').length,
+      errors: report.results.filter(r => r.status === 'error').length,
+      pruned_subscribers: pruned,
+      results: report.results,
+    });
+  } catch (err) {
+    console.error('[cron] sendAlerts threw:', err);
+    return c.json({ ok: false, error: (err as Error).message }, 500);
+  }
 });
