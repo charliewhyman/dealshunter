@@ -1,5 +1,5 @@
 import { signToken } from './token';
-import type { SubscriberGroup } from './grouping';
+import type { SubscriberGroup, AlertItem } from './grouping';
 import type { AlertFrequency } from '../types';
 
 const SITE = process.env.ALERT_SITE_URL ?? 'https://curatedcanada.ca';
@@ -33,11 +33,7 @@ function frequencyLabel(f: AlertFrequency): string {
 
 function subjectFor(group: SubscriberGroup): string {
   const count = group.items.length;
-  if (count === 0) {
-    // Should never be called with 0, but be defensive — this string is
-    // visible to the user if it ever leaks through.
-    return 'Your Curated Canada deal alert';
-  }
+  if (count === 0) return 'Your Curated Canada deal alert';
   if (count === 1) {
     const title = group.items[0].title;
     const trimmed = title.length > 55 ? title.slice(0, 52) + '…' : title;
@@ -46,10 +42,18 @@ function subjectFor(group: SubscriberGroup): string {
   return `${count} new deal${count === 1 ? '' : 's'} for you`;
 }
 
-function renderItemHtml(item: SubscriberGroup['items'][number]): string {
+function trackingHref(item: AlertItem, subscriberId: number, frequency: string): string {
+  return `${SITE}/api/out/${item.product_id}?src=email-${subscriberId}-${frequency}`;
+}
+
+function renderItemHtml(
+  item: AlertItem,
+  subscriberId: number,
+  frequency: string
+): string {
   const price = formatPrice(item.min_price);
   const discount = formatDiscount(item.max_discount_percentage);
-  const href = item.product_url ?? `${SITE}/product/${item.product_id}`;
+  const href = trackingHref(item, subscriberId, frequency);
 
   const image = item.image_url
     ? `<img src="${esc(item.image_url)}" alt="" width="160" height="160"
@@ -60,12 +64,17 @@ function renderItemHtml(item: SubscriberGroup['items'][number]): string {
     ? `<span style="display:inline-block;margin-left:6px;padding:1px 6px;border-radius:4px;background:#fee2e2;color:#b91c1c;font-size:12px;font-weight:600;">${esc(discount)}</span>`
     : '';
 
+  const shopLine = item.shop_name
+    ? `<div style="font-size:12px;color:#6b7280;text-transform:uppercase;letter-spacing:0.04em;margin-bottom:4px;">${esc(item.shop_name)}</div>`
+    : '';
+
   return `
     <tr><td style="padding:0 0 16px 0;">
       <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
         <tr>
           <td width="160" valign="top" style="padding-right:16px;">${image}</td>
           <td valign="top" style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;">
+            ${shopLine}
             <a href="${esc(href)}"
                style="color:#111827;text-decoration:none;font-weight:600;font-size:15px;line-height:1.35;">${esc(item.title)}</a>
             <div style="margin-top:8px;color:#111827;font-size:15px;font-weight:600;">
@@ -82,12 +91,17 @@ function renderItemHtml(item: SubscriberGroup['items'][number]): string {
   `;
 }
 
-function renderItemText(item: SubscriberGroup['items'][number]): string {
-  const href = item.product_url ?? `${SITE}/product/${item.product_id}`;
+function renderItemText(
+  item: AlertItem,
+  subscriberId: number,
+  frequency: string
+): string {
+  const href = trackingHref(item, subscriberId, frequency);
   const price = formatPrice(item.min_price);
   const discount = formatDiscount(item.max_discount_percentage);
   const priceLine = [price, discount].filter(Boolean).join(' ');
-  return `${item.title}${priceLine ? ` — ${priceLine}` : ''}\n${href}`;
+  const shopLine = item.shop_name ? `${item.shop_name} — ` : '';
+  return `${shopLine}${item.title}${priceLine ? ` — ${priceLine}` : ''}\n${href}`;
 }
 
 export function renderDigest(group: SubscriberGroup): {
@@ -103,15 +117,12 @@ export function renderDigest(group: SubscriberGroup): {
     subscriberId: group.subscriber_id,
     purpose: 'unsubscribe',
   });
-  const manageToken = signToken({
-    subscriberId: group.subscriber_id,
-    purpose: 'manage',
-  });
 
   const unsubUrl = `${SITE}/alerts/unsubscribe?token=${encodeURIComponent(unsubscribeToken)}`;
-  const manageUrl = `${SITE}/account/alerts?token=${encodeURIComponent(manageToken)}`;
 
-  const itemsHtml = group.items.map(renderItemHtml).join('');
+  const itemsHtml = group.items
+    .map(item => renderItemHtml(item, group.subscriber_id, group.frequency))
+    .join('');
 
   const html = `<!doctype html>
 <html lang="en">
@@ -153,8 +164,6 @@ export function renderDigest(group: SubscriberGroup): {
               You're receiving this because you asked Curated Canada to alert you about deals.
             </p>
             <p style="margin:0;font-size:12px;color:#6b7280;line-height:1.5;">
-              <a href="${esc(manageUrl)}" style="color:#2563eb;text-decoration:underline;">Manage alerts</a>
-              &nbsp;·&nbsp;
               <a href="${esc(unsubUrl)}" style="color:#2563eb;text-decoration:underline;">Unsubscribe</a>
             </p>
             <p style="margin:16px 0 0 0;font-size:12px;color:#9ca3af;line-height:1.5;">
@@ -172,11 +181,10 @@ export function renderDigest(group: SubscriberGroup): {
     `Curated Canada — ${count === 1 ? '1 new deal' : `${count} new deals`} for you`,
     `Matching your alerts ${when}.`,
     '',
-    ...group.items.map(renderItemText),
+    ...group.items.map(item => renderItemText(item, group.subscriber_id, group.frequency)),
     '',
     '---',
-    `Manage alerts: ${manageUrl}`,
-    `Unsubscribe:   ${unsubUrl}`,
+    `Unsubscribe: ${unsubUrl}`,
   ].join('\n');
 
   return { subject, html, text };

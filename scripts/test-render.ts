@@ -19,6 +19,8 @@ function group(over: Partial<SubscriberGroup> = {}): SubscriberGroup {
     subscriber_id: 42,
     email: 'alice@example.com',
     frequency: 'weekly',
+    total_matches: 0,
+    rule_filters: null,
     items: [
       {
         product_id: '9000001',

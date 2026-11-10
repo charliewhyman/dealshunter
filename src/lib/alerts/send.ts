@@ -5,7 +5,6 @@ import { groupMatches, type SubscriberGroup } from './grouping';
 import { renderDigest } from './render';
 import type { AlertFrequency } from '../types';
 
-const FROM = process.env.ALERT_FROM_EMAIL ?? 'deals@curatedcanada.ca';
 const DEFAULT_LIMIT = 100;
 
 export type SendStatus = 'sent' | 'dry-run' | 'error' | 'skipped';
@@ -24,10 +23,9 @@ export type SendOptions = {
   subscriberId?: number;
   dryRun?: boolean;
   limit?: number;
-  /** When set, only groups whose email is in this list will be sent to.
-   *  Applied before the limit, so allowlisted subscribers are never dropped
-   *  by the cap. Emails are matched case-insensitively. */
   emailAllowlist?: string[];
+  resendApiKey?: string;
+  fromEmail?: string;
 };
 
 export type SendReport = {
@@ -39,6 +37,8 @@ export type SendReport = {
 export async function sendAlerts(opts: SendOptions = {}): Promise<SendReport> {
   const dryRun = opts.dryRun ?? false;
   const limit = opts.limit ?? DEFAULT_LIMIT;
+  const fromEmail = opts.fromEmail ?? process.env.ALERT_FROM_EMAIL ?? 'deals@curatedcanada.ca';
+  const apiKey = opts.resendApiKey ?? process.env.RESEND_API_KEY ?? '';
 
   const [ruleMatches, watchMatches] = await Promise.all([
     matchRuleAlerts({ subscriberId: opts.subscriberId, frequency: opts.frequency }),
@@ -87,7 +87,7 @@ export async function sendAlerts(opts: SendOptions = {}): Promise<SendReport> {
     }
   }
 
-  const resend = dryRun ? null : new Resend(process.env.RESEND_API_KEY ?? '');
+  const resend = dryRun ? null : new Resend(apiKey);
 
   for (const group of capped) {
     const rendered = renderDigest(group);
@@ -105,7 +105,7 @@ export async function sendAlerts(opts: SendOptions = {}): Promise<SendReport> {
 
     try {
       const res = await resend.emails.send({
-        from: FROM,
+        from: fromEmail,
         to: group.email,
         subject: rendered.subject,
         html: rendered.html,

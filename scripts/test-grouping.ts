@@ -35,7 +35,7 @@ function ruleMatch(over: Partial<RuleMatch> = {}): RuleMatch {
     image_url: null,
     product_url: null,
     ...over,
-  };
+  } as RuleMatch;
 }
 
 function watchMatch(over: Partial<WatchMatch> = {}): WatchMatch {
@@ -51,7 +51,7 @@ function watchMatch(over: Partial<WatchMatch> = {}): WatchMatch {
     image_url: null,
     product_url: null,
     ...over,
-  };
+  } as WatchMatch;
 }
 
 // ----------------------------------------------------------------------------

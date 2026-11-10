@@ -8,7 +8,7 @@ import { sendAlerts, pruneSentLogs } from '@/lib/alerts/send';
 
 export const app = new Hono<{
     Bindings: {
-        vite_database_url: string;
+        database_url: string;
         DATABASE_URL?: string;
         CRON_SECRET?: string;
     },
@@ -67,8 +67,8 @@ app.use('*', async (c, next) => {
     try {
         let connectionString: string | undefined;
 
-        if (c.env?.vite_database_url) {
-            connectionString = c.env.vite_database_url;
+        if (c.env?.database_url) {
+            connectionString = c.env.database_url;
         } else if (c.env?.DATABASE_URL) {
             connectionString = c.env.DATABASE_URL;
         }
@@ -213,7 +213,7 @@ app.get('/api/products', async (c) => {
             ...toErrorDetails(error),
             error: 'Internal Server Error',
             env_check: c.env ? 'Env available' : 'Env missing',
-            has_db_url: !!c.env?.vite_database_url,
+            has_db_url: !!c.env?.database_url,
             init_db_error: c.get('initDbError'),
         }, 500);
     }
@@ -485,7 +485,7 @@ app.get('/api/shops', async (c) => {
         return c.json({
             ...toErrorDetails(error),
             error: 'Internal Server Error',
-            has_db_url: !!c.env?.vite_database_url,
+            has_db_url: !!c.env?.database_url,
         }, 500);
     }
 });
@@ -574,7 +574,12 @@ app.get('/api/cron/send-alerts', async (c) => {
   const dryRun = c.req.query('dry') === '1';
 
   try {
-    const report = await sendAlerts({ frequency, dryRun });
+    const report = await sendAlerts({
+        frequency,
+        dryRun,
+        resendApiKey: c.env?.RESEND_API_KEY,
+        fromEmail: c.env?.ALERT_FROM_EMAIL,
+        });
     const pruned = frequency === 'daily' && !dryRun ? await pruneSentLogs(30) : 0;
 
     return c.json({

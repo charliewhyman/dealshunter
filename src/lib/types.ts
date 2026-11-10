@@ -87,10 +87,23 @@ export type RuleMatch = {
   frequency: AlertFrequency;
   product_id: bigint;
   title: string;
+  shop_name: string | null;
   min_price: number;
   max_discount_percentage: number;
   image_url: string | null;
   product_url: string | null;
+  rule_json: {
+    id: string;
+    categories?: string[];
+    types?: string[];
+    genders?: string[];
+    sizes?: string[];
+    shop_ids?: string[];
+    min_discount?: number;
+    max_price?: number | null;
+    made_in_canada_only?: boolean;
+    frequency?: AlertFrequency;
+  };
 };
 
 export type WatchMatch = {
@@ -100,6 +113,7 @@ export type WatchMatch = {
   frequency: AlertFrequency;
   product_id: bigint;
   title: string;
+  shop_name: string | null;
   min_price: number;
   max_discount_percentage: number;
   image_url: string | null;

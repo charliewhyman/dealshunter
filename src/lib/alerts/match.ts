@@ -1,6 +1,8 @@
 import { query } from '../db';
 import type { RuleMatch, WatchMatch, AlertFrequency } from '../types';
 
+export type { RuleMatch, WatchMatch };
+
 type MatchFilters = {
   subscriberId?: number;
   frequency?: AlertFrequency;
@@ -12,12 +14,13 @@ export async function matchRuleAlerts(opts: MatchFilters = {}): Promise<RuleMatc
 
   return query<RuleMatch>`
     SELECT
-      s.id                      AS subscriber_id,
-      s.email                   AS email,
+      sub.id                    AS subscriber_id,
+      sub.email                 AS email,
       (r->>'id')                AS rule_id,
       (r->>'frequency')         AS frequency,
       p.id                      AS product_id,
       p.title                   AS title,
+      sh.shop_name              AS shop_name,
       p.min_price               AS min_price,
       p.max_discount_percentage AS max_discount_percentage,
       (CASE
@@ -27,9 +30,10 @@ export async function matchRuleAlerts(opts: MatchFilters = {}): Promise<RuleMatc
         THEN (p.images->0->>'src')
         ELSE NULL
       END)                      AS image_url,
-      p.url                     AS product_url
+      p.url                     AS product_url,
+      r                         AS rule_json
     FROM alert_rules ar
-    JOIN subscribers s ON s.id = ar.subscriber_id
+    JOIN subscribers sub ON sub.id = ar.subscriber_id
     CROSS JOIN LATERAL jsonb_array_elements(ar.rules) AS r
     JOIN products_with_details_core p
       ON p.is_archived = false
@@ -49,7 +53,8 @@ export async function matchRuleAlerts(opts: MatchFilters = {}): Promise<RuleMatc
           OR p.shop_id::text = ANY (ARRAY(SELECT jsonb_array_elements_text(r->'shop_ids'))))
      AND (jsonb_array_length(COALESCE(r->'sizes', '[]'::jsonb)) = 0
           OR p.size_groups && ARRAY(SELECT jsonb_array_elements_text(r->'sizes')))
-    WHERE s.consent_given = true
+    LEFT JOIN shops sh ON sh.id = p.shop_id
+    WHERE sub.consent_given = true
       AND (${filterSub}::integer IS NULL OR ar.subscriber_id = ${filterSub})
       AND (${filterFreq}::text IS NULL OR (r->>'frequency') = ${filterFreq})
       AND NOT EXISTS (
@@ -67,12 +72,13 @@ export async function matchWatchAlerts(opts: MatchFilters = {}): Promise<WatchMa
 
   return query<WatchMatch>`
     SELECT
-      s.id                      AS subscriber_id,
-      s.email                   AS email,
+      sub.id                    AS subscriber_id,
+      sub.email                 AS email,
       (w->>'id')                AS watch_id,
       (w->>'frequency')         AS frequency,
       p.id                      AS product_id,
       p.title                   AS title,
+      sh.shop_name              AS shop_name,
       p.min_price               AS min_price,
       p.max_discount_percentage AS max_discount_percentage,
       (CASE
@@ -84,7 +90,7 @@ export async function matchWatchAlerts(opts: MatchFilters = {}): Promise<WatchMa
       END)                      AS image_url,
       p.url                     AS product_url
     FROM alert_rules ar
-    JOIN subscribers s ON s.id = ar.subscriber_id
+    JOIN subscribers sub ON sub.id = ar.subscriber_id
     CROSS JOIN LATERAL jsonb_array_elements(ar.watches) AS w
     JOIN products_with_details_core p
       ON p.id = (w->>'product_id')::bigint
@@ -94,7 +100,8 @@ export async function matchWatchAlerts(opts: MatchFilters = {}): Promise<WatchMa
        ((w->>'target_price') IS NOT NULL AND p.min_price <= (w->>'target_price')::numeric)
        OR ((w->>'target_price') IS NULL AND p.on_sale = true)
      )
-    WHERE s.consent_given = true
+    LEFT JOIN shops sh ON sh.id = p.shop_id
+    WHERE sub.consent_given = true
       AND (${filterSub}::integer IS NULL OR ar.subscriber_id = ${filterSub})
       AND (${filterFreq}::text IS NULL OR (w->>'frequency') = ${filterFreq})
       AND NOT EXISTS (
