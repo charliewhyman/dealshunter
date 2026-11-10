@@ -23,6 +23,23 @@ function formatDiscount(n: number): string {
   return `-${Math.round(n)}%`;
 }
 
+function buildSeeAllUrl(group: SubscriberGroup): string {
+  const f = group.rule_filters;
+  if (!f) return `${SITE}/`;
+
+  const params = new URLSearchParams();
+  if (f.categories.length) params.set('category', f.categories.join(','));
+  if (f.types.length) params.set('type', f.types.join(','));
+  if (f.genders.length) params.set('gender', f.genders.join(','));
+  if (f.sizes.length) params.set('size', f.sizes.join(','));
+  if (f.shop_ids.length) params.set('shop', f.shop_ids.join(','));
+  if (f.min_discount > 0) params.set('sale', 'true');
+  if (f.max_price != null) params.set('price', `0-${f.max_price}`);
+  if (f.made_in_canada_only) params.set('made_in_canada', 'true');
+  params.set('src', `email-${group.subscriber_id}-${group.frequency}`);
+  return `${SITE}/?${params.toString()}`;
+}
+
 function frequencyLabel(f: AlertFrequency): string {
   switch (f) {
     case 'instant': return 'just now';
@@ -124,6 +141,9 @@ export function renderDigest(group: SubscriberGroup): {
     .map(item => renderItemHtml(item, group.subscriber_id, group.frequency))
     .join('');
 
+  const seeAllUrl = buildSeeAllUrl(group);
+  const showSeeAll = group.total_matches > group.items.length;
+
   const html = `<!doctype html>
 <html lang="en">
 <head>
@@ -157,7 +177,14 @@ export function renderDigest(group: SubscriberGroup): {
             <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
               ${itemsHtml}
             </table>
+          </td>${showSeeAll ? `
+          <tr><td style="padding:8px 32px 16px 32px;text-align:center;">
+            <a href="${esc(seeAllUrl)}"
+              style="display:inline-block;padding:12px 20px;background:#2563eb;color:#ffffff;border-radius:8px;font-size:14px;font-weight:600;text-decoration:none;">
+              See all ${group.total_matches} matching deals →
+            </a>
           </td></tr>
+        ` : ''}</tr>
           <tr><td style="padding:8px 32px 32px 32px;">
             <hr style="border:none;border-top:1px solid #e5e7eb;margin:16px 0 20px 0;" />
             <p style="margin:0 0 8px 0;font-size:12px;color:#6b7280;line-height:1.5;">
@@ -184,6 +211,7 @@ export function renderDigest(group: SubscriberGroup): {
     ...group.items.map(item => renderItemText(item, group.subscriber_id, group.frequency)),
     '',
     '---',
+    ...(showSeeAll ? [`See all ${group.total_matches} matching deals: ${seeAllUrl}`, ''] : []),
     `Unsubscribe: ${unsubUrl}`,
   ].join('\n');
 
