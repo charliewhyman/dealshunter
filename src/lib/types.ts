@@ -24,6 +24,13 @@ export interface Database {
         consent_given: boolean | null;
         created_at: Generated<Date | null>;
     };
+    alert_rules: {
+    subscriber_id: number;
+    rules: string;                  // jsonb stored/read as string
+    watches: string;
+    sent_log: string;
+    updated_at: Generated<Date>;
+};
 
     // NEW: created by the scraper's snapshot logic; not in Neon's
     // generated types, so declared inline like `subscribers`.
@@ -59,6 +66,7 @@ export type DistinctSizeGroups = Database['distinct_size_groups'];
 export type DistinctGroupedTypes = Database['distinct_grouped_types'];
 export type DistinctTopLevelCategories = Database['distinct_top_level_categories'];
 export type DistinctGenderAges = Database['distinct_gender_ages'];
+export type AlertRules = Database['alert_rules'];
 
 // A product row joined with its shop's `made_in_canada` flag.
 // Returned by /api/products, /api/products/:id, and /api/products/new-deals.
