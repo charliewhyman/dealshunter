@@ -2,7 +2,6 @@ import { useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 
 type State =
-  | { kind: 'checking' }
   | { kind: 'invalid' }
   | { kind: 'idle' }
   | { kind: 'submitting' }
@@ -12,10 +11,10 @@ type State =
 export default function UnsubscribePage() {
   const [searchParams] = useSearchParams();
   const token = searchParams.get('token') ?? '';
-  const [state, setState] = useState<State>(() =>
-    !token || !/^[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+$/.test(token)
-      ? { kind: 'invalid' }
-      : { kind: 'idle' },
+
+  const isValidToken = /^[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+$/.test(token);
+  const [state, setState] = useState<State>(
+    isValidToken ? { kind: 'idle' } : { kind: 'invalid' }
   );
 
   const handleUnsubscribe = async () => {
@@ -41,41 +40,84 @@ export default function UnsubscribePage() {
   };
 
   return (
-    <div style={{ fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif', background: '#f9fafb', minHeight: '70vh', display: 'grid', placeItems: 'center', padding: '48px 24px' }}>
-      <div style={{ background: '#fff', border: '1px solid #e5e7eb', borderRadius: 12, maxWidth: 440, width: '100%', padding: 32 }}>
-        {state.kind === 'checking' && <p>Checking your link…</p>}
+    <div
+      style={{
+        fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif',
+        background: '#f9fafb',
+        minHeight: '70vh',
+        display: 'grid',
+        placeItems: 'center',
+        padding: '48px 24px',
+      }}
+    >
+      <div
+        style={{
+          background: '#fff',
+          border: '1px solid #e5e7eb',
+          borderRadius: 12,
+          maxWidth: 440,
+          width: '100%',
+          padding: 32,
+        }}
+      >
         {state.kind === 'invalid' && (
           <>
-            <h1 style={{ fontSize: 20, margin: '0 0 12px' }}>Link expired or invalid</h1>
+            <h1 style={{ fontSize: 20, margin: '0 0 12px' }}>
+              Link expired or invalid
+            </h1>
             <p style={{ color: '#6b7280', fontSize: 14 }}>
-              This unsubscribe link is no longer valid. Reply to any email from us and we'll remove you manually.
+              This unsubscribe link is no longer valid. Reply to any email from us
+              and we'll remove you manually.
             </p>
           </>
         )}
+
         {(state.kind === 'idle' || state.kind === 'submitting') && (
           <>
-            <h1 style={{ fontSize: 20, margin: '0 0 12px' }}>Unsubscribe from deal alerts?</h1>
+            <h1 style={{ fontSize: 20, margin: '0 0 12px' }}>
+              Unsubscribe from deal alerts?
+            </h1>
             <p style={{ color: '#6b7280', fontSize: 14 }}>
               You'll stop receiving deal alert emails. You can re-subscribe anytime.
             </p>
             <button
               onClick={handleUnsubscribe}
               disabled={state.kind === 'submitting'}
-              style={{ background: '#111827', color: '#fff', border: 'none', borderRadius: 8, padding: '12px 20px', fontSize: 14, fontWeight: 600, cursor: state.kind === 'submitting' ? 'not-allowed' : 'pointer', width: '100%', fontFamily: 'inherit', opacity: state.kind === 'submitting' ? 0.55 : 1 }}
+              style={{
+                background: '#111827',
+                color: '#fff',
+                border: 'none',
+                borderRadius: 8,
+                padding: '12px 20px',
+                fontSize: 14,
+                fontWeight: 600,
+                cursor: state.kind === 'submitting' ? 'not-allowed' : 'pointer',
+                width: '100%',
+                fontFamily: 'inherit',
+                opacity: state.kind === 'submitting' ? 0.55 : 1,
+              }}
             >
               {state.kind === 'submitting' ? 'Unsubscribing…' : 'Unsubscribe'}
             </button>
           </>
         )}
+
         {state.kind === 'done' && (
           <>
-            <h1 style={{ fontSize: 20, margin: '0 0 12px', color: '#059669' }}>You're unsubscribed</h1>
-            <p style={{ color: '#6b7280', fontSize: 14 }}>No more deal alert emails. Thanks for giving Curated Canada a try.</p>
+            <h1 style={{ fontSize: 20, margin: '0 0 12px', color: '#059669' }}>
+              You're unsubscribed
+            </h1>
+            <p style={{ color: '#6b7280', fontSize: 14 }}>
+              No more deal alert emails. Thanks for giving Curated Canada a try.
+            </p>
           </>
         )}
+
         {state.kind === 'error' && (
           <>
-            <h1 style={{ fontSize: 20, margin: '0 0 12px', color: '#dc2626' }}>Something went wrong</h1>
+            <h1 style={{ fontSize: 20, margin: '0 0 12px', color: '#dc2626' }}>
+              Something went wrong
+            </h1>
             <p style={{ color: '#6b7280', fontSize: 14 }}>{state.message}</p>
           </>
         )}
