@@ -46,7 +46,7 @@ When building for production, use `npm run build`.
 This project uses Vite. For runtime configuration, create a file named `.env` in the project root with variables prefixed by `VITE_`. For example:
 
 ```
-VITE_DATABASE_URL=postgresql://user:password@ep-host.region.aws.neon.tech/dbname?sslmode=require
+database_url=postgresql://user:password@ep-host.region.aws.neon.tech/dbname?sslmode=require
 ```
 
 ## Python scrapers

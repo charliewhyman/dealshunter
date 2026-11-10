@@ -4,7 +4,7 @@ import dotenv from 'dotenv';
 dotenv.config();
 
 async function checkSubscribers() {
-    const dbUrl = process.env.vite_database_url || process.env.DATABASE_URL;
+    const dbUrl = process.env.database_url || process.env.DATABASE_URL;
     if (!dbUrl) {
         throw new Error('Database connection string is missing');
     }
