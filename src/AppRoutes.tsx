@@ -7,6 +7,7 @@ import { AboutPage } from './react-pages/AboutPage';
 import { PrivacyPolicy } from './react-pages/PrivacyPolicy';
 import { TermsPage } from './react-pages/TermsPage';
 import CategoryPage from './react-pages/CategoryPage';
+import UnsubscribePage from './react-pages/UnsubscribePage';
 import type { ProductWithDetails } from './types';
 
 interface Props {
@@ -42,6 +43,7 @@ export function AppRoutes({ initialProducts = [] }: Props) {
         <Route path="/about" element={<AboutPage />} />
         <Route path="/privacy" element={<PrivacyPolicy />} />
         <Route path="/terms" element={<TermsPage />} />
+        <Route path="/alerts/unsubscribe" element={<UnsubscribePage />} />
       </Routes>
     </>
   );
