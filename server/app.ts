@@ -3,6 +3,7 @@ import { cors } from 'hono/cors';
 import { getDb } from './db';
 import { sql, Kysely } from 'kysely';
 import type { Database, ProductWithShop } from '../src/lib/types';
+import { verifyToken } from '@/lib/alerts/token';
 
 
 export const app = new Hono<{
@@ -396,6 +397,49 @@ app.post('/api/subscribe', async (c) => {
             error: 'Internal Server Error',
         }, 500);
     }
+});
+
+app.post('/api/alerts/unsubscribe', async (c) => {
+  try {
+    const db = c.var.db;
+    if (!db) throw new Error('Database not initialized: ' + c.var.initDbError);
+
+    let body: { token?: string };
+    try {
+      body = await c.req.json();
+    } catch {
+      return c.json({ ok: false, error: 'invalid body' }, 400);
+    }
+
+    const payload = body.token ? verifyToken(body.token) : null;
+    if (!payload || payload.purpose !== 'unsubscribe') {
+      return c.json({ ok: false, error: 'invalid token' }, 400);
+    }
+
+    await db
+      .updateTable('subscribers')
+      .set({ consent_given: false })
+      .where('id', '=', payload.subscriberId)
+      .execute();
+
+    await db
+      .updateTable('alert_rules')
+      .set({
+        rules: JSON.stringify([]),
+        watches: JSON.stringify([]),
+        updated_at: new Date(),
+      })
+      .where('subscriber_id', '=', payload.subscriberId)
+      .execute();
+
+    return c.json({ ok: true });
+  } catch (error: unknown) {
+    console.error('Error handling unsubscribe:', error);
+    return c.json(
+      { ...toErrorDetails(error), error: 'Internal Server Error' },
+      500
+    );
+  }
 });
 
 app.get('/api/pricing', async (c) => {
