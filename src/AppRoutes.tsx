@@ -12,9 +12,10 @@ import type { ProductWithDetails } from './types';
 
 interface Props {
   initialProducts?: ProductWithDetails[];
+  unsubscribeToken?: string;
 }
 
-export function AppRoutes({ initialProducts = [] }: Props) {
+export function AppRoutes({ initialProducts = [], unsubscribeToken = '' }: Props) {
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
   const searchQuery = searchParams.get('search') || '';
@@ -43,7 +44,7 @@ export function AppRoutes({ initialProducts = [] }: Props) {
         <Route path="/about" element={<AboutPage />} />
         <Route path="/privacy" element={<PrivacyPolicy />} />
         <Route path="/terms" element={<TermsPage />} />
-        <Route path="/alerts/unsubscribe" element={<UnsubscribePage />} />
+        <Route path="/alerts/unsubscribe" element={<UnsubscribePage initialToken={unsubscribeToken} />} />
       </Routes>
     </>
   );

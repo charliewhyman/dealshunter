@@ -1,5 +1,4 @@
 import { useState } from 'react';
-import { useSearchParams } from 'react-router-dom';
 
 type State =
   | { kind: 'invalid' }
@@ -8,13 +7,19 @@ type State =
   | { kind: 'done' }
   | { kind: 'error'; message: string };
 
-export default function UnsubscribePage() {
-  const [searchParams] = useSearchParams();
-  const token = searchParams.get('token') ?? '';
+interface Props {
+  initialToken: string;
+}
 
-  const isValidToken = /^[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+$/.test(token);
+export default function UnsubscribePage({ initialToken }: Props) {
+  // Derive the initial state during render from the prop. The server and
+  // client both receive the same initialToken, so the initial render is
+  // identical on both sides — no hydration mismatch, no effect, no lint
+  // warning.
   const [state, setState] = useState<State>(
-    isValidToken ? { kind: 'idle' } : { kind: 'invalid' }
+    /^[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+$/.test(initialToken)
+      ? { kind: 'idle' }
+      : { kind: 'invalid' }
   );
 
   const handleUnsubscribe = async () => {
@@ -23,7 +28,7 @@ export default function UnsubscribePage() {
       const res = await fetch('/api/alerts/unsubscribe', {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ token }),
+        body: JSON.stringify({ token: initialToken }),
       });
       if (res.status === 400) {
         setState({ kind: 'invalid' });

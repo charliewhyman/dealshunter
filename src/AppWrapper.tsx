@@ -7,17 +7,25 @@ import type { ProductWithDetails } from '@/types';
 interface Props {
   url?: string;
   initialProducts?: ProductWithDetails[];
+  unsubscribeToken?: string;
 }
 
-export function AppWrapper({ url = '/', initialProducts = [] }: Props) {
+export function AppWrapper({
+  url = '/',
+  initialProducts = [],
+  unsubscribeToken = '',
+}: Props) {
   const isServer = typeof window === 'undefined';
 
   const inner = (
     <>
       <ScrollToTop />
       <div className="min-h-screen bg-gray-50 dark:bg-gray-900 flex flex-col">
-        <div className="flex-grow">
-          <AppRoutes initialProducts={initialProducts} />
+        <div className="grow">
+          <AppRoutes
+            initialProducts={initialProducts}
+            unsubscribeToken={unsubscribeToken}
+          />
         </div>
         <Footer />
       </div>
