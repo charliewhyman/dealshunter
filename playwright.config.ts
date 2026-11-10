@@ -15,6 +15,8 @@ export default defineConfig({
         actionTimeout: 0,
         baseURL: 'http://localhost:4321',
         trace: 'on-first-retry',
+        ...devices['Desktop Chrome'],
+        viewport: { width: 1920, height: 1080 },
     },
     projects: [
         {
@@ -31,10 +33,5 @@ export default defineConfig({
         command: 'npm run dev',
         port: 4321,
         reuseExistingServer: true,
-    },
-    // Add cross-origin isolation for fetch requests in Playwright
-    use: {
-      ...devices['Desktop Chrome'],
-      viewport: { width: 1920, height: 1080 },
     },
 });
