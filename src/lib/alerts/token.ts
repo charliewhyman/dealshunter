@@ -1,7 +1,18 @@
 import { createHmac, timingSafeEqual } from 'node:crypto';
 
-const SECRET = process.env.ALERT_TOKEN_SECRET;
-if (!SECRET) throw new Error('ALERT_TOKEN_SECRET is not set');
+
+const SECRET =
+  (typeof import.meta !== 'undefined' &&
+    (import.meta as ImportMeta & { env?: { ALERT_TOKEN_SECRET?: string } }).env?.ALERT_TOKEN_SECRET) ||
+  process.env.ALERT_TOKEN_SECRET;
+
+if (!SECRET) {
+  throw new Error(
+    'ALERT_TOKEN_SECRET is not set. ' +
+    'Locally: add it to .env. ' +
+    'Deployed: run `npx wrangler secret put ALERT_TOKEN_SECRET`.'
+  );
+}
 
 function b64url(buf: Buffer): string {
   return buf.toString('base64').replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
