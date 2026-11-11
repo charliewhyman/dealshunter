@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import RuleEditor, { type RuleDraft, type Option } from './RuleEditor';
 
 type AlertRule = {
   id: string;
@@ -62,6 +63,66 @@ export default function ManageAlertsPage({ initialToken }: Props) {
   const [state, setState] = useState<State>(
     initialToken ? { status: 'loading' } : { status: 'invalid' }
   );
+  const [showEditor, setShowEditor] = useState(false);
+  const [editingRule, setEditingRule] = useState<RuleDraft | undefined>(undefined);
+  const [options, setOptions] = useState<{
+    categories: Option[];
+    types: Option[];
+    genders: Option[];
+    sizes: Option[];
+    shops: Option[];
+  } | null>(null);
+
+  // Fetch options once (when the editor first opens)
+  const loadOptions = async () => {
+    if (options) return;
+    try {
+      const [cats, types, genders, sizes, shops] = await Promise.all([
+        fetch('/api/categories').then(r => r.json()) as Promise<Array<{ top_level_category: string }>>,
+        fetch('/api/types').then(r => r.json()) as Promise<Array<{ grouped_product_type: string }>>,
+        fetch('/api/genders').then(r => r.json()) as Promise<Array<{ gender_age: string }>>,
+        fetch('/api/sizes').then(r => r.json()) as Promise<Array<{ size_group: string }>>,
+        fetch('/api/shops').then(r => r.json()) as Promise<Array<{ id: number; shop_name: string }>>,
+      ]);
+      setOptions({
+        categories: cats.map(r => ({ value: r.top_level_category, label: r.top_level_category })),
+        types: types.map(r => ({ value: r.grouped_product_type, label: r.grouped_product_type })),
+        genders: genders.map(r => ({ value: r.gender_age, label: r.gender_age })),
+        sizes: sizes.map(r => ({ value: r.size_group, label: r.size_group })),
+        shops: shops.map(r => ({ value: String(r.id), label: r.shop_name })),
+      });
+    } catch (err) {
+      alert(`Failed to load filter options: ${(err as Error).message}`);
+    }
+  };
+
+  const handleOpenAdd = async () => {
+    await loadOptions();
+    setEditingRule(undefined);
+    setShowEditor(true);
+  };
+
+  const handleSaveRule = async (rule: RuleDraft) => {
+    try {
+      const res = await fetch('/api/alerts/rules', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ token: initialToken, rule }),
+      });
+      const body = (await res.json()) as
+        | { ok: true; rules: AlertRule[] }
+        | { ok: false; error: string };
+
+      if (!body.ok) {
+        alert(`Save failed: ${body.error}`);
+        return;
+      }
+      setState(s => (s.status === 'ready' ? { ...s, rules: body.rules } : s));
+      setShowEditor(false);
+    } catch (err) {
+      alert(`Save failed: ${(err as Error).message}`);
+    }
+  };
 
   useEffect(() => {
     if (!initialToken) return;
@@ -223,10 +284,8 @@ export default function ManageAlertsPage({ initialToken }: Props) {
         <div className="mb-3 flex items-baseline justify-between">
           <h2 className="text-lg font-semibold text-gray-900 dark:text-gray-100">Rules</h2>
           <button
-            onClick={() =>
-              alert('Rule editor coming soon! For now, use the homepage filters.')
-            }
-            className="rounded-lg bg-gray-900 px-4 py-2 text-sm font-semibold text-white hover:bg-gray-800 dark:bg-gray-100 dark:text-gray-900 dark:hover:bg-gray-200"
+            onClick={handleOpenAdd}
+            className="..."
           >
             + Add rule
           </button>
@@ -313,6 +372,19 @@ export default function ManageAlertsPage({ initialToken }: Props) {
           Unsubscribe from all deal alerts
         </button>
       </section>
+      {showEditor && options && (
+        <RuleEditor
+          initialRule={editingRule}
+          token={initialToken}
+          categories={options.categories}
+          types={options.types}
+          genders={options.genders}
+          sizes={options.sizes}
+          shops={options.shops}
+          onSave={handleSaveRule}
+          onCancel={() => setShowEditor(false)}
+        />
+      )}
     </div>
   );
 }
