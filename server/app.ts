@@ -386,6 +386,312 @@ app.post('/api/subscribe', async (c) => {
     }
 });
 
+// ── Manage alerts: read state ─────────────────────────────────────────────
+app.get('/api/alerts/state', async (c) => {
+  try {
+    const db = c.var.db;
+    if (!db) throw new Error('Database not initialized: ' + c.var.initDbError);
+
+    const token = c.req.query('token') ?? '';
+    const payload = verifyToken(token);
+    if (!payload || payload.purpose !== 'manage') {
+      return c.json({ ok: false, error: 'invalid token' }, 400);
+    }
+
+    const subscriber = await db
+      .selectFrom('subscribers')
+      .select(['id', 'email', 'consent_given'])
+      .where('id', '=', payload.subscriberId)
+      .executeTakeFirst();
+
+    if (!subscriber) {
+      return c.json({ ok: false, error: 'subscriber not found' }, 404);
+    }
+
+    const ar = await db
+      .selectFrom('alert_rules')
+      .select(['rules', 'watches'])
+      .where('subscriber_id', '=', payload.subscriberId)
+      .executeTakeFirst();
+
+    // `rules` and `watches` are stored as JSONB but the Database type
+    // declares them as `string`. JSON.parse handles both cases (string
+    // from Postgres, or already-parsed array if the driver returns it
+    // as an object).
+    const parseJsonb = (v: unknown): unknown[] => {
+      if (Array.isArray(v)) return v;
+      if (typeof v === 'string') {
+        try { return JSON.parse(v); } catch { return []; }
+      }
+      return [];
+    };
+
+    return c.json({
+      ok: true,
+      subscriber: {
+        id: subscriber.id,
+        email: subscriber.email,
+        consent_given: subscriber.consent_given ?? false,
+      },
+      rules: parseJsonb(ar?.rules),
+      watches: parseJsonb(ar?.watches),
+    });
+  } catch (error: unknown) {
+    console.error('Error fetching alerts state:', error);
+    return c.json({ ...toErrorDetails(error), ok: false, error: 'Internal Server Error' }, 500);
+  }
+});
+
+// ── Manage alerts: create or update a rule ────────────────────────────────
+app.post('/api/alerts/rules', async (c) => {
+  try {
+    const db = c.var.db;
+    if (!db) throw new Error('Database not initialized: ' + c.var.initDbError);
+
+    const body = await c.req.json();
+    const { token, rule } = body as { token?: string; rule?: unknown };
+
+    const payload = token ? verifyToken(token) : null;
+    if (!payload || payload.purpose !== 'manage') {
+      return c.json({ ok: false, error: 'invalid token' }, 400);
+    }
+
+    if (!rule || typeof rule !== 'object' || Array.isArray(rule)) {
+      return c.json({ ok: false, error: 'invalid rule' }, 400);
+    }
+
+    const r = rule as Record<string, unknown>;
+    if (typeof r.id !== 'string' || !r.id) {
+      return c.json({ ok: false, error: 'rule.id required' }, 400);
+    }
+
+    // Normalize shape so the match query always sees the same fields.
+    const normalized = {
+      id: r.id,
+      categories: Array.isArray(r.categories) ? r.categories.filter((x): x is string => typeof x === 'string') : [],
+      types: Array.isArray(r.types) ? r.types.filter((x): x is string => typeof x === 'string') : [],
+      genders: Array.isArray(r.genders) ? r.genders.filter((x): x is string => typeof x === 'string') : [],
+      sizes: Array.isArray(r.sizes) ? r.sizes.filter((x): x is string => typeof x === 'string') : [],
+      shop_ids: Array.isArray(r.shop_ids) ? r.shop_ids.filter((x): x is string => typeof x === 'string') : [],
+      made_in_canada_only: typeof r.made_in_canada_only === 'boolean' ? r.made_in_canada_only : false,
+      max_price: typeof r.max_price === 'number' ? r.max_price : null,
+      min_discount: typeof r.min_discount === 'number' ? r.min_discount : 20,
+      frequency: r.frequency === 'instant' || r.frequency === 'daily' || r.frequency === 'weekly'
+        ? r.frequency
+        : 'weekly',
+    };
+
+    // Upsert: read current rules, replace matching id or append, write back.
+    const existing = await db
+      .selectFrom('alert_rules')
+      .select(['rules'])
+      .where('subscriber_id', '=', payload.subscriberId)
+      .executeTakeFirst();
+
+    const parseJsonb = (v: unknown): unknown[] => {
+      if (Array.isArray(v)) return v;
+      if (typeof v === 'string') { try { return JSON.parse(v); } catch { return []; } }
+      return [];
+    };
+
+    const current = parseJsonb(existing?.rules) as Array<Record<string, unknown>>;
+    const idx = current.findIndex(x => x.id === normalized.id);
+    if (idx >= 0) current[idx] = normalized;
+    else current.push(normalized);
+
+    if (current.length > 10) {
+      return c.json({ ok: false, error: 'maximum 10 rules per subscriber' }, 400);
+    }
+
+    if (existing) {
+      await db
+        .updateTable('alert_rules')
+        .set({ rules: JSON.stringify(current), updated_at: new Date() })
+        .where('subscriber_id', '=', payload.subscriberId)
+        .execute();
+    } else {
+      await db
+        .insertInto('alert_rules')
+        .values({
+          subscriber_id: payload.subscriberId,
+          rules: JSON.stringify(current),
+          watches: JSON.stringify([]),
+          sent_log: JSON.stringify([]),
+        })
+        .execute();
+    }
+
+    return c.json({ ok: true, rules: current });
+  } catch (error: unknown) {
+    console.error('Error saving rule:', error);
+    return c.json({ ...toErrorDetails(error), ok: false, error: 'Internal Server Error' }, 500);
+  }
+});
+
+// ── Manage alerts: delete a rule ──────────────────────────────────────────
+app.delete('/api/alerts/rules/:id', async (c) => {
+  try {
+    const db = c.var.db;
+    if (!db) throw new Error('Database not initialized: ' + c.var.initDbError);
+
+    const token = c.req.query('token') ?? '';
+    const payload = verifyToken(token);
+    if (!payload || payload.purpose !== 'manage') {
+      return c.json({ ok: false, error: 'invalid token' }, 400);
+    }
+
+    const ruleId = c.req.param('id');
+
+    const existing = await db
+      .selectFrom('alert_rules')
+      .select(['rules'])
+      .where('subscriber_id', '=', payload.subscriberId)
+      .executeTakeFirst();
+
+    if (!existing) return c.json({ ok: true, rules: [] });
+
+    const parseJsonb = (v: unknown): unknown[] => {
+      if (Array.isArray(v)) return v;
+      if (typeof v === 'string') { try { return JSON.parse(v); } catch { return []; } }
+      return [];
+    };
+
+    const current = (parseJsonb(existing.rules) as Array<Record<string, unknown>>)
+      .filter(x => x.id !== ruleId);
+
+    await db
+      .updateTable('alert_rules')
+      .set({ rules: JSON.stringify(current), updated_at: new Date() })
+      .where('subscriber_id', '=', payload.subscriberId)
+      .execute();
+
+    return c.json({ ok: true, rules: current });
+  } catch (error: unknown) {
+    console.error('Error deleting rule:', error);
+    return c.json({ ...toErrorDetails(error), ok: false, error: 'Internal Server Error' }, 500);
+  }
+});
+
+// ── Manage alerts: add a product watch ────────────────────────────────────
+app.post('/api/alerts/watches', async (c) => {
+  try {
+    const db = c.var.db;
+    if (!db) throw new Error('Database not initialized: ' + c.var.initDbError);
+
+    const body = await c.req.json();
+    const { token, productId, targetPrice } = body as {
+      token?: string;
+      productId?: string;
+      targetPrice?: number | null;
+    };
+
+    const payload = token ? verifyToken(token) : null;
+    if (!payload || payload.purpose !== 'manage') {
+      return c.json({ ok: false, error: 'invalid token' }, 400);
+    }
+
+    if (!productId || !/^\d+$/.test(productId)) {
+      return c.json({ ok: false, error: 'valid productId required' }, 400);
+    }
+
+    const existing = await db
+      .selectFrom('alert_rules')
+      .select(['watches'])
+      .where('subscriber_id', '=', payload.subscriberId)
+      .executeTakeFirst();
+
+    const parseJsonb = (v: unknown): unknown[] => {
+      if (Array.isArray(v)) return v;
+      if (typeof v === 'string') { try { return JSON.parse(v); } catch { return []; } }
+      return [];
+    };
+
+    const current = parseJsonb(existing?.watches) as Array<Record<string, unknown>>;
+
+    if (current.some(w => w.product_id === productId)) {
+      return c.json({ ok: false, error: 'already watching this product' }, 400);
+    }
+    if (current.length >= 20) {
+      return c.json({ ok: false, error: 'maximum 20 watches per subscriber' }, 400);
+    }
+
+    const newWatch = {
+      id: `w${Date.now()}`,
+      product_id: productId,
+      target_price: typeof targetPrice === 'number' ? targetPrice : null,
+      frequency: 'weekly',
+    };
+    current.push(newWatch);
+
+    if (existing) {
+      await db
+        .updateTable('alert_rules')
+        .set({ watches: JSON.stringify(current), updated_at: new Date() })
+        .where('subscriber_id', '=', payload.subscriberId)
+        .execute();
+    } else {
+      await db
+        .insertInto('alert_rules')
+        .values({
+          subscriber_id: payload.subscriberId,
+          rules: JSON.stringify([]),
+          watches: JSON.stringify(current),
+          sent_log: JSON.stringify([]),
+        })
+        .execute();
+    }
+
+    return c.json({ ok: true, watches: current });
+  } catch (error: unknown) {
+    console.error('Error adding watch:', error);
+    return c.json({ ...toErrorDetails(error), ok: false, error: 'Internal Server Error' }, 500);
+  }
+});
+
+// ── Manage alerts: delete a watch ─────────────────────────────────────────
+app.delete('/api/alerts/watches/:id', async (c) => {
+  try {
+    const db = c.var.db;
+    if (!db) throw new Error('Database not initialized: ' + c.var.initDbError);
+
+    const token = c.req.query('token') ?? '';
+    const payload = verifyToken(token);
+    if (!payload || payload.purpose !== 'manage') {
+      return c.json({ ok: false, error: 'invalid token' }, 400);
+    }
+
+    const watchId = c.req.param('id');
+
+    const existing = await db
+      .selectFrom('alert_rules')
+      .select(['watches'])
+      .where('subscriber_id', '=', payload.subscriberId)
+      .executeTakeFirst();
+
+    if (!existing) return c.json({ ok: true, watches: [] });
+
+    const parseJsonb = (v: unknown): unknown[] => {
+      if (Array.isArray(v)) return v;
+      if (typeof v === 'string') { try { return JSON.parse(v); } catch { return []; } }
+      return [];
+    };
+
+    const current = (parseJsonb(existing.watches) as Array<Record<string, unknown>>)
+      .filter(w => w.id !== watchId);
+
+    await db
+      .updateTable('alert_rules')
+      .set({ watches: JSON.stringify(current), updated_at: new Date() })
+      .where('subscriber_id', '=', payload.subscriberId)
+      .execute();
+
+    return c.json({ ok: true, watches: current });
+  } catch (error: unknown) {
+    console.error('Error deleting watch:', error);
+    return c.json({ ...toErrorDetails(error), ok: false, error: 'Internal Server Error' }, 500);
+  }
+});
+
 app.post('/api/alerts/unsubscribe', async (c) => {
   try {
     const db = c.var.db;

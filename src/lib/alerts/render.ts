@@ -130,6 +130,13 @@ export function renderDigest(group: SubscriberGroup): {
   const when = frequencyLabel(group.frequency);
   const count = group.items.length;
 
+  const manageToken = signToken({
+    subscriberId: group.subscriber_id,
+    purpose: 'manage',
+  });
+  
+  const manageUrl = `${SITE}/account/alerts?token=${encodeURIComponent(manageToken)}`;
+
   const unsubscribeToken = signToken({
     subscriberId: group.subscriber_id,
     purpose: 'unsubscribe',
@@ -191,6 +198,8 @@ export function renderDigest(group: SubscriberGroup): {
               You're receiving this because you asked Curated Canada to alert you about deals.
             </p>
             <p style="margin:0;font-size:12px;color:#6b7280;line-height:1.5;">
+              <a href="${esc(manageUrl)}" style="color:#2563eb;text-decoration:underline;">Manage alerts</a>
+              &nbsp;·&nbsp;
               <a href="${esc(unsubUrl)}" style="color:#2563eb;text-decoration:underline;">Unsubscribe</a>
             </p>
             <p style="margin:16px 0 0 0;font-size:12px;color:#9ca3af;line-height:1.5;">
@@ -212,6 +221,7 @@ export function renderDigest(group: SubscriberGroup): {
     '',
     '---',
     ...(showSeeAll ? [`See all ${group.total_matches} matching deals: ${seeAllUrl}`, ''] : []),
+    `Manage your alerts: ${manageUrl}`,
     `Unsubscribe: ${unsubUrl}`,
   ].join('\n');
 
