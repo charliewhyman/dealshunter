@@ -1367,7 +1367,7 @@ export function HomePage({
               <div className="mb-4">
                 <h3 className="text-sm font-medium text-gray-900 dark:text-gray-100 flex items-center gap-2">
                   <AsyncLucideIcon name="Mail" className="h-4 w-4 text-gray-500 dark:text-gray-400" />
-                  Get Canadian Brand Deals by Email
+                  Get weekly deal alerts for Canadian brands
                 </h3>
                 <p className="text-xs text-gray-500 dark:text-gray-400">
                   Join other shoppers discovering Canadian fashion and exclusive deals.

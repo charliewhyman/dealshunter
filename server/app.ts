@@ -303,35 +303,76 @@ app.get('/api/out/:id', async (c) => {
 });
 
 app.post('/api/subscribe', async (c) => {
-    try {
-        const db = c.var.db;
-        if (!db) throw new Error('Database not initialized: ' + c.var.initDbError);
-        const body = await c.req.json();
-        const { email, source, consentGiven } = body;
-        if (!email || !email.includes('@')) {
-            return c.json({ error: 'Valid email is required' }, 400);
-        }
-        if (!consentGiven) {
-            return c.json({ error: 'Consent is required to subscribe' }, 400);
-        }
-        const ip = c.req.header('cf-connecting-ip')
-            || c.req.header('x-real-ip')
-            || c.req.header('x-forwarded-for')?.split(',')[0].trim()
-            || null;
-        await db.insertInto('subscribers')
-            .values({
-                email: email.trim().toLowerCase(),
-                ip_address: ip,
-                source: source || 'unknown',
-                consent_given: true,
-            })
-            .onConflict((oc) => oc.column('email').doNothing())
-            .execute();
-        return c.json({ success: true, message: 'Subscribed successfully' });
-    } catch (error: unknown) {
-        console.error('Error handling subscription:', error);
-        return c.json({ ...toErrorDetails(error), error: 'Internal Server Error' }, 500);
+  try {
+    const db = c.var.db;
+    if (!db) throw new Error('Database not initialized: ' + c.var.initDbError);
+    const body = await c.req.json();
+    const { email, source, consentGiven } = body;
+    if (!email || !email.includes('@')) {
+      return c.json({ error: 'Valid email is required' }, 400);
     }
+    if (!consentGiven) {
+      return c.json({ error: 'Consent is required to subscribe' }, 400);
+    }
+    const ip = c.req.header('cf-connecting-ip')
+      || c.req.header('x-real-ip')
+      || c.req.header('x-forwarded-for')?.split(',')[0].trim()
+      || null;
+
+    const normalizedEmail = email.trim().toLowerCase();
+
+    // Insert subscriber, return its id (or existing id on conflict)
+    const inserted = await db
+      .insertInto('subscribers')
+      .values({
+        email: normalizedEmail,
+        ip_address: ip,
+        source: source || 'unknown',
+        consent_given: true,
+      })
+      .onConflict((oc) => oc.column('email').doNothing())
+      .returning('id')
+      .executeTakeFirst();
+
+    // If the subscriber already existed (onConflict did nothing), fetch their id
+    const subscriberId = inserted?.id ?? (
+      await db
+        .selectFrom('subscribers')
+        .select('id')
+        .where('email', '=', normalizedEmail)
+        .executeTakeFirst()
+    )?.id;
+
+    // Insert default alert rule if the subscriber doesn't have one yet
+    if (subscriberId) {
+      await db
+        .insertInto('alert_rules')
+        .values({
+          subscriber_id: subscriberId,
+          rules: JSON.stringify([{
+            id: 'r-default',
+            categories: ['Clothing'],
+            types: [],
+            genders: [],
+            sizes: [],
+            shop_ids: [],
+            made_in_canada_only: false,
+            max_price: null,
+            min_discount: 40,
+            frequency: 'weekly',
+          }]),
+          watches: JSON.stringify([]),
+          sent_log: JSON.stringify([]),
+        })
+        .onConflict((oc) => oc.column('subscriber_id').doNothing())
+        .execute();
+    }
+
+    return c.json({ success: true, message: 'Subscribed successfully' });
+  } catch (error: unknown) {
+    console.error('Error handling subscription:', error);
+    return c.json({ ...toErrorDetails(error), error: 'Internal Server Error' }, 500);
+  }
 });
 
 app.post('/api/alerts/unsubscribe', async (c) => {
