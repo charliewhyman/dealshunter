@@ -197,7 +197,7 @@ export function renderDigest(group: SubscriberGroup): {
           <tr><td style="padding:8px 32px 16px 32px;text-align:center;">
             <a href="${esc(seeAllUrl!)}"
                style="display:inline-block;padding:12px 24px;background:#2563eb;color:#ffffff;border-radius:8px;font-size:14px;font-weight:600;text-decoration:none;">
-              See all ${group.total_matches} matching deals →
+              See all matching deals →
             </a>
           </td></tr>
           ` : ''}
