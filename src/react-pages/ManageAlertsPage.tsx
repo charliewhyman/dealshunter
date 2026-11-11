@@ -233,7 +233,7 @@ export default function ManageAlertsPage({ initialToken }: Props) {
         </div>
         {rules.length === 0 ? (
           <p className="text-sm text-gray-500 dark:text-gray-400">
-            No rules yet. Add one to start getting deal alerts.
+            No alert rules yet! Add one to start getting deal alerts.
           </p>
         ) : (
           <ul className="space-y-2">
@@ -273,7 +273,7 @@ export default function ManageAlertsPage({ initialToken }: Props) {
         </div>
         {watches.length === 0 ? (
           <p className="text-sm text-gray-500 dark:text-gray-400">
-            No watches yet. Product watches are coming soon — you'll be able to click "Watch price" on any product to get an alert when it drops.
+            No watches yet.
           </p>
         ) : (
           <ul className="space-y-2">

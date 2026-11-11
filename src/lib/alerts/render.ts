@@ -117,7 +117,7 @@ function renderItemText(
   const price = formatPrice(item.min_price);
   const discount = formatDiscount(item.max_discount_percentage);
   const priceLine = [price, discount].filter(Boolean).join(' ');
-  const shopLine = item.shop_name ? `${item.shop_name} — ` : '';
+  const shopLine = item.shop_name ? `${item.shop_name} - ` : '';
   return `${shopLine}${item.title}${priceLine ? ` — ${priceLine}` : ''}\n${href}`;
 }
 
@@ -214,7 +214,7 @@ export function renderDigest(group: SubscriberGroup): {
 </html>`;
 
   const text = [
-    `Curated Canada — ${count === 1 ? '1 new deal' : `${count} new deals`} for you`,
+    `Curated Canada - ${count === 1 ? '1 new deal' : `${count} new deals`} for you`,
     `Matching your alerts ${when}.`,
     '',
     ...group.items.map(item => renderItemText(item, group.subscriber_id, group.frequency)),

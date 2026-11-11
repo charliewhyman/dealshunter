@@ -150,7 +150,7 @@ export async function sendAlerts(opts: SendOptions = {}): Promise<SendReport> {
         await recordSent(group);
       } catch (err) {
         console.error(
-          `[alerts] recordSent failed for subscriber ${group.subscriber_id} — email was delivered but sent_log was not updated:`,
+          `[alerts] recordSent failed for subscriber ${group.subscriber_id}. email was delivered but sent_log was not updated:`,
           err
         );
       }
