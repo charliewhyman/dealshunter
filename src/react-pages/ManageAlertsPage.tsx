@@ -49,14 +49,47 @@ interface Props {
 
 async function readJson<T>(res: Response): Promise<T> {
   const text = await res.text();
-  if (!text) {
-    throw new Error(`Empty response (${res.status})`);
-  }
+  if (!text) throw new Error(`Empty response (${res.status})`);
   try {
     return JSON.parse(text) as T;
   } catch {
     throw new Error(`Invalid JSON (${res.status}) from ${res.url}: ${text.slice(0, 120)}`);
   }
+}
+
+/**
+ * Build a human-readable summary of a rule.
+ * Line 1: categories · types · genders · shop names
+ * Line 2: discount · max price · made in canada · frequency
+ *
+ * Any field that's empty is replaced with "All ..." (or omitted on line 2
+ * when there's no constraint). Shops are shown by name from the options
+ * list, falling back to the raw ID if the shop was deleted.
+ */
+function summarizeRule(
+  rule: AlertRule,
+  shopOptions: Option[]
+): { line1: string; line2: string } {
+  const shopName = (id: string) =>
+    shopOptions.find(s => s.value === id)?.label ?? `Shop ${id}`;
+
+  const line1Parts: string[] = [];
+  line1Parts.push(rule.categories.length ? rule.categories.join(', ') : 'All categories');
+  if (rule.types.length) line1Parts.push(rule.types.join(', '));
+  if (rule.genders.length) line1Parts.push(rule.genders.join(', '));
+  if (rule.sizes.length) line1Parts.push(`Sizes ${rule.sizes.join(', ')}`);
+  if (rule.shop_ids.length) line1Parts.push(rule.shop_ids.map(shopName).join(', '));
+
+  const line2Parts: string[] = [];
+  line2Parts.push(`${rule.min_discount}%+ off`);
+  if (rule.max_price != null) line2Parts.push(`under $${rule.max_price}`);
+  if (rule.made_in_canada_only) line2Parts.push('Made in Canada');
+  line2Parts.push(rule.frequency);
+
+  return {
+    line1: line1Parts.join(' · '),
+    line2: line2Parts.join(' · '),
+  };
 }
 
 export default function ManageAlertsPage({ initialToken }: Props) {
@@ -72,57 +105,6 @@ export default function ManageAlertsPage({ initialToken }: Props) {
     sizes: Option[];
     shops: Option[];
   } | null>(null);
-
-  // Fetch options once (when the editor first opens)
-  const loadOptions = async () => {
-    if (options) return;
-    try {
-      const [cats, types, genders, sizes, shops] = await Promise.all([
-        fetch('/api/categories').then(r => r.json()) as Promise<Array<{ top_level_category: string }>>,
-        fetch('/api/types').then(r => r.json()) as Promise<Array<{ grouped_product_type: string }>>,
-        fetch('/api/genders').then(r => r.json()) as Promise<Array<{ gender_age: string }>>,
-        fetch('/api/sizes').then(r => r.json()) as Promise<Array<{ size_group: string }>>,
-        fetch('/api/shops').then(r => r.json()) as Promise<Array<{ id: number; shop_name: string }>>,
-      ]);
-      setOptions({
-        categories: cats.map(r => ({ value: r.top_level_category, label: r.top_level_category })),
-        types: types.map(r => ({ value: r.grouped_product_type, label: r.grouped_product_type })),
-        genders: genders.map(r => ({ value: r.gender_age, label: r.gender_age })),
-        sizes: sizes.map(r => ({ value: r.size_group, label: r.size_group })),
-        shops: shops.map(r => ({ value: String(r.id), label: r.shop_name })),
-      });
-    } catch (err) {
-      alert(`Failed to load filter options: ${(err as Error).message}`);
-    }
-  };
-
-  const handleOpenAdd = async () => {
-    await loadOptions();
-    setEditingRule(undefined);
-    setShowEditor(true);
-  };
-
-  const handleSaveRule = async (rule: RuleDraft) => {
-    try {
-      const res = await fetch('/api/alerts/rules', {
-        method: 'POST',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ token: initialToken, rule }),
-      });
-      const body = (await res.json()) as
-        | { ok: true; rules: AlertRule[] }
-        | { ok: false; error: string };
-
-      if (!body.ok) {
-        alert(`Save failed: ${body.error}`);
-        return;
-      }
-      setState(s => (s.status === 'ready' ? { ...s, rules: body.rules } : s));
-      setShowEditor(false);
-    } catch (err) {
-      alert(`Save failed: ${(err as Error).message}`);
-    }
-  };
 
   useEffect(() => {
     if (!initialToken) return;
@@ -153,10 +135,7 @@ export default function ManageAlertsPage({ initialToken }: Props) {
         });
       } catch (err) {
         if (!cancelled) {
-          setState({
-            status: 'error',
-            errorMessage: (err as Error).message,
-          });
+          setState({ status: 'error', errorMessage: (err as Error).message });
         }
       }
     })();
@@ -165,6 +144,64 @@ export default function ManageAlertsPage({ initialToken }: Props) {
       cancelled = true;
     };
   }, [initialToken]);
+
+  // Load filter options once, lazily, the first time the editor opens.
+  const loadOptions = async () => {
+    if (options) return;
+    try {
+      const [cats, types, genders, sizes, shops] = await Promise.all([
+        fetch('/api/categories').then(r => r.json()) as Promise<Array<{ top_level_category: string }>>,
+        fetch('/api/types').then(r => r.json()) as Promise<Array<{ grouped_product_type: string }>>,
+        fetch('/api/genders').then(r => r.json()) as Promise<Array<{ gender_age: string }>>,
+        fetch('/api/sizes').then(r => r.json()) as Promise<Array<{ size_group: string }>>,
+        fetch('/api/shops').then(r => r.json()) as Promise<Array<{ id: number; shop_name: string }>>,
+      ]);
+      setOptions({
+        categories: cats.map(r => ({ value: r.top_level_category, label: r.top_level_category })),
+        types: types.map(r => ({ value: r.grouped_product_type, label: r.grouped_product_type })),
+        genders: genders.map(r => ({ value: r.gender_age, label: r.gender_age })),
+        sizes: sizes.map(r => ({ value: r.size_group, label: r.size_group })),
+        shops: shops.map(r => ({ value: String(r.id), label: r.shop_name })),
+      });
+    } catch (err) {
+      alert(`Failed to load filter options: ${(err as Error).message}`);
+    }
+  };
+
+  const handleOpenAdd = async () => {
+    await loadOptions();
+    setEditingRule(undefined);
+    setShowEditor(true);
+  };
+
+  const handleOpenEdit = async (rule: AlertRule) => {
+    await loadOptions();
+    // Cast the stored rule to RuleDraft — the shape matches except frequency
+    // which is already 'weekly' or one of the others; RuleDraft says 'weekly'
+    // so cast is safe (the endpoint normalizes anyway).
+    setEditingRule({ ...rule, frequency: 'weekly' });
+    setShowEditor(true);
+  };
+
+  const handleSaveRule = async (rule: RuleDraft) => {
+    try {
+      const res = await fetch('/api/alerts/rules', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ token: initialToken, rule }),
+      });
+      const body = await readJson<MutationResponse>(res);
+      if (!body.ok) {
+        alert(`Save failed: ${body.error}`);
+        return;
+      }
+      setState(s => (s.status === 'ready' ? { ...s, rules: body.rules ?? [] } : s));
+      setShowEditor(false);
+      setEditingRule(undefined);
+    } catch (err) {
+      alert(`Save failed: ${(err as Error).message}`);
+    }
+  };
 
   const handleDeleteRule = async (ruleId: string) => {
     if (!confirm('Delete this rule? You will stop receiving alerts that match it.')) return;
@@ -285,41 +322,49 @@ export default function ManageAlertsPage({ initialToken }: Props) {
           <h2 className="text-lg font-semibold text-gray-900 dark:text-gray-100">Rules</h2>
           <button
             onClick={handleOpenAdd}
-            className="..."
+            className="rounded-lg bg-gray-900 px-4 py-2 text-sm font-semibold text-white hover:bg-gray-800 dark:bg-gray-100 dark:text-gray-900 dark:hover:bg-gray-200"
           >
             + Add rule
           </button>
         </div>
         {rules.length === 0 ? (
           <p className="text-sm text-gray-500 dark:text-gray-400">
-            No alert rules yet! Add one to start getting deal alerts.
+            No rules yet. Add one to start getting deal alerts.
           </p>
         ) : (
           <ul className="space-y-2">
-            {rules.map(rule => (
-              <li
-                key={rule.id}
-                className="flex items-center justify-between rounded-lg border border-gray-200 bg-white p-4 dark:border-gray-800 dark:bg-gray-900"
-              >
-                <div className="text-sm">
-                  <div className="mb-1 font-semibold text-gray-900 dark:text-gray-100">
-                    {rule.categories.length ? rule.categories.join(', ') : 'All categories'}
-                    {rule.types.length ? ` · ${rule.types.join(', ')}` : ''}
-                  </div>
-                  <div className="text-xs text-gray-500 dark:text-gray-400">
-                    {rule.min_discount}%+ off · {rule.frequency}
-                    {rule.made_in_canada_only ? ' · Made in Canada' : ''}
-                    {rule.max_price != null ? ` · under $${rule.max_price}` : ''}
-                  </div>
-                </div>
-                <button
-                  onClick={() => handleDeleteRule(rule.id)}
-                  className="rounded-md border border-gray-200 px-3 py-1.5 text-xs font-medium text-red-600 hover:bg-red-50 dark:border-gray-700 dark:text-red-400 dark:hover:bg-red-900/20"
+            {rules.map(rule => {
+              const summary = summarizeRule(rule, options?.shops ?? []);
+              return (
+                <li
+                  key={rule.id}
+                  className="flex items-start justify-between gap-4 rounded-lg border border-gray-200 bg-white p-4 dark:border-gray-800 dark:bg-gray-900"
                 >
-                  Delete
-                </button>
-              </li>
-            ))}
+                  <div className="min-w-0 flex-1 text-sm">
+                    <div className="mb-1 font-semibold text-gray-900 dark:text-gray-100">
+                      {summary.line1}
+                    </div>
+                    <div className="text-xs text-gray-500 dark:text-gray-400">
+                      {summary.line2}
+                    </div>
+                  </div>
+                  <div className="flex shrink-0 gap-2">
+                    <button
+                      onClick={() => handleOpenEdit(rule)}
+                      className="rounded-md border border-gray-200 px-3 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-50 dark:border-gray-700 dark:text-gray-200 dark:hover:bg-gray-800"
+                    >
+                      Edit
+                    </button>
+                    <button
+                      onClick={() => handleDeleteRule(rule.id)}
+                      className="rounded-md border border-gray-200 px-3 py-1.5 text-xs font-medium text-red-600 hover:bg-red-50 dark:border-gray-700 dark:text-red-400 dark:hover:bg-red-900/20"
+                    >
+                      Delete
+                    </button>
+                  </div>
+                </li>
+              );
+            })}
           </ul>
         )}
       </section>
@@ -372,6 +417,7 @@ export default function ManageAlertsPage({ initialToken }: Props) {
           Unsubscribe from all deal alerts
         </button>
       </section>
+
       {showEditor && options && (
         <RuleEditor
           initialRule={editingRule}
@@ -382,7 +428,10 @@ export default function ManageAlertsPage({ initialToken }: Props) {
           sizes={options.sizes}
           shops={options.shops}
           onSave={handleSaveRule}
-          onCancel={() => setShowEditor(false)}
+          onCancel={() => {
+            setShowEditor(false);
+            setEditingRule(undefined);
+          }}
         />
       )}
     </div>
