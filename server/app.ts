@@ -705,9 +705,9 @@ app.post('/api/alerts/unsubscribe', async (c) => {
     }
 
     const payload = body.token ? verifyToken(body.token) : null;
-    if (!payload || payload.purpose !== 'unsubscribe') {
-      return c.json({ ok: false, error: 'invalid token' }, 400);
-    }
+        if (!payload || (payload.purpose !== 'unsubscribe' && payload.purpose !== 'manage')) {
+        return c.json({ ok: false, error: 'invalid token' }, 400);
+        }
 
     await db
       .updateTable('subscribers')
