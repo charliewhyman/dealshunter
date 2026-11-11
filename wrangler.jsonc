@@ -16,7 +16,6 @@
   "vars": {
     "ALERT_FROM_EMAIL": "deals@curatedcanada.ca",
     "ALERT_SITE_URL": "https://curatedcanada.ca",
-    "LIVE_SEND_ENABLED": "false"
   },
 
   "kv_namespaces": [
