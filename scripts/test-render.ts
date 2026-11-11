@@ -25,6 +25,7 @@ function group(over: Partial<SubscriberGroup> = {}): SubscriberGroup {
       {
         product_id: '9000001',
         title: 'Linen Button-Down Shirt',
+        shop_name: 'Example Brand',
         min_price: 45.0,
         max_discount_percentage: 40,
         image_url: 'https://example.com/shirt.jpg',
@@ -33,6 +34,7 @@ function group(over: Partial<SubscriberGroup> = {}): SubscriberGroup {
       {
         product_id: '9000002',
         title: 'Wool Overcoat',
+        shop_name: null,
         min_price: 189.99,
         max_discount_percentage: 25,
         image_url: null,
