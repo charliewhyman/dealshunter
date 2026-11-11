@@ -6,24 +6,18 @@ export type { RuleMatch, WatchMatch };
 type MatchFilters = {
   subscriberId?: number;
   frequency?: AlertFrequency;
+  /** Cap the number of subscribers processed in one call. Pushed into SQL
+   *  so the Worker only parses rows for N subscribers, not all of them.
+   *  Default 100 — larger than any realistic subscriber count, effectively
+   *  "all". Pass a smaller value (2–10) on the Free plan to stay under the
+   *  Worker CPU limit. */
+  subscriberLimit?: number;
 };
 
-/**
- * Fetch up to 50 top-discount products per rule per subscriber.
- *
- * The LATERAL subquery does the ORDER BY + LIMIT inside Postgres. Without
- * it, the outer query returns every matching product (potentially thousands
- * per subscriber), which burns the Worker's CPU limit parsing the JSON
- * response and iterating in groupMatches. With the inner LIMIT, the Worker
- * sees at most 50 * rules_per_subscriber rows.
- *
- * 50 is chosen so that after dedupe across multiple rules a single
- * subscriber still has enough to fill the 20-item email cap. If you raise
- * MAX_ITEMS_PER_EMAIL later, raise this too (rule of thumb: 2.5x the cap).
- */
 export async function matchRuleAlerts(opts: MatchFilters = {}): Promise<RuleMatch[]> {
   const filterSub = opts.subscriberId ?? null;
   const filterFreq = opts.frequency ?? null;
+  const subscriberLimit = opts.subscriberLimit ?? 100;
 
   return query<RuleMatch>`
     SELECT
@@ -80,7 +74,14 @@ export async function matchRuleAlerts(opts: MatchFilters = {}): Promise<RuleMatc
     ) p ON true
     LEFT JOIN shops sh ON sh.id = p.shop_id
     WHERE sub.consent_given = true
-      AND (${filterSub}::integer IS NULL OR ar.subscriber_id = ${filterSub})
+      AND ar.subscriber_id IN (
+        SELECT id
+        FROM subscribers
+        WHERE consent_given = true
+          AND (${filterSub}::integer IS NULL OR id = ${filterSub})
+        ORDER BY id
+        LIMIT ${subscriberLimit}
+      )
       AND (${filterFreq}::text IS NULL OR (r->>'frequency') = ${filterFreq})
       AND NOT EXISTS (
         SELECT 1 FROM jsonb_array_elements(ar.sent_log) e
@@ -91,12 +92,6 @@ export async function matchRuleAlerts(opts: MatchFilters = {}): Promise<RuleMatc
   `;
 }
 
-/**
- * Watch alerts: the LATERAL join is unnecessary here because the watch
- * already pins a specific product ID (p.id = w->>'product_id'). The query
- * returns at most one row per active watch, so the CPU cost is O(watches),
- * not O(products).
- */
 export async function matchWatchAlerts(opts: MatchFilters = {}): Promise<WatchMatch[]> {
   const filterSub = opts.subscriberId ?? null;
   const filterFreq = opts.frequency ?? null;

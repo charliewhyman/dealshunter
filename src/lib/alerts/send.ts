@@ -41,7 +41,11 @@ export async function sendAlerts(opts: SendOptions = {}): Promise<SendReport> {
   const apiKey = opts.resendApiKey ?? process.env.RESEND_API_KEY ?? '';
 
   const [ruleMatches, watchMatches] = await Promise.all([
-    matchRuleAlerts({ subscriberId: opts.subscriberId, frequency: opts.frequency }),
+    matchRuleAlerts({
+      subscriberId: opts.subscriberId,
+      frequency: opts.frequency,
+      subscriberLimit: limit,  // pass through as SQL-level limit
+    }),
     matchWatchAlerts({ subscriberId: opts.subscriberId, frequency: opts.frequency }),
   ]);
 

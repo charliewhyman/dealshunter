@@ -567,19 +567,20 @@ app.get('/api/cron/send-alerts', async (c) => {
 
   const freq = c.req.query('frequency');
   const frequency: AlertFrequency | undefined =
-    freq === 'instant' || freq === 'daily' || freq === 'weekly'
-      ? freq
-      : undefined;
+    freq === 'instant' || freq === 'daily' || freq === 'weekly' ? freq : undefined;
 
   const dryRun = c.req.query('dry') === '1';
+  const limit = Math.min(Number(c.req.query('limit')) || 100, 100);
 
   try {
     const report = await sendAlerts({
-        frequency,
-        dryRun,
-        resendApiKey: c.env?.RESEND_API_KEY,
-        fromEmail: c.env?.ALERT_FROM_EMAIL,
-        });
+      frequency,
+      dryRun,
+      limit,
+      resendApiKey: c.env?.RESEND_API_KEY,
+      fromEmail: c.env?.ALERT_FROM_EMAIL,
+    });
+
     const pruned = frequency === 'daily' && !dryRun ? await pruneSentLogs(30) : 0;
 
     return c.json({
