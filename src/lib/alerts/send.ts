@@ -108,6 +108,7 @@ export async function sendAlerts(opts: SendOptions = {}): Promise<SendReport> {
     }
 
     try {
+      await new Promise(r => setTimeout(r, 200));
       const res = await resend.emails.send({
         from: fromEmail,
         to: group.email,
