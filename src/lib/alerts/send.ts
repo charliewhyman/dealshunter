@@ -4,8 +4,10 @@ import { matchRuleAlerts, matchWatchAlerts } from './match';
 import { groupMatches, type SubscriberGroup } from './grouping';
 import { renderDigest } from './render';
 import type { AlertFrequency } from '../types';
+import { signToken } from './token';
 
 const DEFAULT_LIMIT = 100;
+const SITE = process.env.ALERT_SITE_URL ?? 'https://curatedcanada.ca';
 
 export type SendStatus = 'sent' | 'dry-run' | 'error' | 'skipped';
 
@@ -109,7 +111,14 @@ export async function sendAlerts(opts: SendOptions = {}): Promise<SendReport> {
 
     try {
       await new Promise(r => setTimeout(r, 200));
+      const unsubToken = signToken({ subscriberId: group.subscriber_id, purpose: 'unsubscribe' });
+      const unsubUrl = `${SITE}/alerts/unsubscribe?token=${encodeURIComponent(unsubToken)}`;
+      
       const res = await resend.emails.send({
+        headers: {
+          'List-Unsubscribe': `<${unsubUrl}>, <mailto:hello@curatedcanada.ca?subject=unsubscribe>`,
+          'List-Unsubscribe-Post': 'List-Unsubscribe=One-Click',
+        },
         from: fromEmail,
         to: group.email,
         subject: rendered.subject,

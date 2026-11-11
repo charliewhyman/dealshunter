@@ -74,13 +74,15 @@ export async function matchRuleAlerts(opts: MatchFilters = {}): Promise<RuleMatc
     ) p ON true
     LEFT JOIN shops sh ON sh.id = p.shop_id
     WHERE sub.consent_given = true
-      AND ar.subscriber_id IN (
-        SELECT id
-        FROM subscribers
-        WHERE consent_given = true
-          AND (${filterSub}::integer IS NULL OR id = ${filterSub})
-        ORDER BY id
-        LIMIT ${subscriberLimit}
+      AND (
+        (${filterSub}::integer IS NOT NULL AND ar.subscriber_id = ${filterSub})
+        OR
+        (${filterSub}::integer IS NULL AND ar.subscriber_id IN (
+          SELECT id FROM subscribers
+          WHERE consent_given = true
+          ORDER BY id
+          LIMIT ${subscriberLimit}
+        ))
       )
       AND (${filterFreq}::text IS NULL OR (r->>'frequency') = ${filterFreq})
       AND NOT EXISTS (

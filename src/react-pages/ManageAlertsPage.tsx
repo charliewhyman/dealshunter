@@ -54,7 +54,7 @@ async function readJson<T>(res: Response): Promise<T> {
   try {
     return JSON.parse(text) as T;
   } catch {
-    throw new Error(`Invalid JSON (${res.status}): ${text.slice(0, 120)}`);
+    throw new Error(`Invalid JSON (${res.status}) from ${res.url}: ${text.slice(0, 120)}`);
   }
 }
 
