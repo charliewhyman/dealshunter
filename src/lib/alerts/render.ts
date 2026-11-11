@@ -23,6 +23,24 @@ function formatDiscount(n: number): string {
   return `-${Math.round(n)}%`;
 }
 
+function frequencyLabel(f: AlertFrequency): string {
+  switch (f) {
+    case 'instant': return 'just now';
+    case 'daily':   return 'today';
+    case 'weekly':  return 'this week';
+  }
+}
+
+/**
+ * Build the "see all" URL from the rule that produced this group. The
+ * homepage parses these params via useSearchParams, so the user lands on
+ * a pre-filtered grid showing every product their rule matched (not just
+ * the 20 that fit in the email).
+ *
+ * The src param is the attribution channel. Nothing reads it yet, but
+ * it's the key a future /api/track endpoint would log to measure which
+ * emails drive traffic.
+ */
 function buildSeeAllUrl(group: SubscriberGroup): string {
   const f = group.rule_filters;
   if (!f) return `${SITE}/`;
@@ -36,16 +54,9 @@ function buildSeeAllUrl(group: SubscriberGroup): string {
   if (f.min_discount > 0) params.set('sale', 'true');
   if (f.max_price != null) params.set('price', `0-${f.max_price}`);
   if (f.made_in_canada_only) params.set('made_in_canada', 'true');
+  params.set('sort', 'discount_desc');
   params.set('src', `email-${group.subscriber_id}-${group.frequency}`);
   return `${SITE}/?${params.toString()}`;
-}
-
-function frequencyLabel(f: AlertFrequency): string {
-  switch (f) {
-    case 'instant': return 'just now';
-    case 'daily':   return 'today';
-    case 'weekly':  return 'this week';
-  }
 }
 
 function subjectFor(group: SubscriberGroup): string {
@@ -117,7 +128,7 @@ function renderItemText(
   const price = formatPrice(item.min_price);
   const discount = formatDiscount(item.max_discount_percentage);
   const priceLine = [price, discount].filter(Boolean).join(' ');
-  const shopLine = item.shop_name ? `${item.shop_name} - ` : '';
+  const shopLine = item.shop_name ? `${item.shop_name} — ` : '';
   return `${shopLine}${item.title}${priceLine ? ` — ${priceLine}` : ''}\n${href}`;
 }
 
@@ -129,27 +140,24 @@ export function renderDigest(group: SubscriberGroup): {
   const subject = subjectFor(group);
   const when = frequencyLabel(group.frequency);
   const count = group.items.length;
-
-  const manageToken = signToken({
-    subscriberId: group.subscriber_id,
-    purpose: 'manage',
-  });
-  
-  const manageUrl = `${SITE}/account/alerts?token=${encodeURIComponent(manageToken)}`;
+  const showSeeAll = group.total_matches > group.items.length;
+  const seeAllUrl = showSeeAll ? buildSeeAllUrl(group) : null;
 
   const unsubscribeToken = signToken({
     subscriberId: group.subscriber_id,
     purpose: 'unsubscribe',
   });
+  const manageToken = signToken({
+    subscriberId: group.subscriber_id,
+    purpose: 'manage',
+  });
 
   const unsubUrl = `${SITE}/alerts/unsubscribe?token=${encodeURIComponent(unsubscribeToken)}`;
+  const manageUrl = `${SITE}/account/alerts?token=${encodeURIComponent(manageToken)}`;
 
   const itemsHtml = group.items
     .map(item => renderItemHtml(item, group.subscriber_id, group.frequency))
     .join('');
-
-  const seeAllUrl = buildSeeAllUrl(group);
-  const showSeeAll = group.total_matches > group.items.length;
 
   const html = `<!doctype html>
 <html lang="en">
@@ -184,14 +192,15 @@ export function renderDigest(group: SubscriberGroup): {
             <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
               ${itemsHtml}
             </table>
-          </td>${showSeeAll ? `
+          </td></tr>
+          ${showSeeAll ? `
           <tr><td style="padding:8px 32px 16px 32px;text-align:center;">
-            <a href="${esc(seeAllUrl)}"
-              style="display:inline-block;padding:12px 20px;background:#2563eb;color:#ffffff;border-radius:8px;font-size:14px;font-weight:600;text-decoration:none;">
+            <a href="${esc(seeAllUrl!)}"
+               style="display:inline-block;padding:12px 24px;background:#2563eb;color:#ffffff;border-radius:8px;font-size:14px;font-weight:600;text-decoration:none;">
               See all ${group.total_matches} matching deals →
             </a>
           </td></tr>
-        ` : ''}</tr>
+          ` : ''}
           <tr><td style="padding:8px 32px 32px 32px;">
             <hr style="border:none;border-top:1px solid #e5e7eb;margin:16px 0 20px 0;" />
             <p style="margin:0 0 8px 0;font-size:12px;color:#6b7280;line-height:1.5;">
@@ -213,17 +222,22 @@ export function renderDigest(group: SubscriberGroup): {
 </body>
 </html>`;
 
-  const text = [
-    `Curated Canada - ${count === 1 ? '1 new deal' : `${count} new deals`} for you`,
+  const textLines: string[] = [
+    `Curated Canada — ${count === 1 ? '1 new deal' : `${count} new deals`} for you`,
     `Matching your alerts ${when}.`,
     '',
     ...group.items.map(item => renderItemText(item, group.subscriber_id, group.frequency)),
-    '',
-    '---',
-    ...(showSeeAll ? [`See all ${group.total_matches} matching deals: ${seeAllUrl}`, ''] : []),
-    `Manage your alerts: ${manageUrl}`,
-    `Unsubscribe: ${unsubUrl}`,
-  ].join('\n');
+  ];
 
-  return { subject, html, text };
+  if (showSeeAll && seeAllUrl) {
+    textLines.push('');
+    textLines.push(`See all ${group.total_matches} matching deals: ${seeAllUrl}`);
+  }
+
+  textLines.push('');
+  textLines.push('---');
+  textLines.push(`Manage alerts: ${manageUrl}`);
+  textLines.push(`Unsubscribe:   ${unsubUrl}`);
+
+  return { subject, html, text: textLines.join('\n') };
 }
