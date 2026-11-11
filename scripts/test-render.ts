@@ -112,7 +112,7 @@ mkdirSync('tmp', { recursive: true });
   const r = renderDigest(group());
   check('text has item 1 title', r.text.includes('Linen Button-Down Shirt'));
   check('text has item 2 title', r.text.includes('Wool Overcoat'));
-  check('text has product URLs', r.text.includes('https://example.com/products/shirt'));
+  check('text has tracking URLs', r.text.includes('/api/out/9000001?src=email-42-weekly'));
   check('text has unsubscribe link', r.text.includes('/alerts/unsubscribe?token='));
   check('text has manage link', r.text.includes('/account/alerts?token='));
 }
@@ -122,7 +122,7 @@ mkdirSync('tmp', { recursive: true });
 // ----------------------------------------------------------------------------
 {
   const r = renderDigest(group({ items: [group().items[1]] }));
-  check('fallback product URL', r.html.includes('/product/9000002'));
+  check('null product_url uses tracking link', r.html.includes('/api/out/9000002?src=email-42-weekly'));
 }
 
 // ----------------------------------------------------------------------------
