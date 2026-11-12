@@ -778,16 +778,38 @@ app.get('/api/cron/send-alerts', async (c) => {
 
   const freq = c.req.query('frequency');
   const frequency: AlertFrequency | undefined =
-    freq === 'instant' || freq === 'daily' || freq === 'weekly'
-      ? freq
-      : undefined;
+    freq === 'instant' || freq === 'daily' || freq === 'weekly' ? freq : undefined;
+
   const dryRun = c.req.query('dry') === '1';
   const testMode = c.req.query('test') === '1';
+  const subscriberIdParam = c.req.query('subscriberId');
+  const targetedSubscriberId = subscriberIdParam ? Number(subscriberIdParam) : undefined;
   const limit = Math.min(Number(c.req.query('limit')) || 100, 100);
 
+  const db = c.var.db;
+  if (!db) {
+    return c.json({ ok: false, error: 'Database not initialized' }, 500);
+  }
+
   let emailAllowlist: string[] | undefined;
-  if (testMode) {
+  let targetSubscriberId: number | undefined;
+
+  if (testMode && targetedSubscriberId) {
+    // ?test=1&subscriberId=51 → send to subscriber 51 only
+    const row = await db
+      .selectFrom('subscribers')
+      .select('email')
+      .where('id', '=', targetedSubscriberId)
+      .executeTakeFirst();
+    if (!row) {
+      return c.json({ ok: false, error: 'subscriber not found' }, 404);
+    }
+    emailAllowlist = [row.email.toLowerCase()];
+    targetSubscriberId = targetedSubscriberId;
+  } else if (testMode) {
+    // ?test=1 alone → default to 50 / your email
     emailAllowlist = ['charliewhyman@proton.me'];
+    targetSubscriberId = 50;
   } else if (c.env?.ALERT_TEST_RECIPIENTS) {
     emailAllowlist = c.env.ALERT_TEST_RECIPIENTS
       .split(',')
@@ -806,7 +828,7 @@ app.get('/api/cron/send-alerts', async (c) => {
       emailAllowlist,
       resendApiKey: c.env?.RESEND_API_KEY,
       fromEmail: c.env?.ALERT_FROM_EMAIL,
-      subscriberId: testMode ? 50 : undefined,
+      subscriberId: targetSubscriberId,
     });
 
     const pruned = frequency === 'daily' && !effectiveDryRun ? await pruneSentLogs(30) : 0;
@@ -818,6 +840,7 @@ app.get('/api/cron/send-alerts', async (c) => {
       live_send_enabled: liveSend,
       allowlist_active: !!emailAllowlist && emailAllowlist.length > 0,
       allowlist_size: emailAllowlist?.length ?? 0,
+      targeted_subscriber_id: targetSubscriberId ?? null,
       sent: report.results.filter(r => r.status === 'sent').length,
       skipped: report.results.filter(r => r.status === 'dry-run' || r.status === 'skipped').length,
       errors: report.results.filter(r => r.status === 'error').length,
