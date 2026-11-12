@@ -30,6 +30,7 @@ export async function matchRuleAlerts(opts: MatchFilters = {}): Promise<RuleMatc
       sh.shop_name              AS shop_name,
       p.min_price               AS min_price,
       p.max_discount_percentage AS max_discount_percentage,
+      p.size_groups             AS size_groups,
       (CASE
         WHEN jsonb_typeof(p.images) = 'array'
           AND jsonb_array_length(p.images) > 0
@@ -38,7 +39,6 @@ export async function matchRuleAlerts(opts: MatchFilters = {}): Promise<RuleMatc
         ELSE NULL
       END)                      AS image_url,
       p.url                     AS product_url,
-      p.size_groups             AS size_groups,
       r                         AS rule_json
     FROM alert_rules ar
     JOIN subscribers sub ON sub.id = ar.subscriber_id
@@ -51,7 +51,8 @@ export async function matchRuleAlerts(opts: MatchFilters = {}): Promise<RuleMatc
         pc.max_discount_percentage,
         pc.images,
         pc.url,
-        pc.shop_id
+        pc.shop_id,
+        pc.size_groups
       FROM products_with_details_core pc
       WHERE pc.is_archived = false
         AND pc.in_stock = true
@@ -110,6 +111,7 @@ export async function matchWatchAlerts(opts: MatchFilters = {}): Promise<WatchMa
       sh.shop_name              AS shop_name,
       p.min_price               AS min_price,
       p.max_discount_percentage AS max_discount_percentage,
+      p.size_groups             AS size_groups,
       (CASE
         WHEN jsonb_typeof(p.images) = 'array'
           AND jsonb_array_length(p.images) > 0
