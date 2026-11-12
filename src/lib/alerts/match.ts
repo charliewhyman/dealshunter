@@ -39,7 +39,11 @@ export async function matchRuleAlerts(opts: MatchFilters = {}): Promise<RuleMatc
         ELSE NULL
       END)                      AS image_url,
       p.url                     AS product_url,
-      r                         AS rule_json
+      r                         AS rule_json,
+      CASE
+        WHEN jsonb_array_length(ar.sent_log) = 0 THEN true
+        ELSE false
+      END                       AS is_first_send
     FROM alert_rules ar
     JOIN subscribers sub ON sub.id = ar.subscriber_id
     CROSS JOIN LATERAL jsonb_array_elements(ar.rules) AS r
@@ -120,7 +124,11 @@ export async function matchWatchAlerts(opts: MatchFilters = {}): Promise<WatchMa
         ELSE NULL
       END)                      AS image_url,
       p.url                     AS product_url,
-      p.size_groups             AS size_groups
+      p.size_groups             AS size_groups,
+      CASE
+        WHEN jsonb_array_length(ar.sent_log) = 0 THEN true
+        ELSE false
+      END AS is_first_send
     FROM alert_rules ar
     JOIN subscribers sub ON sub.id = ar.subscriber_id
     CROSS JOIN LATERAL jsonb_array_elements(ar.watches) AS w

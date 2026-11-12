@@ -92,6 +92,7 @@ export type RuleMatch = {
   max_discount_percentage: number;
   image_url: string | null;
   product_url: string | null;
+  is_first_send: boolean;
   size_groups: string[] | null;
   rule_json: {
     id: string;
@@ -120,6 +121,7 @@ export type WatchMatch = {
   image_url: string | null;
   product_url: string | null;
   size_groups: string[] | null;
+  is_first_send: boolean;
 };
 
 export type TokenPayload = {

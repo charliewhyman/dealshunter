@@ -38,6 +38,7 @@ export type SubscriberGroup = {
   total_matches: number;
   /** Filters from the first rule that matched, used to build the "see all" URL. */
   rule_filters: RuleFilterSummary | null;
+  is_first_send: boolean;
 };
 
 export const MAX_ITEMS_PER_EMAIL = 10;
@@ -80,7 +81,8 @@ export function groupMatches(
   const getOrCreate = (
     subscriberId: number,
     email: string,
-    frequency: 'instant' | 'daily' | 'weekly'
+    frequency: 'instant' | 'daily' | 'weekly',
+    isFirstSend: boolean
   ): SubscriberGroup => {
     const key = `${subscriberId}:${frequency}`;
     let group = groups.get(key);
@@ -93,6 +95,7 @@ export function groupMatches(
         sent_log_entries: [],
         total_matches: 0,
         rule_filters: null,
+        is_first_send: isFirstSend,
       };
       groups.set(key, group);
     }
@@ -100,7 +103,7 @@ export function groupMatches(
   };
 
   for (const m of ruleMatches) {
-    const group = getOrCreate(m.subscriber_id, m.email, m.frequency);
+    const group = getOrCreate(m.subscriber_id, m.email, m.frequency, m.is_first_send);
 
     // Record the first rule's filters for the "see all" URL. Multi-rule
     // subscribers get one link from their first rule; per-rule CTAs are
@@ -126,7 +129,7 @@ export function groupMatches(
   }
 
   for (const m of watchMatches) {
-    const group = getOrCreate(m.subscriber_id, m.email, m.frequency);
+    const group = getOrCreate(m.subscriber_id, m.email, m.frequency, m.is_first_send);
     const item = toItem(m);
 
     if (!group.items.some(i => i.product_id === item.product_id)) {

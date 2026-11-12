@@ -49,7 +49,13 @@ function buildSeeAllUrl(group: SubscriberGroup): string {
   return `${SITE}/?${params.toString()}`;
 }
 
-function subjectFor(group: SubscriberGroup): string {
+function subjectFor(group: SubscriberGroup, isFirst: boolean): string {
+  // Welcome subject takes precedence — new subscribers see a welcome,
+  // not a deal count, so they know what they signed up for.
+  if (isFirst) {
+    return 'Welcome to Curated Canada deal alerts';
+  }
+
   const shownCount = group.items.length;
   const isCapped = group.total_matches > shownCount;
 
@@ -110,12 +116,7 @@ function renderProductCell(
     </td>
   `;
 }
-/**
- * Render one shop section: shop name header + a horizontal row of 1-3
- * product cells. If a shop has more than 3 items in the group, only the
- * first 3 are shown (the diversification in groupMatches already caps
- * at 3 per shop, so this is a defensive safeguard).
- */
+
 function renderShopSection(
   shopName: string,
   items: AlertItem[],
@@ -164,7 +165,8 @@ export function renderDigest(group: SubscriberGroup): {
   html: string;
   text: string;
 } {
-  const subject = subjectFor(group);
+  const isFirst = group.is_first_send;
+  const subject = subjectFor(group, isFirst);
   const when = frequencyLabel(group.frequency);
   const count = group.items.length;
   const showSeeAll = group.total_matches > group.items.length;
@@ -182,15 +184,45 @@ export function renderDigest(group: SubscriberGroup): {
   const unsubUrl = `${SITE}/alerts/unsubscribe?token=${encodeURIComponent(unsubscribeToken)}`;
   const manageUrl = `${SITE}/account/alerts?token=${encodeURIComponent(manageToken)}`;
 
-  // Group products by shop. Preserve first-seen order so the shops that
-  // matched the strongest discounts appear first (groupMatches already
-  // sorted by discount within each shop).
+  // Group products by shop.
   const byShop = new Map<string, AlertItem[]>();
   for (const item of group.items) {
     const key = item.shop_name ?? 'Other';
     if (!byShop.has(key)) byShop.set(key, []);
     byShop.get(key)!.push(item);
   }
+
+  // Header varies by first-send vs regular digest.
+  const headline = isFirst
+    ? 'Welcome to Curated Canada deal alerts'
+    : count === 1
+      ? 'A new deal for you'
+      : `${count} new deals for you`;
+
+  const headerSubtext = isFirst
+    ? `You're set up for ${
+        group.rule_filters?.categories.length
+          ? group.rule_filters.categories.join(', ')
+          : 'all categories'
+      } at ${group.rule_filters?.min_discount ?? 20}%+ off. Here's what we found this week — want different deals?`
+    : `Matching your alerts ${esc(when)}.`;
+
+  const firstDigestCta = isFirst
+    ? `
+      <tr><td style="padding:0 32px 20px 32px;text-align:center;">
+        <a href="${esc(manageUrl)}"
+           style="display:inline-block;padding:12px 24px;background:#2563eb;color:#ffffff;border-radius:8px;font-size:14px;font-weight:600;text-decoration:none;">
+          Customize your alerts →
+        </a>
+      </td></tr>
+    `
+    : '';
+
+  // Preheader: different for first send so the inbox snippet reinforces
+  // the welcome rather than the deal count.
+  const preheader = isFirst
+    ? `Your first Curated Canada deal digest is here. Customize your alerts to get exactly what you want.`
+    : `${count} new deal${count === 1 ? '' : 's'} ${when} from brands you're watching.`;
 
   const shopSectionsHtml = [...byShop.entries()]
     .map(([shopName, items]) =>
@@ -209,7 +241,7 @@ export function renderDigest(group: SubscriberGroup): {
 </head>
 <body style="margin:0;padding:0;background:#f9fafb;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;color:#111827;">
   <div style="display:none;font-size:1px;color:#f9fafb;line-height:1px;max-height:0;max-width:0;opacity:0;overflow:hidden;">
-    ${esc(`${count} new deal${count === 1 ? '' : 's'} ${when} from brands you're watching.`)}
+    ${esc(preheader)}
   </div>
   <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background:#f9fafb;padding:24px 12px;">
     <tr>
@@ -221,12 +253,13 @@ export function renderDigest(group: SubscriberGroup): {
               Curated Canada
             </div>
             <h1 style="margin:8px 0 8px 0;font-size:22px;line-height:1.3;font-weight:700;">
-              ${count === 1 ? 'A new deal for you' : `${count} new deals for you`}
+              ${headline}
             </h1>
             <p style="margin:0 0 24px 0;color:#6b7280;font-size:14px;line-height:1.5;">
-              Matching your alerts ${esc(when)}.
+              ${headerSubtext}
             </p>
           </td></tr>
+          ${firstDigestCta}
           <tr><td style="padding:0 32px;">
             <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
               ${shopSectionsHtml}
@@ -262,8 +295,12 @@ export function renderDigest(group: SubscriberGroup): {
 </html>`;
 
   const textLines: string[] = [
-    `Curated Canada — ${count === 1 ? '1 new deal' : `${count} new deals`} for you`,
-    `Matching your alerts ${when}.`,
+    isFirst
+      ? `Welcome to Curated Canada deal alerts`
+      : `Curated Canada — ${count === 1 ? '1 new deal' : `${count} new deals`} for you`,
+    isFirst
+      ? headerSubtext.replace(/<[^>]*>/g, '')
+      : `Matching your alerts ${when}.`,
     '',
   ];
 
@@ -277,6 +314,11 @@ export function renderDigest(group: SubscriberGroup): {
 
   if (showSeeAll && seeAllUrl) {
     textLines.push(`See all matching deals: ${seeAllUrl}`);
+    textLines.push('');
+  }
+
+  if (isFirst) {
+    textLines.push(`Customize your alerts: ${manageUrl}`);
     textLines.push('');
   }
 
