@@ -204,7 +204,7 @@ export function renderDigest(group: SubscriberGroup): {
         group.rule_filters?.categories.length
           ? group.rule_filters.categories.join(', ')
           : 'all categories'
-      } at ${group.rule_filters?.min_discount ?? 20}%+ off. Here's what we found this week — want different deals?`
+      } at ${group.rule_filters?.min_discount ?? 20}%+ off. Here's what we found this week. Want different deals? You can customize your alerts at any time:`
     : `Matching your alerts ${esc(when)}.`;
 
   const firstDigestCta = isFirst
@@ -297,7 +297,7 @@ export function renderDigest(group: SubscriberGroup): {
   const textLines: string[] = [
     isFirst
       ? `Welcome to Curated Canada deal alerts`
-      : `Curated Canada — ${count === 1 ? '1 new deal' : `${count} new deals`} for you`,
+      : `Curated Canada - ${count === 1 ? '1 new deal' : `${count} new deals`} for you`,
     isFirst
       ? headerSubtext.replace(/<[^>]*>/g, '')
       : `Matching your alerts ${when}.`,
@@ -305,7 +305,7 @@ export function renderDigest(group: SubscriberGroup): {
   ];
 
   for (const [shopName, items] of byShop.entries()) {
-    textLines.push(`— ${shopName} —`);
+    textLines.push(`- ${shopName} -`);
     for (const item of items) {
       textLines.push(renderItemText(item, group.subscriber_id, group.frequency));
     }
