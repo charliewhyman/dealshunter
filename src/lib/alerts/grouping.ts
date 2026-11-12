@@ -167,6 +167,30 @@ export function groupMatches(
         shownIds.has(e.product_id)
       );
     }
+
+    // Group items by shop
+    const shopCount = new Map<string, number>();
+    const diversified: AlertItem[] = [];
+    const overflow: AlertItem[] = [];
+
+    for (const item of g.items) {
+      const key = item.shop_name ?? 'unknown';
+      const count = shopCount.get(key) ?? 0;
+      if (count < 3) {
+        diversified.push(item);
+        shopCount.set(key, count + 1);
+      } else {
+        overflow.push(item);
+      }
+    }
+
+    // If diversification left room, fill with overflow
+    const finalItems = diversified.slice(0, MAX_ITEMS_PER_EMAIL);
+    if (finalItems.length < MAX_ITEMS_PER_EMAIL) {
+      finalItems.push(...overflow.slice(0, MAX_ITEMS_PER_EMAIL - finalItems.length));
+    }
+
+    g.items = finalItems;
   }
 
   return [...groups.values()];
