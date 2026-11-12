@@ -701,6 +701,57 @@ app.get('/api/pricing', async (c) => {
     }
 });
 
+app.post('/api/alerts/send-manage-link', async (c) => {
+  try {
+    const db = c.var.db;
+    if (!db) throw new Error('Database not initialized: ' + c.var.initDbError);
+
+    const body = await c.req.json();
+    const { email } = body as { email?: string };
+
+    if (!email || !email.includes('@')) {
+      return c.json({ ok: false, error: 'Valid email is required' }, 400);
+    }
+
+    const normalizedEmail = email.trim().toLowerCase();
+
+    // Look up the subscriber. If they don't exist, we still return ok:true
+    // (so the endpoint doesn't reveal whether an email is registered).
+    const subscriber = await db
+      .selectFrom('subscribers')
+      .select(['id', 'consent_given'])
+      .where('email', '=', normalizedEmail)
+      .executeTakeFirst();
+
+    if (subscriber && subscriber.consent_given) {
+      // Sign a manage token and send the email
+      const manageToken = signToken(
+        { subscriberId: subscriber.id, purpose: 'manage' },
+        60 * 60 * 24  // 24-hour TTL for magic link
+      );
+      const manageUrl = `https://curatedcanada.ca/account/alerts?token=${encodeURIComponent(manageToken)}`;
+
+      // Send via Resend — reuse the Resend client from send.ts
+      const { Resend } = await import('resend');
+      const resend = new Resend(c.env?.RESEND_API_KEY ?? '');
+
+      await resend.emails.send({
+        from: 'Curated Canada <hello@curatedcanada.ca>',
+        to: normalizedEmail,
+        subject: 'Manage your Curated Canada deal alerts',
+        text: `Hi,\n\nClick the link below to manage your deal alerts:\n\n${manageUrl}\n\nThis link expires in 24 hours. If you didn't request this, you can ignore it.\n\n— Curated Canada`,
+        html: `<p>Hi,</p><p>Click the link below to manage your deal alerts:</p><p><a href="${manageUrl}">Manage your alerts</a></p><p>This link expires in 24 hours. If you didn't request this, you can ignore it.</p><p>— Curated Canada</p>`,
+      });
+    }
+
+    // Always return ok:true, whether or not the email was found.
+    return c.json({ ok: true });
+  } catch (error: unknown) {
+    console.error('Error sending manage link:', error);
+    return c.json({ ok: false, error: 'Internal Server Error' }, 500);
+  }
+});
+
 app.get('/api/shops', async (c) => {
     try {
         const db = c.var.db;

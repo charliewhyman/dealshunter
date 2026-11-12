@@ -11,6 +11,7 @@ import UnsubscribePage from './react-pages/UnsubscribePage';
 import type { ProductWithDetails } from './types';
 import ManageAlertsPage from './react-pages/ManageAlertsPage';
 import WelcomePage from './react-pages/WelcomePage';
+import ManageRequestPage from './react-pages/ManageRequestPage';
 
 interface Props {
   initialProducts?: ProductWithDetails[];
@@ -49,6 +50,7 @@ export function AppRoutes({ initialProducts = [], unsubscribeToken = '' }: Props
         <Route path="/welcome" element={<WelcomePage initialToken={unsubscribeToken} />} />
         <Route path="/account/alerts" element={<ManageAlertsPage initialToken={unsubscribeToken} />} />
         <Route path="/alerts/unsubscribe" element={<UnsubscribePage initialToken={unsubscribeToken} />} />
+        <Route path="/manage" element={<ManageRequestPage />} />
       </Routes>
     </>
   );

@@ -1451,8 +1451,13 @@ export function HomePage({
                   </span>
                 </label>
               </form>
+              <p className="mt-3 text-xs text-gray-500 dark:text-gray-400">
+                Already getting deal alerts?{' '}
+                <a href="/manage" className="text-blue-600 underline hover:text-blue-800 dark:text-blue-400">
+                  Manage your preferences
+                </a>
+              </p>
             </div>
-
             <div className="mt-4 mb-5 flex items-center justify-end sm:mt-4 sm:mb-2">
               <div className="w-40 sm:w-48">
                 <SingleSelectDropdown
