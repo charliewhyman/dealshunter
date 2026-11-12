@@ -1393,7 +1393,15 @@ export function HomePage({
                     btn.textContent = 'Subscribing...';
 
                     try {
-                      await apiClient.subscribe(input.value, window.location.pathname, checkbox.checked);
+                      const res = await apiClient.subscribe(input.value, window.location.pathname, checkbox.checked);
+
+                      if (res.success && res.welcomeUrl) {
+                        // Redirect to the welcome page so they can customize their rule
+                        window.location.href = res.welcomeUrl;
+                        return;
+                      }
+
+                      // Fallback: show "Subscribed!" if the welcome URL is missing
                       btn.textContent = 'Subscribed!';
                       btn.classList.add('bg-green-600', 'hover:bg-green-700');
                       btn.classList.remove('bg-blue-600', 'hover:bg-blue-700');

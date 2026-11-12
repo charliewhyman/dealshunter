@@ -10,6 +10,7 @@ import CategoryPage from './react-pages/CategoryPage';
 import UnsubscribePage from './react-pages/UnsubscribePage';
 import type { ProductWithDetails } from './types';
 import ManageAlertsPage from './react-pages/ManageAlertsPage';
+import WelcomePage from './react-pages/WelcomePage';
 
 interface Props {
   initialProducts?: ProductWithDetails[];
@@ -45,6 +46,7 @@ export function AppRoutes({ initialProducts = [], unsubscribeToken = '' }: Props
         <Route path="/about" element={<AboutPage />} />
         <Route path="/privacy" element={<PrivacyPolicy />} />
         <Route path="/terms" element={<TermsPage />} />
+        <Route path="/welcome" element={<WelcomePage initialToken={unsubscribeToken} />} />
         <Route path="/account/alerts" element={<ManageAlertsPage initialToken={unsubscribeToken} />} />
         <Route path="/alerts/unsubscribe" element={<UnsubscribePage initialToken={unsubscribeToken} />} />
       </Routes>

@@ -170,17 +170,17 @@ export const apiClient = {
         return (await res.json()) as { gender_age: string | null }[];
     },
 
-    async subscribe(email: string, source: string, consentGiven: boolean): Promise<{ success: boolean; message?: string }> {
-        const res = await fetch(`${API_BASE}/subscribe`, {
+    async subscribe(email: string, source: string, consentGiven: boolean): Promise<{
+        success: boolean;
+        message: string;
+        welcomeToken?: string;
+        welcomeUrl?: string;
+        }> {
+        const res = await fetch('/api/subscribe', {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
+            headers: { 'content-type': 'application/json' },
             body: JSON.stringify({ email, source, consentGiven }),
         });
-
-        const data = (await res.json()) as { success?: boolean; message?: string; error?: string };
-        if (!res.ok) {
-            throw new Error(data.error || 'Failed to subscribe');
-        }
-        return { success: data.success ?? true, message: data.message };
-    },
+        return res.json();
+        },
 };

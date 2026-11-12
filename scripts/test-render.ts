@@ -44,6 +44,7 @@ function group(over: Partial<SubscriberGroup> = {}): SubscriberGroup {
       },
     ],
     sent_log_entries: [],
+    is_first_send: false,
     ...over,
   };
 }

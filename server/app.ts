@@ -3,7 +3,7 @@ import { cors } from 'hono/cors';
 import { getDb } from './db';
 import { sql, Kysely } from 'kysely';
 import type { Database, ProductWithShop, AlertFrequency } from '../src/lib/types';
-import { verifyToken } from '@/lib/alerts/token';
+import { verifyToken, signToken } from '@/lib/alerts/token';
 import { sendAlerts, pruneSentLogs } from '@/lib/alerts/send';
 
 export const app = new Hono<{
@@ -303,76 +303,90 @@ app.get('/api/out/:id', async (c) => {
 });
 
 app.post('/api/subscribe', async (c) => {
-  try {
-    const db = c.var.db;
-    if (!db) throw new Error('Database not initialized: ' + c.var.initDbError);
-    const body = await c.req.json();
-    const { email, source, consentGiven } = body;
-    if (!email || !email.includes('@')) {
-      return c.json({ error: 'Valid email is required' }, 400);
+    try {
+        const db = c.var.db;
+        if (!db) throw new Error('Database not initialized: ' + c.var.initDbError);
+
+        const body = await c.req.json();
+        const { email, source, consentGiven } = body;
+
+        if (!email || !email.includes('@')) {
+            return c.json({ error: 'Valid email is required' }, 400);
+        }
+        if (!consentGiven) {
+            return c.json({ error: 'Consent is required to subscribe' }, 400);
+        }
+
+        const ip = c.req.header('cf-connecting-ip')
+            || c.req.header('x-real-ip')
+            || c.req.header('x-forwarded-for')?.split(',')[0].trim()
+            || null;
+
+        const normalizedEmail = email.trim().toLowerCase();
+
+        // Upsert subscriber — if the email exists (resubscribe), flip consent back to true
+        const subscriber = await db
+            .insertInto('subscribers')
+            .values({
+                email: normalizedEmail,
+                ip_address: ip,
+                source: source || 'unknown',
+                consent_given: true,
+            })
+            .onConflict((oc) =>
+                oc.column('email').doUpdateSet({
+                    consent_given: true,
+                    ip_address: ip,
+                    source: source || 'unknown',
+                })
+            )
+            .returning('id')
+            .executeTakeFirst();
+
+        const subscriberId = subscriber?.id;
+        if (!subscriberId) {
+            throw new Error('Failed to upsert subscriber');
+        }
+
+        // Insert default alert rule if they don't have one yet
+        await db
+            .insertInto('alert_rules')
+            .values({
+                subscriber_id: subscriberId,
+                rules: JSON.stringify([{
+                    id: 'r-default',
+                    categories: ['Clothing'],
+                    types: [],
+                    genders: [],
+                    sizes: [],
+                    shop_ids: [],
+                    made_in_canada_only: false,
+                    max_price: null,
+                    min_discount: 40,
+                    frequency: 'weekly',
+                }]),
+                watches: JSON.stringify([]),
+                sent_log: JSON.stringify([]),
+            })
+            .onConflict((oc) => oc.column('subscriber_id').doNothing())
+            .execute();
+
+        // Sign a short-lived manage token so the frontend can redirect to /welcome
+        const welcomeToken = signToken(
+            { subscriberId, purpose: 'manage' },
+            60 * 60  // 1 hour
+        );
+
+        return c.json({
+            success: true,
+            message: 'Subscribed successfully',
+            welcomeToken,
+            welcomeUrl: `/welcome?token=${encodeURIComponent(welcomeToken)}`,
+        });
+    } catch (error: unknown) {
+        console.error('Error handling subscription:', error);
+        return c.json({ ...toErrorDetails(error), error: 'Internal Server Error' }, 500);
     }
-    if (!consentGiven) {
-      return c.json({ error: 'Consent is required to subscribe' }, 400);
-    }
-    const ip = c.req.header('cf-connecting-ip')
-      || c.req.header('x-real-ip')
-      || c.req.header('x-forwarded-for')?.split(',')[0].trim()
-      || null;
-
-    const normalizedEmail = email.trim().toLowerCase();
-
-    // Insert subscriber, return its id (or existing id on conflict)
-    const inserted = await db
-      .insertInto('subscribers')
-      .values({
-        email: normalizedEmail,
-        ip_address: ip,
-        source: source || 'unknown',
-        consent_given: true,
-      })
-      .onConflict((oc) => oc.column('email').doNothing())
-      .returning('id')
-      .executeTakeFirst();
-
-    // If the subscriber already existed (onConflict did nothing), fetch their id
-    const subscriberId = inserted?.id ?? (
-      await db
-        .selectFrom('subscribers')
-        .select('id')
-        .where('email', '=', normalizedEmail)
-        .executeTakeFirst()
-    )?.id;
-
-    // Insert default alert rule if the subscriber doesn't have one yet
-    if (subscriberId) {
-      await db
-        .insertInto('alert_rules')
-        .values({
-          subscriber_id: subscriberId,
-          rules: JSON.stringify([{
-            id: 'r-default',
-            categories: ['Clothing'],
-            types: [],
-            genders: [],
-            sizes: [],
-            shop_ids: [],
-            made_in_canada_only: false,
-            max_price: null,
-            min_discount: 40,
-            frequency: 'weekly',
-          }]),
-          watches: JSON.stringify([]),
-          sent_log: JSON.stringify([]),
-        })
-        .onConflict((oc) => oc.column('subscriber_id').doNothing())
-        .execute();
-    }
-
-    return c.json({ success: true, message: 'Subscribed successfully' });
-  } catch (error: unknown) {
-    console.error('Error handling subscription:', error);
-    return c.json({ ...toErrorDetails(error), error: 'Internal Server Error' }, 500);
-  }
 });
 
 app.post('/api/alerts/unsubscribe', async (c) => {
@@ -778,7 +792,9 @@ app.get('/api/cron/send-alerts', async (c) => {
 
   const freq = c.req.query('frequency');
   const frequency: AlertFrequency | undefined =
-    freq === 'instant' || freq === 'daily' || freq === 'weekly' ? freq : undefined;
+    freq === 'instant' || freq === 'daily' || freq === 'weekly'
+      ? freq
+      : undefined;
 
   const dryRun = c.req.query('dry') === '1';
   const testMode = c.req.query('test') === '1';
@@ -788,14 +804,13 @@ app.get('/api/cron/send-alerts', async (c) => {
 
   const db = c.var.db;
   if (!db) {
-    return c.json({ ok: false, error: 'Database not initialized' }, 500);
+    return c.json({ ok: false, error: 'Database not initialized: ' + c.var.initDbError }, 500);
   }
 
   let emailAllowlist: string[] | undefined;
   let targetSubscriberId: number | undefined;
 
   if (testMode && targetedSubscriberId) {
-    // ?test=1&subscriberId=51 → send to subscriber 51 only
     const row = await db
       .selectFrom('subscribers')
       .select('email')
@@ -807,7 +822,6 @@ app.get('/api/cron/send-alerts', async (c) => {
     emailAllowlist = [row.email.toLowerCase()];
     targetSubscriberId = targetedSubscriberId;
   } else if (testMode) {
-    // ?test=1 alone → default to 50 / your email
     emailAllowlist = ['charliewhyman@proton.me'];
     targetSubscriberId = 50;
   } else if (c.env?.ALERT_TEST_RECIPIENTS) {
