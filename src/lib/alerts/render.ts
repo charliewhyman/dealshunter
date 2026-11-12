@@ -31,16 +31,6 @@ function frequencyLabel(f: AlertFrequency): string {
   }
 }
 
-/**
- * Build the "see all" URL from the rule that produced this group. The
- * homepage parses these params via useSearchParams, so the user lands on
- * a pre-filtered grid showing every product their rule matched (not just
- * the 20 that fit in the email).
- *
- * The src param is the attribution channel. Nothing reads it yet, but
- * it's the key a future /api/track endpoint would log to measure which
- * emails drive traffic.
- */
 function buildSeeAllUrl(group: SubscriberGroup): string {
   const f = group.rule_filters;
   if (!f) return `${SITE}/`;
@@ -74,51 +64,78 @@ function trackingHref(item: AlertItem, subscriberId: number, frequency: string):
   return `${SITE}/api/out/${item.product_id}?src=email-${subscriberId}-${frequency}`;
 }
 
-function renderItemHtml(
+/**
+ * Render one product as a <td> cell. The width is passed by the caller
+ * (based on how many products are in the shop group), so 2-per-shop gets
+ * 50% width, 3-per-shop gets 33%, etc.
+ */
+function renderProductCell(
   item: AlertItem,
   subscriberId: number,
-  frequency: string
+  frequency: string,
+  width: string,
+  isLast: boolean
 ): string {
   const price = formatPrice(item.min_price);
-  const sizes = item.size_groups?.filter(Boolean) ?? [];
-  const sizeLine = sizes.length > 0
-    ? `<div style="margin-top:4px;font-size:12px;color:#9ca3af;">Sizes: ${sizes.map(esc).join(', ')}</div>`
-    : '';
   const discount = formatDiscount(item.max_discount_percentage);
   const href = trackingHref(item, subscriberId, frequency);
 
   const image = item.image_url
-    ? `<img src="${esc(item.image_url)}" alt="" width="160" height="160"
-            style="display:block;width:160px;height:160px;border-radius:8px;object-fit:cover;background:#f3f4f6;border:0;" />`
-    : `<div style="width:160px;height:160px;border-radius:8px;background:#f3f4f6;"></div>`;
+    ? `<img src="${esc(item.image_url)}" alt="" width="100%"
+            style="display:block;width:100%;aspect-ratio:1/1;object-fit:cover;border-radius:8px;background:#f3f4f6;border:0;" />`
+    : `<div style="width:100%;aspect-ratio:1/1;border-radius:8px;background:#f3f4f6;"></div>`;
 
   const discountBadge = discount
-    ? `<span style="display:inline-block;margin-left:6px;padding:1px 6px;border-radius:4px;background:#fee2e2;color:#b91c1c;font-size:12px;font-weight:600;">${esc(discount)}</span>`
+    ? `<div style="margin-top:4px;display:inline-block;padding:1px 6px;border-radius:4px;background:#fee2e2;color:#b91c1c;font-size:11px;font-weight:600;">${esc(discount)}</div>`
     : '';
 
-  const shopLine = item.shop_name
-    ? `<div style="font-size:12px;color:#6b7280;text-transform:uppercase;letter-spacing:0.04em;margin-bottom:4px;">${esc(item.shop_name)}</div>`
+  const sizes = (item.size_groups ?? []).filter((s): s is string => !!s);
+  const shownSizes = sizes.slice(0, 4);
+  const extraSizes = sizes.length > 4 ? ` +${sizes.length - 4}` : '';
+  const sizeLine = sizes.length > 0
+    ? `<div style="margin-top:3px;font-size:11px;color:#9ca3af;">${shownSizes.map(esc).join(', ')}${extraSizes}</div>`
     : '';
 
   return `
-    <tr><td style="padding:0 0 16px 0;">
+    <td width="${width}" valign="top" style="padding:0 ${isLast ? '0' : '8px'} 12px 0;">
+      <a href="${esc(href)}" style="text-decoration:none;">
+        ${image}
+        <div style="margin-top:8px;font-size:12px;font-weight:600;color:#111827;line-height:1.3;">${esc(item.title)}</div>
+        <div style="margin-top:4px;font-size:12px;font-weight:600;color:#111827;">${esc(price)}</div>
+        ${discountBadge}
+        ${sizeLine}
+      </a>
+    </td>
+  `;
+}
+
+/**
+ * Render one shop section: shop name header + a horizontal row of 1-3
+ * product cells. If a shop has more than 3 items in the group, only the
+ * first 3 are shown (the diversification in groupMatches already caps
+ * at 3 per shop, so this is a defensive safeguard).
+ */
+function renderShopSection(
+  shopName: string,
+  items: AlertItem[],
+  subscriberId: number,
+  frequency: string
+): string {
+  const shown = items.slice(0, 3);
+  const count = shown.length;
+  const width = count === 1 ? '100%' : count === 2 ? '50%' : '33.33%';
+
+  const cells = shown.map((item, i) =>
+    renderProductCell(item, subscriberId, frequency, width, i === count - 1)
+  ).join('');
+
+  return `
+    <tr><td style="padding:0 0 20px 0;">
+      <div style="font-size:12px;font-weight:700;color:#111827;text-transform:uppercase;letter-spacing:0.06em;margin-bottom:10px;padding-bottom:6px;border-bottom:1px solid #e5e7eb;">
+        ${esc(shopName)}
+      </div>
       <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
-        <tr>
-          <td width="160" valign="top" style="padding-right:16px;">${image}</td>
-          <td valign="top" style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;">
-            ${shopLine}
-            <a href="${esc(href)}"
-               style="color:#111827;text-decoration:none;font-weight:600;font-size:15px;line-height:1.35;">${esc(item.title)}</a>
-            <div style="margin-top:8px;color:#111827;font-size:15px;font-weight:600;">
-              ${esc(price)}${discountBadge}
-            </div>
-            ${sizeLine}
-            <div style="margin-top:12px;">
-              <a href="${esc(href)}"
-                 style="display:inline-block;padding:8px 14px;background:#111827;color:#ffffff;border-radius:6px;font-size:13px;font-weight:600;text-decoration:none;">View deal</a>
-            </div>
-          </td>
-        </tr>
+        <tr>${cells}</tr>
       </table>
     </td></tr>
   `;
@@ -134,7 +151,11 @@ function renderItemText(
   const discount = formatDiscount(item.max_discount_percentage);
   const priceLine = [price, discount].filter(Boolean).join(' ');
   const shopLine = item.shop_name ? `${item.shop_name} — ` : '';
-  return `${shopLine}${item.title}${priceLine ? ` — ${priceLine}` : ''}\n${href}`;
+  const sizes = (item.size_groups ?? []).filter((s): s is string => !!s);
+  const sizeLine = sizes.length > 0
+    ? `\nSizes: ${sizes.slice(0, 6).join(', ')}${sizes.length > 6 ? ` +${sizes.length - 6} more` : ''}`
+    : '';
+  return `${shopLine}${item.title}${priceLine ? ` — ${priceLine}` : ''}${sizeLine}\n${href}`;
 }
 
 export function renderDigest(group: SubscriberGroup): {
@@ -160,8 +181,20 @@ export function renderDigest(group: SubscriberGroup): {
   const unsubUrl = `${SITE}/alerts/unsubscribe?token=${encodeURIComponent(unsubscribeToken)}`;
   const manageUrl = `${SITE}/account/alerts?token=${encodeURIComponent(manageToken)}`;
 
-  const itemsHtml = group.items
-    .map(item => renderItemHtml(item, group.subscriber_id, group.frequency))
+  // Group products by shop. Preserve first-seen order so the shops that
+  // matched the strongest discounts appear first (groupMatches already
+  // sorted by discount within each shop).
+  const byShop = new Map<string, AlertItem[]>();
+  for (const item of group.items) {
+    const key = item.shop_name ?? 'Other';
+    if (!byShop.has(key)) byShop.set(key, []);
+    byShop.get(key)!.push(item);
+  }
+
+  const shopSectionsHtml = [...byShop.entries()]
+    .map(([shopName, items]) =>
+      renderShopSection(shopName, items, group.subscriber_id, group.frequency)
+    )
     .join('');
 
   const html = `<!doctype html>
@@ -193,9 +226,9 @@ export function renderDigest(group: SubscriberGroup): {
               Matching your alerts ${esc(when)}.
             </p>
           </td></tr>
-          <tr><td style="padding:0 32px 8px 32px;">
+          <tr><td style="padding:0 32px;">
             <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
-              ${itemsHtml}
+              ${shopSectionsHtml}
             </table>
           </td></tr>
           ${showSeeAll ? `
@@ -231,15 +264,21 @@ export function renderDigest(group: SubscriberGroup): {
     `Curated Canada — ${count === 1 ? '1 new deal' : `${count} new deals`} for you`,
     `Matching your alerts ${when}.`,
     '',
-    ...group.items.map(item => renderItemText(item, group.subscriber_id, group.frequency)),
   ];
 
-  if (showSeeAll && seeAllUrl) {
+  for (const [shopName, items] of byShop.entries()) {
+    textLines.push(`— ${shopName} —`);
+    for (const item of items) {
+      textLines.push(renderItemText(item, group.subscriber_id, group.frequency));
+    }
     textLines.push('');
-    textLines.push(`See all ${group.total_matches} matching deals: ${seeAllUrl}`);
   }
 
-  textLines.push('');
+  if (showSeeAll && seeAllUrl) {
+    textLines.push(`See all matching deals: ${seeAllUrl}`);
+    textLines.push('');
+  }
+
   textLines.push('---');
   textLines.push(`Manage alerts: ${manageUrl}`);
   textLines.push(`Unsubscribe:   ${unsubUrl}`);
