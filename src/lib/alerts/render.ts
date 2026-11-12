@@ -50,14 +50,21 @@ function buildSeeAllUrl(group: SubscriberGroup): string {
 }
 
 function subjectFor(group: SubscriberGroup): string {
-  const count = group.items.length;
-  if (count === 0) return 'Your Curated Canada deal alert';
-  if (count === 1) {
+  const shownCount = group.items.length;
+  const isCapped = group.total_matches > shownCount;
+
+  if (shownCount === 0) return 'Your Curated Canada deal alert';
+  if (shownCount === 1 && !isCapped) {
     const title = group.items[0].title;
     const trimmed = title.length > 55 ? title.slice(0, 52) + '…' : title;
     return `Deal alert: ${trimmed}`;
   }
-  return `${count} new deal${count === 1 ? '' : 's'} for you`;
+
+  if (isCapped) {
+    return `New deals matching your alerts`;
+  }
+
+  return `${shownCount} new deal${shownCount === 1 ? '' : 's'} for you`;
 }
 
 function trackingHref(item: AlertItem, subscriberId: number, frequency: string): string {
