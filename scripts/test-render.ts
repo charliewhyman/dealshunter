@@ -30,6 +30,7 @@ function group(over: Partial<SubscriberGroup> = {}): SubscriberGroup {
         max_discount_percentage: 40,
         image_url: 'https://example.com/shirt.jpg',
         product_url: 'https://example.com/products/shirt',
+        size_groups: ['S', 'M', 'L', 'XL'],
       },
       {
         product_id: '9000002',
@@ -39,6 +40,7 @@ function group(over: Partial<SubscriberGroup> = {}): SubscriberGroup {
         max_discount_percentage: 25,
         image_url: null,
         product_url: null,
+        size_groups: null,
       },
     ],
     sent_log_entries: [],
@@ -81,6 +83,23 @@ mkdirSync('tmp', { recursive: true });
   check('discount rendered -25%', r.html.includes('-25%'));
 }
 
+// ── Sizes ───────────────────────────────────────────────────────────────────
+{
+  const r = renderDigest(group());
+  check('sizes line present', r.html.includes('Sizes: S, M, L, XL'));
+  check('no sizes line for null size_groups', !r.html.includes('Sizes: null'));
+  check('text version has sizes', r.text.includes('Sizes: S, M, L, XL'));
+}
+
+{
+  const r = renderDigest(group({
+    items: [{
+      ...group().items[0],
+      size_groups: ['XS', 'S', 'M', 'L', 'XL', 'XXL', '3XL', '4XL', '5XL', '6XL'],
+    }],
+  }));
+  check('sizes truncated at 6', r.html.includes('Sizes: XS, S, M, L, XL, XXL +4 more'));
+}
 // ----------------------------------------------------------------------------
 // 4. Unsubscribe and manage tokens are valid and decode to the right subscriber
 // ----------------------------------------------------------------------------
