@@ -8,6 +8,7 @@ export type AlertItem = {
   max_discount_percentage: number;
   image_url: string | null;
   product_url: string | null;
+  size_groups: string[] | null;
 };
 
 export type SentLogEntry = {
@@ -39,7 +40,7 @@ export type SubscriberGroup = {
   rule_filters: RuleFilterSummary | null;
 };
 
-export const MAX_ITEMS_PER_EMAIL = 20;
+export const MAX_ITEMS_PER_EMAIL = 10;
 
 function toItem(m: RuleMatch | WatchMatch): AlertItem {
   return {
@@ -50,6 +51,7 @@ function toItem(m: RuleMatch | WatchMatch): AlertItem {
     max_discount_percentage: Number(m.max_discount_percentage),
     image_url: m.image_url,
     product_url: m.product_url,
+    size_groups: m.size_groups
   };
 }
 

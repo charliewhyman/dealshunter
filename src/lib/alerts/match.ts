@@ -38,6 +38,7 @@ export async function matchRuleAlerts(opts: MatchFilters = {}): Promise<RuleMatc
         ELSE NULL
       END)                      AS image_url,
       p.url                     AS product_url,
+      p.size_groups             AS size_groups,
       r                         AS rule_json
     FROM alert_rules ar
     JOIN subscribers sub ON sub.id = ar.subscriber_id
@@ -116,7 +117,8 @@ export async function matchWatchAlerts(opts: MatchFilters = {}): Promise<WatchMa
         THEN (p.images->0->>'src')
         ELSE NULL
       END)                      AS image_url,
-      p.url                     AS product_url
+      p.url                     AS product_url,
+      p.size_groups             AS size_groups
     FROM alert_rules ar
     JOIN subscribers sub ON sub.id = ar.subscriber_id
     CROSS JOIN LATERAL jsonb_array_elements(ar.watches) AS w

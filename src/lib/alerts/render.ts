@@ -80,6 +80,10 @@ function renderItemHtml(
   frequency: string
 ): string {
   const price = formatPrice(item.min_price);
+  const sizes = item.size_groups?.filter(Boolean) ?? [];
+  const sizeLine = sizes.length > 0
+    ? `<div style="margin-top:4px;font-size:12px;color:#9ca3af;">Sizes: ${sizes.map(esc).join(', ')}</div>`
+    : '';
   const discount = formatDiscount(item.max_discount_percentage);
   const href = trackingHref(item, subscriberId, frequency);
 
@@ -108,6 +112,7 @@ function renderItemHtml(
             <div style="margin-top:8px;color:#111827;font-size:15px;font-weight:600;">
               ${esc(price)}${discountBadge}
             </div>
+            ${sizeLine}
             <div style="margin-top:12px;">
               <a href="${esc(href)}"
                  style="display:inline-block;padding:8px 14px;background:#111827;color:#ffffff;border-radius:6px;font-size:13px;font-weight:600;text-decoration:none;">View deal</a>
