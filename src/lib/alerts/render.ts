@@ -71,11 +71,6 @@ function trackingHref(item: AlertItem, subscriberId: number, frequency: string):
   return `${SITE}/api/out/${item.product_id}?src=email-${subscriberId}-${frequency}`;
 }
 
-/**
- * Render one product as a <td> cell. The width is passed by the caller
- * (based on how many products are in the shop group), so 2-per-shop gets
- * 50% width, 3-per-shop gets 33%, etc.
- */
 function renderProductCell(
   item: AlertItem,
   subscriberId: number,
@@ -88,9 +83,9 @@ function renderProductCell(
   const href = trackingHref(item, subscriberId, frequency);
 
   const image = item.image_url
-    ? `<img src="${esc(item.image_url)}" alt="" width="100%"
-            style="display:block;width:100%;aspect-ratio:1/1;object-fit:cover;border-radius:8px;background:#f3f4f6;border:0;" />`
-    : `<div style="width:100%;aspect-ratio:1/1;border-radius:8px;background:#f3f4f6;"></div>`;
+    ? `<img src="${esc(item.image_url)}" alt="" width="160" height="160"
+            style="display:block;width:160px;height:160px;border-radius:8px;object-fit:cover;background:#f3f4f6;border:0;" />`
+    : `<div style="width:160px;height:160px;border-radius:8px;background:#f3f4f6;"></div>`;
 
   const discountBadge = discount
     ? `<div style="margin-top:4px;display:inline-block;padding:1px 6px;border-radius:4px;background:#fee2e2;color:#b91c1c;font-size:11px;font-weight:600;">${esc(discount)}</div>`
@@ -115,7 +110,6 @@ function renderProductCell(
     </td>
   `;
 }
-
 /**
  * Render one shop section: shop name header + a horizontal row of 1-3
  * product cells. If a shop has more than 3 items in the group, only the
