@@ -6,9 +6,9 @@ export type AlertItem = {
   shop_name: string | null;
   min_price: number;
   max_discount_percentage: number;
+  size_groups: string[] | null;
   image_url: string | null;
   product_url: string | null;
-  size_groups: string[] | null;
 };
 
 export type SentLogEntry = {
@@ -38,7 +38,10 @@ export type SubscriberGroup = {
   total_matches: number;
   /** Filters from the first rule that matched, used to build the "see all" URL. */
   rule_filters: RuleFilterSummary | null;
+  /** True if the subscriber had no sent_log entries before this send. */
   is_first_send: boolean;
+  /** Number of distinct rule_ids that contributed products to this group. */
+  rules_matched: number;
 };
 
 export const MAX_ITEMS_PER_EMAIL = 10;
@@ -50,9 +53,9 @@ function toItem(m: RuleMatch | WatchMatch): AlertItem {
     shop_name: m.shop_name,
     min_price: Number(m.min_price),
     max_discount_percentage: Number(m.max_discount_percentage),
+    size_groups: m.size_groups,
     image_url: m.image_url,
     product_url: m.product_url,
-    size_groups: m.size_groups
   };
 }
 
@@ -96,6 +99,7 @@ export function groupMatches(
         total_matches: 0,
         rule_filters: null,
         is_first_send: isFirstSend,
+        rules_matched: 0,
       };
       groups.set(key, group);
     }
@@ -160,8 +164,7 @@ export function groupMatches(
 
     // Cap the email at MAX_ITEMS_PER_EMAIL. Products beyond the cap are
     // NOT added to sent_log, so they'll match again next week and surface
-    // in a future batch (assuming their discount stays above the rule's
-    // threshold).
+    // in a future batch.
     if (g.items.length > MAX_ITEMS_PER_EMAIL) {
       g.items = g.items.slice(0, MAX_ITEMS_PER_EMAIL);
 
@@ -173,29 +176,15 @@ export function groupMatches(
       );
     }
 
-    // Group items by shop
-    const shopCount = new Map<string, number>();
-    const diversified: AlertItem[] = [];
-    const overflow: AlertItem[] = [];
-
-    for (const item of g.items) {
-      const key = item.shop_name ?? 'unknown';
-      const count = shopCount.get(key) ?? 0;
-      if (count < 3) {
-        diversified.push(item);
-        shopCount.set(key, count + 1);
-      } else {
-        overflow.push(item);
-      }
+    // Count distinct rule_ids that contributed to this email. Watch
+    // entries use `watch:<id>` as their rule_id, so they're counted
+    // alongside rules. Used by renderDigest to decide whether to show
+    // a single-rule summary or "N alert rules".
+    const ruleIds = new Set<string>();
+    for (const e of g.sent_log_entries) {
+      ruleIds.add(e.rule_id);
     }
-
-    // If diversification left room, fill with overflow
-    const finalItems = diversified.slice(0, MAX_ITEMS_PER_EMAIL);
-    if (finalItems.length < MAX_ITEMS_PER_EMAIL) {
-      finalItems.push(...overflow.slice(0, MAX_ITEMS_PER_EMAIL - finalItems.length));
-    }
-
-    g.items = finalItems;
+    g.rules_matched = ruleIds.size;
   }
 
   return [...groups.values()];

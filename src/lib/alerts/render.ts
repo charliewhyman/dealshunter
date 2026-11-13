@@ -31,6 +31,34 @@ function frequencyLabel(f: AlertFrequency): string {
   }
 }
 
+/**
+ * Build a human-readable summary of a rule's filters for the welcome
+ * subtext. Reads every field so the description matches what the
+ * subscriber configured - categories, types, genders, sizes, shop count,
+ * price cap, made-in-Canada, discount threshold.
+ *
+ * Uses hyphens (not em dashes) between scope and constraints.
+ */
+function summarizeRuleFilters(f: SubscriberGroup['rule_filters']): string {
+  if (!f) return 'all deals';
+
+  const parts: string[] = [];
+  if (f.categories.length) parts.push(f.categories.join(', '));
+  if (f.types.length) parts.push(f.types.join(', '));
+  if (f.genders.length) parts.push(f.genders.join(', '));
+  if (f.sizes.length) parts.push(`sizes ${f.sizes.join(', ')}`);
+  if (f.shop_ids.length) parts.push(`${f.shop_ids.length} shop${f.shop_ids.length === 1 ? '' : 's'}`);
+
+  const scope = parts.length > 0 ? parts.join(' · ') : 'all categories';
+
+  const constraints: string[] = [];
+  constraints.push(`${f.min_discount}%+ off`);
+  if (f.max_price != null) constraints.push(`under $${f.max_price}`);
+  if (f.made_in_canada_only) constraints.push('made in Canada');
+
+  return `${scope} - ${constraints.join(', ')}`;
+}
+
 function buildSeeAllUrl(group: SubscriberGroup): string {
   const f = group.rule_filters;
   if (!f) return `${SITE}/`;
@@ -50,8 +78,6 @@ function buildSeeAllUrl(group: SubscriberGroup): string {
 }
 
 function subjectFor(group: SubscriberGroup, isFirst: boolean): string {
-  // Welcome subject takes precedence — new subscribers see a welcome,
-  // not a deal count, so they know what they signed up for.
   if (isFirst) {
     return 'Welcome to Curated Canada deal alerts';
   }
@@ -152,12 +178,12 @@ function renderItemText(
   const price = formatPrice(item.min_price);
   const discount = formatDiscount(item.max_discount_percentage);
   const priceLine = [price, discount].filter(Boolean).join(' ');
-  const shopLine = item.shop_name ? `${item.shop_name} — ` : '';
+  const shopLine = item.shop_name ? `${item.shop_name} - ` : '';
   const sizes = (item.size_groups ?? []).filter((s): s is string => !!s);
   const sizeLine = sizes.length > 0
     ? `\nSizes: ${sizes.slice(0, 6).join(', ')}${sizes.length > 6 ? ` +${sizes.length - 6} more` : ''}`
     : '';
-  return `${shopLine}${item.title}${priceLine ? ` — ${priceLine}` : ''}${sizeLine}\n${href}`;
+  return `${shopLine}${item.title}${priceLine ? ` - ${priceLine}` : ''}${sizeLine}\n${href}`;
 }
 
 export function renderDigest(group: SubscriberGroup): {
@@ -184,7 +210,6 @@ export function renderDigest(group: SubscriberGroup): {
   const unsubUrl = `${SITE}/alerts/unsubscribe?token=${encodeURIComponent(unsubscribeToken)}`;
   const manageUrl = `${SITE}/account/alerts?token=${encodeURIComponent(manageToken)}`;
 
-  // Group products by shop.
   const byShop = new Map<string, AlertItem[]>();
   for (const item of group.items) {
     const key = item.shop_name ?? 'Other';
@@ -192,7 +217,9 @@ export function renderDigest(group: SubscriberGroup): {
     byShop.get(key)!.push(item);
   }
 
-  // Header varies by first-send vs regular digest.
+  const ruleSummary = summarizeRuleFilters(group.rule_filters);
+  const ruleCount = group.rules_matched;
+
   const headline = isFirst
     ? 'Welcome to Curated Canada deal alerts'
     : count === 1
@@ -200,11 +227,9 @@ export function renderDigest(group: SubscriberGroup): {
       : `${count} new deals for you`;
 
   const headerSubtext = isFirst
-    ? `You're set up for ${
-        group.rule_filters?.categories.length
-          ? group.rule_filters.categories.join(', ')
-          : 'all categories'
-      } at ${group.rule_filters?.min_discount ?? 20}%+ off. Here's what we found this week. Want different deals? You can customize your alerts at any time:`
+    ? ruleCount > 1
+      ? `You're set up for ${ruleCount} alert rules. Here's what matched this week - want to change any?`
+      : `You're set up for ${ruleSummary}. Here's what we found this week - want different deals?`
     : `Matching your alerts ${esc(when)}.`;
 
   const firstDigestCta = isFirst
@@ -218,8 +243,6 @@ export function renderDigest(group: SubscriberGroup): {
     `
     : '';
 
-  // Preheader: different for first send so the inbox snippet reinforces
-  // the welcome rather than the deal count.
   const preheader = isFirst
     ? `Your first Curated Canada deal digest is here. Customize your alerts to get exactly what you want.`
     : `${count} new deal${count === 1 ? '' : 's'} ${when} from brands you're watching.`;
@@ -299,7 +322,9 @@ export function renderDigest(group: SubscriberGroup): {
       ? `Welcome to Curated Canada deal alerts`
       : `Curated Canada - ${count === 1 ? '1 new deal' : `${count} new deals`} for you`,
     isFirst
-      ? headerSubtext.replace(/<[^>]*>/g, '')
+      ? ruleCount > 1
+        ? `You're set up for ${ruleCount} alert rules. Here's what matched this week - want to change any?`
+        : `You're set up for ${ruleSummary}. Here's what we found this week - want different deals?`
       : `Matching your alerts ${when}.`,
     '',
   ];
