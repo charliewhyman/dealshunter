@@ -377,6 +377,85 @@ app.post('/api/subscribe', async (c) => {
             60 * 60  // 1 hour
         );
 
+        // Send an instant welcome email (fire-and-forget; failure does not
+        // block the signup — the subscriber will still get their first digest
+        // on Monday even if this fails).
+        try {
+            const { Resend } = await import('resend');
+            const resend = new Resend(c.env?.RESEND_API_KEY ?? '');
+            const manageUrl = `https://curatedcanada.ca/account/alerts?token=${encodeURIComponent(welcomeToken)}`;
+            const unsubToken = signToken(
+                { subscriberId, purpose: 'unsubscribe' },
+                60 * 60 * 24 * 30
+            );
+            const unsubUrl = `https://curatedcanada.ca/alerts/unsubscribe?token=${encodeURIComponent(unsubToken)}`;
+
+            await resend.emails.send({
+                from: 'Curated Canada <hello@curatedcanada.ca>',
+                to: normalizedEmail,
+                subject: 'Welcome to Curated Canada deal alerts',
+                text: `Hi,
+
+You're subscribed to Curated Canada deal alerts.
+
+Here's what you'll get:
+- One email a week, showing up to 10 of the best deals that match your rules
+- Every product links directly to the Canadian brand's own store
+- You can change your rules or unsubscribe anytime
+
+Your first digest arrives next Monday. Want to change what you get before then?
+
+${manageUrl}
+
+Thanks for supporting Canadian brands.
+
+— Curated Canada
+
+---
+Unsubscribe: ${unsubUrl}`,
+                html: `<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8" /><title>Welcome to Curated Canada deal alerts</title></head>
+<body style="margin:0;padding:24px 12px;background:#f9fafb;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;color:#111827;">
+  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background:#f9fafb;">
+    <tr><td align="center">
+      <table role="presentation" width="600" cellpadding="0" cellspacing="0" border="0" style="max-width:600px;width:100%;background:#ffffff;border-radius:12px;padding:32px;">
+        <tr><td>
+          <div style="font-size:13px;color:#6b7280;letter-spacing:0.04em;text-transform:uppercase;font-weight:600;">Curated Canada</div>
+          <h1 style="margin:8px 0 16px;font-size:22px;line-height:1.3;">Welcome to deal alerts</h1>
+          <p style="margin:0 0 16px;color:#111827;font-size:14px;line-height:1.6;">You're subscribed to Curated Canada deal alerts.</p>
+          <p style="margin:0 0 8px;color:#111827;font-size:14px;line-height:1.6;">Here's what you'll get:</p>
+          <ul style="margin:0 0 16px;padding-left:20px;color:#111827;font-size:14px;line-height:1.6;">
+            <li>One email a week, showing up to 10 of the best deals that match your rules</li>
+            <li>Every product links directly to the Canadian brand's own store</li>
+            <li>You can change your rules or unsubscribe anytime</li>
+          </ul>
+          <p style="margin:0 0 20px;color:#111827;font-size:14px;line-height:1.6;">Your first digest arrives next Monday. Want to change what you get before then?</p>
+          <p style="margin:0 0 24px;text-align:center;">
+            <a href="${manageUrl}" style="display:inline-block;padding:12px 24px;background:#2563eb;color:#ffffff;border-radius:8px;font-size:14px;font-weight:600;text-decoration:none;">Customize your alerts</a>
+          </p>
+          <p style="margin:0 0 16px;color:#6b7280;font-size:14px;line-height:1.6;">Thanks for supporting Canadian brands.</p>
+          <p style="margin:0;color:#6b7280;font-size:14px;">— Curated Canada</p>
+          <hr style="border:none;border-top:1px solid #e5e7eb;margin:24px 0 16px;" />
+          <p style="margin:0;font-size:12px;color:#6b7280;">
+            <a href="${unsubUrl}" style="color:#2563eb;text-decoration:underline;">Unsubscribe</a>
+          </p>
+        </td></tr>
+      </table>
+    </td></tr>
+  </table>
+</body>
+</html>`,
+                headers: {
+                    'List-Unsubscribe': `<${unsubUrl}>, <mailto:hello@curatedcanada.ca?subject=unsubscribe>`,
+                    'List-Unsubscribe-Post': 'List-Unsubscribe=One-Click',
+                },
+            });
+        } catch (err) {
+            // Don't fail the signup if the welcome email fails.
+            console.error('[subscribe] welcome email failed:', err);
+        }
+
         return c.json({
             success: true,
             message: 'Subscribed successfully',
@@ -699,57 +778,6 @@ app.get('/api/pricing', async (c) => {
         console.error('Error fetching pricing:', error);
         return c.json({ ...toErrorDetails(error), error: 'Internal Server Error' }, 500);
     }
-});
-
-app.post('/api/alerts/send-manage-link', async (c) => {
-  try {
-    const db = c.var.db;
-    if (!db) throw new Error('Database not initialized: ' + c.var.initDbError);
-
-    const body = await c.req.json();
-    const { email } = body as { email?: string };
-
-    if (!email || !email.includes('@')) {
-      return c.json({ ok: false, error: 'Valid email is required' }, 400);
-    }
-
-    const normalizedEmail = email.trim().toLowerCase();
-
-    // Look up the subscriber. If they don't exist, we still return ok:true
-    // (so the endpoint doesn't reveal whether an email is registered).
-    const subscriber = await db
-      .selectFrom('subscribers')
-      .select(['id', 'consent_given'])
-      .where('email', '=', normalizedEmail)
-      .executeTakeFirst();
-
-    if (subscriber && subscriber.consent_given) {
-      // Sign a manage token and send the email
-      const manageToken = signToken(
-        { subscriberId: subscriber.id, purpose: 'manage' },
-        60 * 60 * 24  // 24-hour TTL for magic link
-      );
-      const manageUrl = `https://curatedcanada.ca/account/alerts?token=${encodeURIComponent(manageToken)}`;
-
-      // Send via Resend — reuse the Resend client from send.ts
-      const { Resend } = await import('resend');
-      const resend = new Resend(c.env?.RESEND_API_KEY ?? '');
-
-      await resend.emails.send({
-        from: 'Curated Canada <hello@curatedcanada.ca>',
-        to: normalizedEmail,
-        subject: 'Manage your Curated Canada deal alerts',
-        text: `Hi,\n\nClick the link below to manage your deal alerts:\n\n${manageUrl}\n\nThis link expires in 24 hours. If you didn't request this, you can ignore it.\n\n— Curated Canada`,
-        html: `<p>Hi,</p><p>Click the link below to manage your deal alerts:</p><p><a href="${manageUrl}">Manage your alerts</a></p><p>This link expires in 24 hours. If you didn't request this, you can ignore it.</p><p>— Curated Canada</p>`,
-      });
-    }
-
-    // Always return ok:true, whether or not the email was found.
-    return c.json({ ok: true });
-  } catch (error: unknown) {
-    console.error('Error sending manage link:', error);
-    return c.json({ ok: false, error: 'Internal Server Error' }, 500);
-  }
 });
 
 app.get('/api/shops', async (c) => {
