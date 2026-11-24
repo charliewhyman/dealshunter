@@ -8,7 +8,6 @@ export default {
       const url = new URL('/api/cron/send-alerts', env.SITE_URL);
       url.searchParams.set('frequency', 'weekly');
       url.searchParams.set('limit', String(BATCH));
-      url.searchParams.set('dry', '1'); 
       
       const res = await fetch(url.toString(), {
         headers: {
