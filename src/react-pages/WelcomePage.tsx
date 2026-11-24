@@ -123,7 +123,7 @@ export default function WelcomePage({ initialToken }: Props) {
         <div className="rounded-xl border border-green-200 bg-green-50 p-8 dark:border-green-800 dark:bg-green-900/20">
           <h1 className="mb-3 text-xl font-semibold text-green-900 dark:text-green-100">You're all set!</h1>
           <p className="text-sm text-green-800 dark:text-green-200">
-            We'll send your first digest on Monday. You can change your alerts anytime from the footer of any email.
+            We'll send your first digest on Tuesday. You can change your alerts anytime from the footer of any email.
           </p>
           <a href="/" className="mt-4 inline-block text-blue-600 underline dark:text-blue-400">Back to homepage</a>
         </div>
@@ -148,7 +148,7 @@ export default function WelcomePage({ initialToken }: Props) {
         What deals do you want?
       </h1>
       <p className="mb-6 text-sm text-gray-500 dark:text-gray-400">
-        You're subscribed as <strong>{email}</strong>. Pick what you care about and we'll send matching deals every Monday.
+        You're subscribed as <strong>{email}</strong>. Pick what you care about and we'll send matching deals every Tuesday.
       </p>
       <p className="mb-8 text-sm text-gray-500 dark:text-gray-400">
         <button onClick={handleSkip} className="text-blue-600 underline hover:text-blue-800 dark:text-blue-400">

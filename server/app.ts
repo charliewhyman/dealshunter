@@ -379,7 +379,7 @@ app.post('/api/subscribe', async (c) => {
 
         // Send an instant welcome email (fire-and-forget; failure does not
         // block the signup — the subscriber will still get their first digest
-        // on Monday even if this fails).
+        // on Tuesday even if this fails).
         try {
             const { Resend } = await import('resend');
             const resend = new Resend(c.env?.RESEND_API_KEY ?? '');
@@ -403,7 +403,7 @@ Here's what you'll get:
 - Every product links directly to the Canadian brand's own store
 - You can change your rules or unsubscribe anytime
 
-Your first digest arrives next Monday. Want to change what you get before then?
+Your first digest arrives next Tuesday. Want to change what you get before then?
 
 ${manageUrl}
 
@@ -430,7 +430,7 @@ Unsubscribe: ${unsubUrl}`,
             <li>Every product links directly to the Canadian brand's own store</li>
             <li>You can change your rules or unsubscribe anytime</li>
           </ul>
-          <p style="margin:0 0 20px;color:#111827;font-size:14px;line-height:1.6;">Your first digest arrives next Monday. Want to change what you get before then?</p>
+          <p style="margin:0 0 20px;color:#111827;font-size:14px;line-height:1.6;">Your first digest arrives next Tuesday. Want to change what you get before then?</p>
           <p style="margin:0 0 24px;text-align:center;">
             <a href="${manageUrl}" style="display:inline-block;padding:12px 24px;background:#2563eb;color:#ffffff;border-radius:8px;font-size:14px;font-weight:600;text-decoration:none;">Customize your alerts</a>
           </p>
