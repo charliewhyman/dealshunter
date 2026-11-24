@@ -202,21 +202,35 @@ export async function sendAlerts(opts: SendOptions = {}): Promise<SendReport> {
 
 async function recordSent(group: SubscriberGroup): Promise<void> {
   const entriesJson = JSON.stringify(group.sent_log_entries);
+  console.log(`[recordSent] subscriber=${group.subscriber_id} entries_count=${group.sent_log_entries.length}`);
+  console.log(`[recordSent] entriesJson=${entriesJson.slice(0, 300)}`);
 
-  await sql`
-    UPDATE alert_rules
-    SET sent_log = (
-      SELECT jsonb_agg(e)
-      FROM (
-        SELECT e
-        FROM jsonb_array_elements(sent_log || ${entriesJson}::jsonb) e
-        ORDER BY (e->>'sent_at')::timestamptz DESC
-        LIMIT 200
-      ) t
-    ),
-    updated_at = now()
-    WHERE subscriber_id = ${group.subscriber_id}
-  `;
+  if (group.sent_log_entries.length === 0) {
+    console.warn(`[recordSent] WARNING: no entries to record for subscriber ${group.subscriber_id}`);
+    return;
+  }
+
+  try {
+    const result = await sql`
+      UPDATE alert_rules
+      SET sent_log = (
+        SELECT jsonb_agg(e)
+        FROM (
+          SELECT e
+          FROM jsonb_array_elements(sent_log || ${entriesJson}::jsonb) e
+          ORDER BY (e->>'sent_at')::timestamptz DESC
+          LIMIT 200
+        ) t
+      ),
+      updated_at = now()
+      WHERE subscriber_id = ${group.subscriber_id}
+      RETURNING subscriber_id, jsonb_array_length(sent_log) AS new_count
+    `;
+    console.log(`[recordSent] subscriber=${group.subscriber_id} OK result=${JSON.stringify(result)}`);
+  } catch (err) {
+    console.error(`[recordSent] subscriber=${group.subscriber_id} FAILED:`, err);
+    throw err;
+  }
 }
 
 export async function pruneSentLogs(days = 30): Promise<number> {
